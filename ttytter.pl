@@ -1,6 +1,6 @@
 #!/usr/bin/perl -s
 
-# TTYtter v0.1 (c)2007 cameron kaiser. all rights reserved.
+# TTYtter v0.2 (c)2007 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -10,18 +10,19 @@
 # If someone writes an app and no one uses it, does his code run? -- me
 
 require 5.005;
+eval "use utf8;"; # evalled out for buggered old Perls
 BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
-	%valid = qw(url 1 lynx 1 curl 1 pause 1 user 1 verbose 1);
+	%valid = qw(url 1 lynx 1 curl 1 pause 1 user 1 verbose 1 hold 1);
 	if (-r ($n = "$ENV{'HOME'}/.ttytterrc")) {
 		open(W, $n) || die("wickedness: $!\n");
 		while(<W>) {
 			chomp;
 			next if (/^\s*$/ || /^#/);
 			($key, $value) = split(/\=/, $_, 2);
-			$$key = $value if ($valid{$key});
+			$$key = $value if ($valid{$key} && !length($$key));
 		}
 		close(W);
 	}
@@ -34,7 +35,7 @@ END {
 	}
 }
 
-die("0.1\n") if ($version);
+die("0.2\n") if ($version);
 $url ||= "http://twitter.com/statuses/friends_timeline.json";
 #$url = "http://twitter.com/statuses/public_timeline.json";
 $true = 1;
@@ -42,6 +43,7 @@ $false = 0;
 $null = undef;
 $pause ||= 60; # if not specified by -pause=
 $verbose ||= 0;
+$hold ||= 0;
 
 select(STDOUT); $|++;
 
@@ -66,17 +68,27 @@ if ($lynx) {
 	$wand = "$wend -source";
 	$wend = "$wend -post_data";
 } else {
-	$wend =
-"$wend --basic -m 10 -f -u $user -H 'X-Twitter-Client: TTYtter'";
+	$wend = "$wend --basic -m 10 -f -u $user";
 	$wand = "$wend";
 	$wend = "$wend --data \@-";
 }
 
-print "test-login "; $data = `$wand $url 2>/dev/null`;
-if ($?) {
-	print "FAILED. ($?) bad username? bad url? resource down?\n";
-	print "access failure on: $url\n";
-	exit;
+for(;;) {
+	print "test-login "; $data = `$wand $url 2>/dev/null`;
+	if ($?) {
+		$x = $? >> 8;
+		print "FAILED. ($x) bad username? bad url? resource down?\n";
+		print "access failure on: $url\n";
+		if ($hold) {
+			print
+			"trying again in 5 minutes, or kill process now.\n\n";
+			sleep 300;
+			next;
+		}
+		print "to automatically wait for a connect, use -hold.\n";
+		exit;
+	}
+	last;
 }
 print "SUCCEEDED!\n";
 
@@ -85,7 +97,7 @@ print "SUCCEEDED!\n";
 print <<'EOF';
 
 ######################################################        +oo=========oo+ 
-          TTYtter 0.1 (c)2007 cameron kaiser.                 @             @
+          TTYtter 0.2 (c)2007 cameron kaiser.                 @             @
                  all rights reserved.                         +oo=   =====oo+
        http://www.floodgap.com/software/ttytter/            a==:  ooo
                                                             .++o++. ..o**O
@@ -109,17 +121,28 @@ $last_id = 0;
 if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
 select(C); $|++; select(STDOUT);
 
+$history = '';
 &prompt;
 while(<>) {
 	chomp;
-
+	s/^\s+//;
+	s/\s+$//;
 	last if ($_ eq '/quit');
+
+	if ($_ eq '%%:p' || $_ eq '/history') {
+		print STDOUT "*** %% = \"$history\"\n";
+		&prompt;
+		next;
+	}
+	print STDOUT "(expanded to \"$_\")\n" if (s/^\%\%/$history/);
+	$history = $_ unless ($_ eq '');
+
 	if ($_ eq '/help') {
 		print <<'EOF';
 
- ------ TTYtter v1.0 copyright 2007 cameron kaiser. all rights reserved. ------
+ ------ TTYtter v0.2 copyright 2007 cameron kaiser. all rights reserved. ------
 
-      *** COMMANDS:        :a$AAOOOOOOOOOOOOOOOOOAA$a,
+      *** BASIC COMMANDS:  :a$AAOOOOOOOOOOOOOOOOOAA$a,
                          +@A:.                     .:B@+
    /refresh              =@B     HELP!!!  HELP!!!    B@=
      grabs the newest    :a$Ao                     oA$a,
@@ -139,8 +162,8 @@ while(<>) {
                                +Ba::;oaa*$Aa=aA$*aa=;::$B:
                                  ,===O@BOOOOOOOOO#@$===,
    /quit                             o@BOOOOOOOOO#@+
-      resumes your boring life.      o@BOB@B$B@BO#@+
-                                     o@*.a@o a@o.$@+
+      resumes your boring life.      o@BOB@B$B@BO#@+    SEE DOCUMENTATION
+                                     o@*.a@o a@o.$@+     for OTHER COMMANDS.
  ** EVERYTHING ELSE IS TWEETED **    o@B$B@o a@A$#@+
 
  --- twitter: doctorlinguist --- http://www.floodgap.com/software/ttytter/ ---
@@ -166,6 +189,15 @@ EOF
 		next;
 	}
 
+	if (length > 140) {
+		$history = ($_ = substr($_, 0, 140));
+		print STDOUT
+			"*** sorry, tweet too long; truncated to \"$_\"\n";
+		print STDOUT "*** type %% to use truncated version if ok.\n";
+		&prompt;
+		next;
+	}
+
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
@@ -185,7 +217,8 @@ EOF
 	print N "source=TTYtter&status=$urle\n";
 	close(N);
 	if ($? > 0) {
-		print STDOUT "*** warning: failed to connect ($?)\n";
+		$x = $? >> 8;
+		print STDOUT "*** warning: failed to connect ($x)\n";
 	} else {
 		#&thump; # your call if you want to uncomment this.
 	}
@@ -231,17 +264,18 @@ sub refresh {
 
 	$xurl = ($last_id) ? "?since_id=$last_id" : "";
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
-	$data =~ s/[\r\l\n\s]*$//;
+	$data =~ s/[\r\l\n\s]*$//s;
+	$data =~ s/^[\r\l\n\s]*//s;
 
 	if (!length($data)) {
-		print "*** warning: timeout or no data\n";
+		print STDOUT "*** warning: timeout or no data\n";
 		return;
 	}
 
-	if ($data =~ /^<!DOCTYPE\s+html/) {
-		print "*** warning: Twitter status message received\n";
+	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^<html>/i) {
+		print STDOUT "*** warning: Twitter error message received\n";
 		($data =~ /<title>Twitter:\s*([^<]+)</) &&
-			print "*** \"$1\"\n";
+			print STDOUT "*** \"$1\"\n";
 		return;
 	}
 
@@ -286,9 +320,21 @@ sub refresh {
 	$tdata =~ s/\s//g;
 	# the remaining stuff should just be enclosed in [ ], and only {}:,
 	# for example, imagine if a bare semicolon were in this ...
-	&screech("$data\n$tdata\nJSON IS UNSAFE TO EXECUTE! BAILING OUT!\n")
-		if ($tdata !~ s/^\[// || $tdata !~ s/\]$// ||
-			$tdata =~ /[^{}:,]/);
+	if ($tdata !~ s/^\[// || $tdata !~ s/\]$// || $tdata =~ /[^{}:,]/) {
+		$tdata =~ s/'[^']+$//; # cut trailing strings
+		if ($tdata !~ /[^{}:,]/) { # incomplete transmission
+			print STDOUT
+				"*** JSON warning: connection cut\n";
+			return;
+		}
+		if ($tdata =~ /\[\]/) { # oddity
+			print STDOUT
+				"*** JSON warning: null list\n";
+			return;
+		}
+		&screech
+		("$data\n$tdata\nJSON IS UNSAFE TO EXECUTE! BAILING OUT!\n")
+	}
 
 	# have to turn colons into ,s or Perl will gripe. but INTELLIGENTLY!
 	1 while ($data =~ s/([^'])':(true|false|null|\'|\{|[0-9])/\1\',\2/);
