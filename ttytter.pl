@@ -1,6 +1,6 @@
 #!/usr/bin/perl -s
-
-# TTYtter v0.2 (c)2007 cameron kaiser. all rights reserved.
+#
+# TTYtter v0.3 (c)2007 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -15,7 +15,10 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
-	%valid = qw(url 1 lynx 1 curl 1 pause 1 user 1 verbose 1 hold 1);
+	%valid = qw(
+		url 1 lynx 1 curl 1 pause 1 user 1
+		verbose 1 hold 1 status 1 update 1
+	);
 	if (-r ($n = "$ENV{'HOME'}/.ttytterrc")) {
 		open(W, $n) || die("wickedness: $!\n");
 		while(<W>) {
@@ -35,9 +38,10 @@ END {
 	}
 }
 
-die("0.2\n") if ($version);
+die("0.3\n") if ($version);
 $url ||= "http://twitter.com/statuses/friends_timeline.json";
 #$url = "http://twitter.com/statuses/public_timeline.json";
+$update ||= "http://twitter.com/statuses/update.json";
 $true = 1;
 $false = 0;
 $null = undef;
@@ -73,31 +77,46 @@ if ($lynx) {
 	$wend = "$wend --data \@-";
 }
 
+$phase = 0;
 for(;;) {
-	print "test-login "; $data = `$wand $url 2>/dev/null`;
-	if ($?) {
-		$x = $? >> 8;
+	$rv = 0;
+	if (length($status) && $phase) {
+		print "post attempt "; $rv = &updatest($status, 0);
+	} else {
+		print "test-login "; $data = `$wand $url 2>/dev/null`;
+		$rv = $?;
+	}
+	if ($rv) {
+		$x = $rv >> 8;
 		print "FAILED. ($x) bad username? bad url? resource down?\n";
-		print "access failure on: $url\n";
+		print "access failure on: ";
+		print (($phase) ? $update : $url);
+		print "\n";
 		if ($hold) {
 			print
-			"trying again in 5 minutes, or kill process now.\n\n";
-			sleep 300;
+			"trying again in 3 minutes, or kill process now.\n\n";
+			sleep 180;
 			next;
 		}
 		print "to automatically wait for a connect, use -hold.\n";
 		exit;
 	}
+	if ($status && !$phase) {
+		print "SUCCEEDED!\n";
+		$phase++;
+		next;
+	}
 	last;
 }
 print "SUCCEEDED!\n";
+exit if (length($status));
 
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 
 print <<'EOF';
 
 ######################################################        +oo=========oo+ 
-          TTYtter 0.2 (c)2007 cameron kaiser.                 @             @
+          TTYtter 0.3 (c)2007 cameron kaiser.                 @             @
                  all rights reserved.                         +oo=   =====oo+
        http://www.floodgap.com/software/ttytter/            a==:  ooo
                                                             .++o++. ..o**O
@@ -139,12 +158,9 @@ while(<>) {
 
 	if ($_ eq '/help') {
 		print <<'EOF';
-
- ------ TTYtter v0.2 copyright 2007 cameron kaiser. all rights reserved. ------
-
       *** BASIC COMMANDS:  :a$AAOOOOOOOOOOOOOOOOOAA$a,
                          +@A:.                     .:B@+
-   /refresh              =@B     HELP!!!  HELP!!!    B@=
+   /refresh              =@B     HELP!!!  HELP!!!    B@= 
      grabs the newest    :a$Ao                     oA$a,
      tweets right            ;AAA$a; :a$AAAAAAAAAAA;
      away (or tells  :AOaaao:,   .:oA*:.
@@ -157,17 +173,28 @@ while(<>) {
                                    =@o  .+aaaaa:         --ASYNCHRONOUS--
    /again                          =@Aaaaaaaaaa*o*a;,    and don't always
       displays last twenty         =@$++=++++++:,;+aA:       respond
-      tweets, both old and       ,+$@*.=O+  ...oO; oAo+.   immediately
+      tweets, both old and       ,+$@*.=O+  ...oO; oAo+.   immediately!
       new.                     ,+o$OO=.+aA#####Oa;.*OO$o+.
                                +Ba::;oaa*$Aa=aA$*aa=;::$B:
                                  ,===O@BOOOOOOOOO#@$===,
    /quit                             o@BOOOOOOOOO#@+
       resumes your boring life.      o@BOB@B$B@BO#@+    SEE DOCUMENTATION
                                      o@*.a@o a@o.$@+     for OTHER COMMANDS.
- ** EVERYTHING ELSE IS TWEETED **    o@B$B@o a@A$#@+
+ ** EVERYTHING ELSE IS TWEETED **    o@B$B@o a@A$#@+  
+EOF
+		print "PRESS RETURN/ENTER> ";
+		$j = <STDIN>;
+		print <<'EOF';
+
+ TTYtter 0.3 is (c)2007 cameron kaiser. all rights reserved. this software
+ is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
+ executives and developers of Twitter.
 
  --- twitter: doctorlinguist --- http://www.floodgap.com/software/ttytter/ ---
-               send your suggestions to me at ckaiser@floodgap.com.
+
+           *** subscribe to updates at http://twitter.com/ttytter
+                                    or http://twitter.com/floodgap
+               send your suggestions to me at ckaiser@floodgap.com
 
 EOF
 		&prompt;
@@ -197,34 +224,45 @@ EOF
 		&prompt;
 		next;
 	}
+	&updatest($_, 1);
+	&prompt;
+}
+exit;
 
+sub updatest {
+	my $string = shift;
+	my $interactive = shift;
+	my $urle = '';
+	my $i;
+	my $subpid;
+	
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
-	$_ = unpack("H280", $_);
-	$urle = '';
-	for($i = 0; $i < length($_); $i+=2) {
-		$urle .= '%' . substr($_, $i, 2);
+	$string = unpack("H280", $string);
+	for($i = 0; $i < length($string); $i+=2) {
+		$urle .= '%' . substr($string, $i, 2);
 	}
 	$subpid = open(N,
 		# I know the below is redundant. this is to remind me to see
 		# if there is something cleverer to do with it later.
-#"|$wend http://twitter.com/statuses/update.json") || do{
-"|$wend http://twitter.com/statuses/update.json 2>/dev/null >/dev/null") || do{
-		print STDOUT "post failure: $!\n";
-		last;
+"|$wend $update 2>/dev/null >/dev/null") || do{
+		print STDOUT "post failure: $!\n" if ($interactive);
+		return 99;
 	};
 	print N "source=TTYtter&status=$urle\n";
 	close(N);
 	if ($? > 0) {
 		$x = $? >> 8;
-		print STDOUT "*** warning: failed to connect ($x)\n";
-	} else {
-		#&thump; # your call if you want to uncomment this.
+		print STDOUT <<"EOF" if ($interactive);
+*** warning: connect timeout or no confirmation received ($x)
+*** to attempt a resend, type %%
+EOF
+		return $?;
 	}
-	&prompt;
+	return 0;
 }
-exit;
+
 
 sub prompt { print STDOUT "TTYtter> "; }
 sub thump { print C "update---\n"; }
@@ -321,7 +359,7 @@ sub refresh {
 	# the remaining stuff should just be enclosed in [ ], and only {}:,
 	# for example, imagine if a bare semicolon were in this ...
 	if ($tdata !~ s/^\[// || $tdata !~ s/\]$// || $tdata =~ /[^{}:,]/) {
-		$tdata =~ s/'[^']+$//; # cut trailing strings
+		$tdata =~ s/'[^']*$//; # cut trailing strings
 		if ($tdata !~ /[^{}:,]/) { # incomplete transmission
 			print STDOUT
 				"*** JSON warning: connection cut\n";
