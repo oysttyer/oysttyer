@@ -1,6 +1,6 @@
 #!/usr/bin/perl -s
 #
-# TTYtter v0.3 (c)2007 cameron kaiser. all rights reserved.
+# TTYtter v0.4 (c)2007 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -10,14 +10,11 @@
 # If someone writes an app and no one uses it, does his code run? -- me
 
 require 5.005;
-eval "use utf8;"; # evalled out for buggered old Perls
 BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
-	binmode(STDIN, ":utf8");
-	binmode(STDOUT, ":utf8");
 	%valid = qw(
-		url 1 lynx 1 curl 1 pause 1 user 1
-		verbose 1 hold 1 status 1 update 1
+		url 1 lynx 1 curl 1 pause 1 user 1 seven 1
+		lib 1 verbose 1 hold 1 status 1 update 1 daemon 1
 	);
 	if (-r ($n = "$ENV{'HOME'}/.ttytterrc")) {
 		open(W, $n) || die("wickedness: $!\n");
@@ -29,6 +26,20 @@ BEGIN {
 		}
 		close(W);
 	}
+	$seven ||= 0;
+	$lib ||= "";
+	$parent = $$;
+	$last_id = 0; # and let our lib set it if they want to
+
+	unless ($seven) {
+		eval "use utf8";
+		binmode(STDIN, ":utf8");
+		binmode(STDOUT, ":utf8");
+	}
+	if (length($lib)) {
+		warn "** attempting to load library: $lib\n";
+		require $lib;
+	}
 }
 
 END {
@@ -38,16 +49,42 @@ END {
 	}
 }
 
-die("0.3\n") if ($version);
+$TTYtter_VERSION = 0.4;
+
+die("$TTYtter_VERSION\n") if ($version);
 $url ||= "http://twitter.com/statuses/friends_timeline.json";
 #$url = "http://twitter.com/statuses/public_timeline.json";
 $update ||= "http://twitter.com/statuses/update.json";
-$true = 1;
-$false = 0;
+# to force unambiguous bareword interpretation
+$true = 'true';
+sub true { return 'true'; }
+$false = 'false';
+sub false { return 'false'; }
 $null = undef;
+sub null { return undef; }
 $pause ||= 60; # if not specified by -pause=
 $verbose ||= 0;
 $hold ||= 0;
+$daemon ||= 0;
+
+# default exposed methods
+# don't change these here. instead, use -lib=yourlibrary.pl and set them there.
+# note that these are all anonymous subroutine references.
+# anything you don't define is overwritten by the defaults.
+# it's better'n'superclasses.
+
+sub defaultexception { shift; print STDOUT "@_"; }
+$exception ||= \&defaultexception;
+sub defaulthandle {
+	my $ref = shift;
+	my $g = '<' .  &descape($ref->{'user'}->{'screen_name'}) .
+		'> ' .  &descape($ref->{'text'}) .  "\n";
+	print STDOUT $g;
+	return 1;
+}
+$handle ||= \&defaulthandle;
+sub defaultconclude { ; }
+$conclude ||= \&defaultconclude;
 
 select(STDOUT); $|++;
 
@@ -76,6 +113,8 @@ if ($lynx) {
 	$wand = "$wend";
 	$wend = "$wend --data \@-";
 }
+
+# initial login tests and command line controls
 
 $phase = 0;
 for(;;) {
@@ -113,10 +152,33 @@ exit if (length($status));
 
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 
-print <<'EOF';
+# daemon mode
+
+if ($daemon) {
+	if ($child = fork()) {
+		print STDOUT "*** detached daemon released. pid = $child\n";
+		kill 15, $$;
+		exit;
+	} elsif (!defined($child)) {
+		print STDOUT "*** fork() failed: $!\n";
+		exit;
+	} else {
+		# using our regular MONITOR select() loop won't work, because
+		# STDIN is almost always "ready." so we use a blunter one:
+		$parent = 0;
+		for(;;) { &refresh(0); sleep $pause; }
+	}
+	die("uncaught fork() exception\n");
+}
+
+# interactive mode
+
+print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-          TTYtter 0.3 (c)2007 cameron kaiser.                 @             @
+          TTYtter $TTYtter_VERSION (c)2007 cameron kaiser.                 @             @
+EOF
+print <<'EOF';
                  all rights reserved.                         +oo=   =====oo+
        http://www.floodgap.com/software/ttytter/            a==:  ooo
                                                             .++o++. ..o**O
@@ -135,8 +197,6 @@ EOF
 print STDOUT "-- verbosity enabled.\n\n" if ($verbose);
 sleep 2;
 
-$parent = $$;
-$last_id = 0;
 if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
 select(C); $|++; select(STDOUT);
 
@@ -186,7 +246,7 @@ EOF
 		$j = <STDIN>;
 		print <<'EOF';
 
- TTYtter 0.3 is (c)2007 cameron kaiser. all rights reserved. this software
+ TTYtter 0.4 is (c)2007 cameron kaiser. all rights reserved. this software
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
@@ -268,15 +328,16 @@ sub prompt { print STDOUT "TTYtter> "; }
 sub thump { print C "update---\n"; }
 
 MONITOR:
-# the engine depends on later tweets having higher id numbers.
-# Obvious, don't change this if you know what's good for you, ya twerps,
-# or I will poison all of yer kitties. *pats my Burmese, who purrs*
+# asynchronous monitoring process -- uses select() to receive from console
 
 $rin = '';
 vec($rin,fileno(STDIN),1) = 1;
 # paranoia
-binmode(STDIN, ":utf8");
-binmode(STDOUT, ":utf8");
+unless ($seven) {
+	binmode(STDIN, ":utf8");
+	binmode(STDOUT, ":utf8");
+}
+$interactive = 0;
 
 for(;;) {
 	&refresh($interactive);
@@ -292,6 +353,11 @@ for(;;) {
 }
 
 sub refresh {
+
+# the refresh engine depends on later tweets having higher id numbers.
+# Obvious, don't change this if you know what's good for you, ya twerps,
+# or I will poison all of yer kitties. *pats my Burmese, who purrs*
+
 	my $data;
 	my $interactive = shift;
 	my $tdata;
@@ -306,14 +372,14 @@ sub refresh {
 	$data =~ s/^[\r\l\n\s]*//s;
 
 	if (!length($data)) {
-		print STDOUT "*** warning: timeout or no data\n";
+		&$exception(1, "*** warning: timeout or no data\n");
 		return;
 	}
 
 	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^<html>/i) {
-		print STDOUT "*** warning: Twitter error message received\n";
-		($data =~ /<title>Twitter:\s*([^<]+)</) &&
-			print STDOUT "*** \"$1\"\n";
+		&$exception(2, "*** warning: Twitter error message received\n" .
+			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
+				"*** \"$1\"\n" : ''));
 		return;
 	}
 
@@ -361,13 +427,11 @@ sub refresh {
 	if ($tdata !~ s/^\[// || $tdata !~ s/\]$// || $tdata =~ /[^{}:,]/) {
 		$tdata =~ s/'[^']*$//; # cut trailing strings
 		if ($tdata !~ /[^{}:,]/) { # incomplete transmission
-			print STDOUT
-				"*** JSON warning: connection cut\n";
+			&$exception(10, "*** JSON warning: connection cut\n");
 			return;
 		}
 		if ($tdata =~ /\[\]/) { # oddity
-			print STDOUT
-				"*** JSON warning: null list\n";
+			&$exception(11, "*** JSON warning: null list\n");
 			return;
 		}
 		&screech
@@ -386,23 +450,21 @@ sub refresh {
 	# now print stuff out.
 	$print_max = 19; # will do more with this later.
 	$printed = 0;
+	$max = 0;
 	for($i = $print_max; $i >= 0; $i--) {
 		next if ($my_json_ref->[$i]->{'id'} <= $last_id);
 		next if
 		(!length($my_json_ref->[$i]->{'user'}->{'screen_name'}));
-		$g =
-			'<' .
-	&descape($my_json_ref->[$i]->{'user'}->{'screen_name'}) .
-			'> ' .
-	&descape($my_json_ref->[$i]->{'text'}) .
-			"\n";
-		print STDOUT $g;
-		$printed++;
+
+		$g = 0+$my_json_ref->[0]->{'id'};
+		$max = $g if ($max < $g);
+		$printed += &$handle($my_json_ref->[$i]);
 	}
 	print STDOUT "-- sorry, nothing new.\n"
 		if (($interactive || $verbose) && !$printed);
-	$last_id = 0+$my_json_ref->[0]->{'id'};
+	$last_id = $max if ($max);
 	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
+	&$conclude;
 } 
 
 sub wherecheck {
@@ -438,6 +500,7 @@ sub screech {
 
 sub descape {
 	my $x = shift;
+	my $mode = shift;
 
 	$x =~ s/$ssqqmask/\'/g;
 	$x =~ s/$ddqqmask/\"/g;
@@ -445,7 +508,13 @@ sub descape {
 	$x =~ s/$bbqqmask/\\/g;
 
 	# try to do something sensible with unicode
-	$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex("\1"))/eg;
+	if ($mode) {
+		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
+	} elsif ($seven) {
+		$x =~ s/\\u([0-9a-fA-F]{4})/./g;
+	} else {
+		$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
+	}
 	return $x;
 }
 
