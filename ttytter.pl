@@ -1,6 +1,6 @@
 #!/usr/bin/perl -s
 #
-# TTYtter v0.4 (c)2007 cameron kaiser. all rights reserved.
+# TTYtter v0.5 (c)2007 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -29,6 +29,7 @@ BEGIN {
 	$seven ||= 0;
 	$lib ||= "";
 	$parent = $$;
+	$icount = 1;
 	$last_id = 0; # and let our lib set it if they want to
 
 	unless ($seven) {
@@ -49,7 +50,7 @@ END {
 	}
 }
 
-$TTYtter_VERSION = 0.4;
+$TTYtter_VERSION = 0.5;
 
 die("$TTYtter_VERSION\n") if ($version);
 $url ||= "http://twitter.com/statuses/friends_timeline.json";
@@ -62,7 +63,7 @@ $false = 'false';
 sub false { return 'false'; }
 $null = undef;
 sub null { return undef; }
-$pause ||= 60; # if not specified by -pause=
+$pause ||= 120; # if not specified by -pause=
 $verbose ||= 0;
 $hold ||= 0;
 $daemon ||= 0;
@@ -246,7 +247,7 @@ EOF
 		$j = <STDIN>;
 		print <<'EOF';
 
- TTYtter 0.4 is (c)2007 cameron kaiser. all rights reserved. this software
+ TTYtter 0.5 is (c)2007 cameron kaiser. all rights reserved. this software
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
@@ -337,18 +338,24 @@ unless ($seven) {
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
 }
-$interactive = 0;
+$interactive = $timeleft = 0;
 
 for(;;) {
-	&refresh($interactive);
-	$interactive = 0;
-	if(select($rout=$rin, undef, undef, $pause)) {
+	&refresh($interactive) unless ($timeleft);
+	$interactive = $timeleft = 0;
+	if($timeleft=select($rout=$rin, undef, undef, ($timeleft || $pause))) {
 		sysread(STDIN, $rout, 10);
+		next if (!length($rout));
 		$last_id = 0 if ($rout =~ /^reset/);
 		$interactive = 1;
-		print STDOUT "-- command received\n" if ($verbose);
+		$timeleft = 0;
+		$icount++;
+		print STDOUT "-- command received ($icount) ", scalar
+			localtime, "\n" if ($verbose);
 	} else {
-		print STDOUT "-- routine refresh\n" if ($verbose);
+		$icount++;
+		print STDOUT "-- routine refresh ($icount) ", scalar
+			localtime, "\n" if ($verbose);
 	}
 }
 
@@ -380,6 +387,14 @@ sub refresh {
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
 				"*** \"$1\"\n" : ''));
+		return;
+	}
+	if ($data =~ /^rate\s*limit/i) {
+		&$exception(3,
+"*** warning: exceeded API rate limit for this interval.\n" .
+((($verbose) && $icount > 1) ? "*** total requests: $icount\n" : "") .
+"*** no updates available until interval ends.\n");
+		$icount = 0;
 		return;
 	}
 
@@ -441,6 +456,10 @@ sub refresh {
 	# have to turn colons into ,s or Perl will gripe. but INTELLIGENTLY!
 	1 while ($data =~ s/([^'])':(true|false|null|\'|\{|[0-9])/\1\',\2/);
 
+	if ($data eq '[]') {
+		&$exception(12, "*** JSON warning: absolutely null list\n");
+		return;
+	}
 	# somewhat validated, so safe (errr ...) to eval() into a Perl struct
 	eval "\$my_json_ref = $data;";
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
@@ -462,7 +481,7 @@ sub refresh {
 	}
 	print STDOUT "-- sorry, nothing new.\n"
 		if (($interactive || $verbose) && !$printed);
-	$last_id = $max if ($max);
+	$last_id = $max if ($max > $last_id);
 	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
 	&$conclude;
 } 
