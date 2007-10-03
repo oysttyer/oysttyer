@@ -51,8 +51,9 @@ END {
 }
 
 $TTYtter_VERSION = 0.5;
+$TTYtter_PATCH_VERSION = 1;
 
-die("$TTYtter_VERSION\n") if ($version);
+die("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n") if ($version);
 $url ||= "http://twitter.com/statuses/friends_timeline.json";
 #$url = "http://twitter.com/statuses/public_timeline.json";
 $update ||= "http://twitter.com/statuses/update.json";
@@ -177,7 +178,7 @@ if ($daemon) {
 print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-          TTYtter $TTYtter_VERSION (c)2007 cameron kaiser.                 @             @
+         TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2007 cameron kaiser                 @             @
 EOF
 print <<'EOF';
                  all rights reserved.                         +oo=   =====oo+
@@ -529,10 +530,17 @@ sub descape {
 	# try to do something sensible with unicode
 	if ($mode) {
 		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
-	} elsif ($seven) {
-		$x =~ s/\\u([0-9a-fA-F]{4})/./g;
 	} else {
-		$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
+		if ($seven) {
+			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
+		} else {
+			$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
+		}
+		$x =~ s/\&quot;/"/g;
+		$x =~ s/\&apos;/'/g;
+		$x =~ s/\&lt;/\</g;
+		$x =~ s/\&gt;/\>/g;
+		$x =~ s/\&amp;/\&/g;
 	}
 	return $x;
 }
