@@ -60,7 +60,7 @@ END {
 }
 
 $TTYtter_VERSION = 0.6;
-$TTYtter_PATCH_VERSION = 0;
+$TTYtter_PATCH_VERSION = 1;
 
 die("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n") if ($version);
 
@@ -552,7 +552,7 @@ sub grabjson {
 	}
 
 	# old non-JSON based error reporting code still supported
-	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^<html>/i) {
+	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i) {
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
 				"*** \"$1\"\n" : ''));
