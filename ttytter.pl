@@ -1,6 +1,7 @@
 #!/usr/bin/perl -s
+#########################################################################
 #
-# TTYtter v0.6 (c)2007 cameron kaiser. all rights reserved.
+# TTYtter v0.7 (c)2007, 2008 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -8,6 +9,8 @@
 #
 # After all, we're flesh and blood. -- Oingo Boingo
 # If someone writes an app and no one uses it, does his code run? -- me
+#
+#########################################################################
 
 require 5.005;
 
@@ -15,11 +18,19 @@ require 5.005;
 #$maxhist=19;while(<>){last if(&prinput($_));}exit;
 
 BEGIN {
+	$TTYtter_VERSION = 0.7;
+	$TTYtter_PATCH_VERSION = 0;
+
+	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
+		if ($version);
+
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	%valid = qw(
 		url 1 lynx 1 curl 1 pause 1 user 1 seven 1 dmurl 1
-		dmpause 1 silent 1 superverbose 1 maxhist 1
+		dmpause 1 silent 1 superverbose 1 maxhist 1 noansi 1
 		lib 1 verbose 1 hold 1 status 1 update 1 daemon 1
+		timestamp 1 ansi 1 uurl 1 rurl 1 twarg 1 anonymous 1
+		wurl 1
 	);
 	if (-r ($n = "$ENV{'HOME'}/.ttytterrc")) {
 		open(W, $n) || die("wickedness: $!\n");
@@ -27,7 +38,11 @@ BEGIN {
 			chomp;
 			next if (/^\s*$/ || /^#/);
 			($key, $value) = split(/\=/, $_, 2);
-			$$key = $value if ($valid{$key} && !length($$key));
+			if ($valid{$key} && !length($$key)) {
+				$$key = $value;
+			} elsif (!$valid{$key}) {
+		warn "** setting $key not supported in this version\n";
+			}
 		}
 		close(W);
 	}
@@ -41,28 +56,39 @@ BEGIN {
 	$last_dm = 0;
 	$print_max = 20;
 
-	unless ($seven) {
-		eval "use utf8";
-		binmode(STDIN, ":utf8");
-		binmode(STDOUT, ":utf8");
-	}
 	if (length($lib)) {
 		warn "** attempting to load library: $lib\n" unless ($silent);
 		require $lib;
 	}
-}
-
-END {
-	if ($child) {
-		print STDOUT "\n\ncleaning up.\n";
-		kill 15, $child;
+	unless ($seven) {
+		eval
+'use utf8;binmode(STDIN,":utf8");binmode(STDOUT,":utf8");return 1' ||
+	die("$@\nthis perl doesn't fully support UTF-8. use -seven.\n");
+	}
+	if ($timestamp) {
+		if (length($timestamp) > 1) { # pattern specified
+			eval 'use Date::Parse;return 1' ||
+		die("$@\nno Date::Parse -- no custom timestamps.\nspecify -timestamp by itself to use Twitter's without module.\n");
+			eval 'use Date::Format;return 1' ||
+		die("$@\nno Date::Format -- no custom timestamps.\nspecify -timestamp by itself to use Twitter's without module.\n");
+			$mtimestamp = 1;
+			$timestamp = "%Y-%m-%d %k:%M:%S"
+				if ($timestamp eq "default" ||
+				    $timestamp eq "def");
+		}
 	}
 }
 
-$TTYtter_VERSION = 0.6;
-$TTYtter_PATCH_VERSION = 1;
+END {
+	&killkid;
+}
 
-die("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n") if ($version);
+sub killkid {
+	if ($child) {
+		print STDOUT "\n\ncleaning up.\n";
+		kill 9, $child;
+	}
+}
 
 if ($silent) {
 	close(STDOUT);
@@ -70,17 +96,28 @@ if ($silent) {
 }
 
 # defaults
-#$url = "http://twitter.com/statuses/public_timeline.json";
-$url ||= "http://twitter.com/statuses/friends_timeline.json";
+$anonymous ||= 0;
+$url ||= ($anonymous)
+	? "http://twitter.com/statuses/public_timeline.json"
+	: "http://twitter.com/statuses/friends_timeline.json";
+$rurl ||= "http://twitter.com/statuses/replies.json";
+$uurl ||= "http://twitter.com/statuses/user_timeline";
+$wurl ||= "http://twitter.com/users/show";
 $update ||= "http://twitter.com/statuses/update.json";
 $dmurl ||= "http://twitter.com/direct_messages.json";
 $dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
+$dmpause = 0 if ($anonymous);
 $pause ||= 120;
 $superverbose ||= 0;
 $verbose ||= $superverbose;
 $hold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
+$ansi ||= ($noansi) ? 0 :
+	(($ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color') ? 1 : 0);
+$timestamp ||= 0;
+$whoami = (split(/\:/, $user, 2))[0];
+$twarg ||= undef;
 
 $dmcount = $dmpause;
 
@@ -92,19 +129,55 @@ sub false { return 'false'; }
 $null = undef;
 sub null { return undef; }
 
+# ANSI sequences
+$ESC = pack("C", 27);
+$BEL = pack("C", 7);
+$BLUE = ($ansi) ? "${ESC}[34;1m" : '';
+$RED = ($ansi) ? "${ESC}[31;1m" : '';
+$GREEN = ($ansi) ? "${ESC}[32;1m" : '';
+$YELLOW = ($ansi) ? "${ESC}[33m" : '';
+$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
+$CYAN = ($ansi) ? "${ESC}[36m" : '';
+$EM = ($ansi) ? "${ESC}[1;3m" : '';
+$OFF = ($ansi) ? "${ESC}[0m" : '';
+
 # default exposed methods
 # don't change these here. instead, use -lib=yourlibrary.pl and set them there.
 # note that these are all anonymous subroutine references.
 # anything you don't define is overwritten by the defaults.
 # it's better'n'superclasses.
 
-sub defaultexception { shift; print STDOUT "@_"; }
+sub defaultexception { shift; print STDOUT "${MAGENTA}@_${OFF}"; }
 $exception ||= \&defaultexception;
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 sub defaulthandle {
 	my $ref = shift;
-	my $g = '<' .  &descape($ref->{'user'}->{'screen_name'}) .
-		'> ' .  &descape($ref->{'text'}) .  "\n";
+	my $sn = &descape($ref->{'user'}->{'screen_name'});
+	my $tweet = &descape($ref->{'text'});
+	my $g = "<$sn> $tweet$OFF\n";
+	# br3nda's modified timestamp patch
+	if ($timestamp) {
+		my $time = $ref->{'created_at'};
+		my $ts = $time;
+		if ($mtimestamp) {
+			# avoid precompiling these in case .pm not present
+			eval '$time = str2time($time);' ||
+				die("str2time failed: $time $@ $!\n");
+			eval '$ts = time2str($timestamp, $time);' ||
+				die("time2str failed: $timestamp $time $@\n");
+		}
+		$g = "$ts $g";
+	}
+	# br3nda's modified colour patch
+	unless ($anonymous) {
+		if ($sn eq $whoami) {
+			#if it's me speaking, colour the line yellow
+			print STDOUT $YELLOW;
+		} elsif ($tweet =~ /\@$whoami/i) {
+			#if I'm in the tweet, colour red
+			print STDOUT $RED;
+		}
+	}
 	print STDOUT $g;
 	return 1;
 }
@@ -116,9 +189,18 @@ $conclude ||= \&defaultconclude;
 # {"recipient_id":3841961,"sender":{"url":"http:\/\/www.xanga.com\/the_shambleyqueen","name":"Staci Gainor","screen_name":"emo_mom","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/7460892\/normal\/Staci_070818__2_.jpg?1187488390","description":"mildly neurotic; slightly compulsive; keenly observant  Christian mom of four, including identical twins","location":"Pennsylvania","id":7460892,"protected":false},"created_at":"Fri Aug 24 04:03:14 +0000 2007","sender_screen_name":"emo_mom","recipient_screen_name":"doctorlinguist","recipient":{"url":"http:\/\/www.cameronkaiser.com","name":"Cameron Kaiser","screen_name":"doctorlinguist","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","id":3841961,"protected":false},"text":"that is so cool; does she have a bit of an accent? do you? :-) and do you like vegemite sandwiches?","sender_id":7460892,"id":8570802}
 sub defaultdmhandle {
 	my $ref = shift;
-	my $g = '[DM '. &descape($ref->{'sender'}->{'screen_name'}) .
-		'/'. $ref->{'created_at'} .
-		'] '. &descape($ref->{'text'}) . "\n";
+	my $time = $ref->{'created_at'};
+	my $ts = $time;
+	if ($mtimestamp) {
+		# avoid precompiling these in case .pm not present
+		eval '$time = str2time($time);' ||
+			die("str2time failed: $time $@ $!\n");
+		eval '$ts = time2str($timestamp, $time);' ||
+			die("time2str failed: $timestamp $time $@\n");
+	}
+	my $g = "${GREEN}[DM ". &descape($ref->{'sender'}->{'screen_name'}) .
+		'/'. $ts .
+		'] '. &descape($ref->{'text'}) . "$OFF\n";
 	print STDOUT $g;
 	return 1;
 }
@@ -133,7 +215,8 @@ $heartbeat ||= \&defaultheartbeat;
 select(STDOUT); $|++;
 
 die("$0: specify -user=username:password\n")
-	if (!length($user) || $user !~ /:/ || $user =~ /[\s;><|]/);
+	if (!$anonymous && 
+		(!length($user) || $user !~ /:/ || $user =~ /[\s;><|]/));
 if ($lynx) {
 	$wend = &wherecheck("trying to find Lynx", "lynx",
 "specify -curl to use curl instead, or just let TTYtter autodetect stuff.\n");
@@ -149,24 +232,32 @@ if ($lynx) {
 	}
 }
 if ($lynx) {
-	$wend = "$wend -auth=$user -nostatus";
+	$wend = "$wend -nostatus";
+	$wend = "$wend -auth=$user" unless ($anonymous);
 	$wand = "$wend -source";
+	$wind = "$wand";
 	$wend = "$wend -post_data";
 } else {
-	$wend = "$wend --basic -m 13 -f -u $user";
-	$wand = "$wend";
+	$wend = "$wend --basic -m 13 -f";
+	$wend = "$wend -u $user" unless ($anonymous);
+	$wand = "$wend -f";
+	$wind = "$wend";
 	$wend = "$wend --data \@-";
 }
+$whoami = ($anonymous) ? undef : ((split(/\:/, $user, 2))[0]);
 
 # initial login tests and command line controls
 
 $phase = 0;
 for(;;) {
 	$rv = 0;
+	die(
+	"sorry, you can't tweet anonymously. use an authenticated username.\n")
+		if ($anonymous && length($status));
 	if (length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
-		print "test-login "; $data = `$wand $url 2>/dev/null`;
+		print "test-login "; $data = `$wind $url 2>/dev/null`;
 		$rv = $?;
 	}
 	if ($rv) {
@@ -230,37 +321,41 @@ if ($daemon) {
 print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-         TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2007 cameron kaiser                 @             @
+         ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2008 cameron kaiser${OFF}                 @             @
 EOF
-print <<'EOF';
-                 all rights reserved.                         +oo=   =====oo+
-       http://www.floodgap.com/software/ttytter/            a==:  ooo
-                                                            .++o++. ..o**O
-  freeware under the floodgap free software license.        +++   :O:::::
-        http://www.floodgap.com/software/ffsl/              +**O++ #   :ooa
+$e = <<'EOF';
+                 ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
+       ${EM}http://www.floodgap.com/software/ttytter/${OFF}            ${GREEN}a==:${OFF}  ooo
+                                                            ${GREEN}.++o++.${OFF} ${GREEN}..o**O${OFF}
+  freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
+        http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-     tweet me: http://twitter.com/doctorlinguist                   #;;ooo;;
-            tell me: ckaiser@floodgap.com                          #+a;+++;O
-######################################################           ,$B.*o*** O$,
-#                                                                a=o$*O*O*$o=a
-# when ready, hit RETURN/ENTER for a prompt.                        @$$$$$@
-# type /help for commands or /quit to quit.                         @o@o@o@
+     ${EM}tweet me: http://twitter.com/doctorlinguist${OFF}                   #;;${YELLOW}ooo${OFF};;
+            ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
+######################################################           ,$B.${RED}*o***${OFF} O$,
+#                                                                a=o${RED}$*O*O*$${OFF}o=a
+# when ready, hit RETURN/ENTER for a prompt.                        @${RED}$$$$$${OFF}@
+# type /help for commands or /quit to quit.                         @${RED}o${OFF}@o@${RED}o${OFF}@
 # starting background monitoring process.                           @=@ @=@
 #
 EOF
+$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print STDOUT $e;
 if ($superverbose) {
 	print STDOUT "-- OMGSUPERVERBOSITYSPAM enabled.\n\n";
 } else {
 	print STDOUT "-- verbosity enabled.\n\n" if ($verbose);
 }
-sleep 2;
+sleep 2 unless ($silent);
 
 if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
 select(C); $|++; select(STDOUT);
 
+sub defaultprompt { print STDOUT "${CYAN}TTYtter>${OFF} "; }
+$prompt ||= \&defaultprompt;
+
 sub defaultconsole {
 	@history = ();
-	&prompt;
+	&$prompt;
 	while(<>) {
 		$rv = &prinput($_);
 		last if ($rv);
@@ -279,7 +374,7 @@ sub prinput {
 	s/\s+$//;
 
 	if (/^$/) {
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 
@@ -288,7 +383,7 @@ sub prinput {
 		for ($i = 1; $i <= scalar(@history); $i++) {
 			print STDOUT "\t$i\t$history[($i-1)]\n";
 		}
-		&prompt;
+		&$prompt;
 		return 0;
 	}	
 	if (/^\%(\%|-\d+):p$/) {
@@ -303,7 +398,7 @@ sub prinput {
 				print STDOUT "=> \"$history[-($x + 1)]\"\n";
 			}
 		}
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 
@@ -320,7 +415,7 @@ sub prinput {
 			$x += 0;
 			if (!$x || $x < -(scalar(@history))) {
 				print STDOUT "*** illegal index\n";
-				&prompt;
+				&$prompt;
 				return 0;
 			} else {
 				s/^\%-\d+/$history[-($x + 1)]/;
@@ -335,7 +430,7 @@ sub prinput {
 	print STDOUT "(expanded to \"$_\")\n" if ($i);
 	@history = (($_, @history)[0..&min(scalar(@history), $maxhist)]);
 
-	#print STDOUT join("|", @history); print STDOUT scalar(@history),"\n"; &prompt; return 0;
+	#print STDOUT join("|", @history); print STDOUT scalar(@history),"\n"; &$prompt; return 0;
 
 	my $slash_first = ($_ =~ m#^/#);
 	return -1 if ($_ eq '/quit' || $_ eq '/q');
@@ -368,9 +463,9 @@ sub prinput {
 EOF
 		print "PRESS RETURN/ENTER> ";
 		$j = <STDIN>;
-		print <<'EOF';
+		print <<"EOF";
 
- TTYtter 0.6 is (c)2007 cameron kaiser. all rights reserved. this software
+ TTYtter $TTYtter_VERSION is (c)2008 cameron kaiser. all rights reserved. this software
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
@@ -378,32 +473,99 @@ EOF
 
            *** subscribe to updates at http://twitter.com/ttytter
                                     or http://twitter.com/floodgap
-               send your suggestions to me at ckaiser@floodgap.com
+               send your suggestions to me at ckaiser\@floodgap.com
 
 EOF
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 	if ($_ eq '/refresh' || $_ eq '/thump' || $_ eq '/r') {
 		&thump;
-		&prompt;
+		&$prompt;
 		return 0;
 	}
-	if ($_ eq '/again' || $_ eq '/a') {
+	if ($_ =~ m#^/(w)?a(gain)?\s+([^\s]+)#) { # the synchronous form
+		my $mode = $1;
+		my $uname = $3;
+		print STDOUT "-- synchronous /again command for $uname\n"
+			if ($verbose);
+		my $my_json_ref = &grabjson(1, "$uurl/${uname}.json", 0);
+
+		if (defined($my_json_ref) && scalar(@{ $my_json_ref })) {
+			&tdisplay($my_json_ref);
+		} # since interactive=1, errors are propagated in grabjson
+		&$conclude;
+		unless ($mode eq 'w') {
+			&$prompt;
+			return 0;
+		} # else fallthrough
+	}
+	if ($_ =~ m#^/w(hois|a|again)?\s+([^\s]+)#) {
+		my $uname = $2;
+		print STDOUT "-- synchronous /whois command for $uname\n"
+			if ($verbose);
+		my $my_json_ref = &grabjson(1, "$wurl/${uname}.json", 0);
+
+# {"status":{"created_at":"Thu Jan 10 16:03:20 +0000 2008","text":"@ijastram grand theft probably.","id":584052732},"profile_text_color":"000000","profile_link_color":"0000ff","name":"Cameron Kaiser","profile_background_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_background_images\/564672\/shbak.gif","profile_sidebar_fill_color":"e0ff92","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","followers_count":277,"screen_name":"doctorlinguist","profile_sidebar_border_color":"87bc44","profile_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/20933022\/me2_normal.jpg","location":"Southern California","profile_background_tile":true,"favourites_count":49,"following":false,"statuses_count":9878,"friends_count":99,"profile_background_color":"9ae4e8","url":"http:\/\/www.cameronkaiser.com","id":3841961,"utc_offset":-28800,"protected":false}
+
+		if (defined $my_json_ref) {
+			print STDOUT <<"EOF"; 
+
+${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
+EOF
+			print STDOUT
+"\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
+				if (length($my_json_ref->{'description'}));
+			print STDOUT
+"${EM}Location:${OFF}\t@{[ &descape($my_json_ref->{'location'}) ]}\n"
+				if (length($my_json_ref->{'location'}));
+			print STDOUT
+"${EM}URL:${OFF}\t\t@{[ &descape($my_json_ref->{'url'}) ]}\n"
+				if (length($my_json_ref->{'url'}));
+			print STDOUT <<"EOF";
+${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
+
+EOF
+		}
+		&$prompt;
+		return 0;
+	}
+		
+	if ($_ eq '/again' || $_ eq '/a') { # the asynchronous form
 		print C "reset----\n";
-		&prompt;
+		&$prompt;
+		return 0;
+	}
+
+	if ($_ eq '/replies' || $_ eq '/re') {
+		if ($anonymous) {
+			print STDOUT
+		"-- sorry, how can anyone reply to you if you're anonymous?\n";
+		} else {
+			# we are intentionally not keeping track of "last_re"
+			# in this version because it is not automatically
+			# updated and may not act as we expect.
+			print STDOUT "-- synchronous /replies command\n"
+				if ($verbose);
+			my $my_json_ref = &grabjson(1, $rurl, 0);
+			if (defined($my_json_ref) && scalar(@{$my_json_ref})) {
+				&tdisplay($my_json_ref);
+			} # since interactive=1, errors are shown by grabjson
+			&$conclude;
+		}
+		&$prompt;
 		return 0;
 	}
 
 	if ($_ eq '/dm' || $_ eq '/dmrefresh' || $_ eq '/dmr') {
 		print C "dmthump--\n";
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 
 	if ($_ eq '/dmagain' || $_ eq '/dma') {
 		print C "dmreset--\n";
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 
@@ -415,7 +577,7 @@ EOF
 		if (!m#^//#) {
 			print STDOUT "*** command not recognized\n";
 			print STDOUT "*** to pass as a tweet, type /%%\n";
-			&prompt;
+			&$prompt;
 			return 0;
 		}
 		s#^/##; # leave the second slash on
@@ -430,11 +592,11 @@ EOF
 		print STDOUT
 			"*** sorry, tweet too long; truncated to \"$_\"\n";
 		print STDOUT "*** use %% for truncated version, or append to %%.\n";
-		&prompt;
+		&$prompt;
 		return 0;
 	}
 	&updatest($_, 1);
-	&prompt;
+	&$prompt;
 	return 0;
 }
 
@@ -444,7 +606,12 @@ sub updatest {
 	my $urle = '';
 	my $i;
 	my $subpid;
-	
+
+	if ($anonymous) {
+		print STDOUT "-- sorry, you can't tweet if you're anonymous.\n"
+			if ($interactive);
+		return 99;
+	}
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
@@ -464,8 +631,8 @@ sub updatest {
 	if ($? > 0) {
 		$x = $? >> 8;
 		print STDOUT <<"EOF" if ($interactive);
-*** warning: connect timeout or no confirmation received ($x)
-*** to attempt a resend, type %%
+${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
+*** to attempt a resend, type %%${OFF}
 EOF
 		return $?;
 	}
@@ -473,7 +640,6 @@ EOF
 }
 
 
-sub prompt { print STDOUT "TTYtter> "; }
 sub thump { print C "update---\n"; }
 
 MONITOR:
@@ -572,9 +738,9 @@ sub grabjson {
 # kludges suck or no.
 
 	# test for error/warning conditions with trivial case
-	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*)\1/s) {
+	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s) {
 		&$exception(2, "*** warning: Twitter $2 message received\n" .
-			"*** $3\n");
+			"*** \"$3\"\n");
 		return undef;
 	}
 
@@ -612,7 +778,7 @@ sub grabjson {
 	# run arbitrary code. that would really suck!
 	$tdata = $data;
 	1 while $tdata =~ s/'[^']+'//;
-	$tdata =~ s/[0-9]+//g;
+	$tdata =~ s/-?[0-9]+//g;
 	$tdata =~ s/(true|false|null)//g;
 	$tdata =~ s/\s//g;
 
@@ -622,7 +788,9 @@ sub grabjson {
 	# for example, imagine if a bare semicolon were in this ...
 	if ($tdata !~ s/^\[// || $tdata !~ s/\]$// || $tdata =~ /[^{}:,]/) {
 		$tdata =~ s/'[^']*$//; # cut trailing strings
-		if ($tdata !~ /[^{}:,]/) { # incomplete transmission
+		if (($tdata =~ /^\[/ && $tdata !~ /\]$/)
+				|| ($tdata =~ /^\{/ && $tdata !~ /\}$/)) {
+			# incomplete transmission
 			&$exception(10, "*** JSON warning: connection cut\n");
 			return undef;
 		}
@@ -632,22 +800,21 @@ sub grabjson {
 		}
 		&screech
 		("$data\n$tdata\nJSON IS UNSAFE TO EXECUTE! BAILING OUT!\n")
+			if ($tdata =~ /[^\[\]\{\}:,]/);
 	}
 
 	# have to turn colons into ,s or Perl will gripe. but INTELLIGENTLY!
-	1 while ($data =~ s/([^'])':(true|false|null|\'|\{|[0-9])/\1\',\2/);
+	1 while ($data =~ s/([^'])':(true|false|null|\'|\{|-?[0-9])/\1\',\2/);
 
 	# somewhat validated, so safe (errr ...) to eval() into a Perl struct
+	undef $my_json_ref;
 	eval "\$my_json_ref = $data;";
+	print STDOUT "$data => $@\n"  if ($superverbose);
 
-	# null list can be valid sometimes
-	if (!scalar(@{ $my_json_ref })) {
-		return $my_json_ref;
-	}
-
-	# otherwise do a sanity check
+	# do a sanity check
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
-		if (!length($my_json_ref->[0]->{'id'}));
+		if (!defined($my_json_ref));
+
 	return $my_json_ref;
 }
 
@@ -655,9 +822,14 @@ sub refresh {
 	my $interactive = shift;
 	my $my_json_ref = &grabjson($interactive, $url, $last_id);
 	return if (!defined($my_json_ref) || !scalar(@{ $my_json_ref }));
+	$last_id = &tdisplay($my_json_ref);
+	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
+	&$conclude;
+} 
 
+sub tdisplay { # used by both synchronous /again and asynchronous refreshes
+	my $my_json_ref = shift;
 	my $printed = 0;
-	my $max = 0;
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 	my $i;
 	my $g;
@@ -670,15 +842,19 @@ sub refresh {
 
 		$printed += &$handle($my_json_ref->[$g]);
 	}
-	print STDOUT "-- sorry, no new tweets.\n"
+	print STDOUT "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
-	$last_id = &max(0+$my_json_ref->[0]->{'id'}, $last_id);
-	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
-	&$conclude;
-} 
+	return &max(0+$my_json_ref->[0]->{'id'}, $last_id);
+}
 
 sub dmrefresh {
 	my $interactive = shift;
+	if ($anonymous) {
+		print STDOUT
+			"-- sorry, you can't read DMs if you're anonymous.\n"
+			if ($interactive);
+		return;
+	}
 
 	# no point in doing this if we can't even get to our own timeline
 	# (unless user specifically requested it)
@@ -743,10 +919,10 @@ sub wherecheck {
 }
 
 sub screech {
-	print STDOUT "\n\n@_";
-	kill 15, $parent;
-	kill 15, $$;
-	exit;
+	print STDOUT "\n\n${BEL}${BEL}@_";
+	kill 9, $parent;
+	kill 9, $$;
+	die("death not achieved conventionally");
 }
 
 sub descape {
