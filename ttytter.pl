@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.7;
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -32,8 +32,8 @@ BEGIN {
 		timestamp 1 ansi 1 uurl 1 rurl 1 twarg 1 anonymous 1
 		wurl 1
 	);
-	if (-r ($n = "$ENV{'HOME'}/.ttytterrc")) {
-		open(W, $n) || die("wickedness: $!\n");
+	if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc"))) {
+		#open(W, $n) || die("wickedness: $!\n");
 		while(<W>) {
 			chomp;
 			next if (/^\s*$/ || /^#/);
@@ -479,6 +479,14 @@ EOF
 		&$prompt;
 		return 0;
 	}
+	if ($_ eq '/ruler' || $_ eq '/ru') {
+		print STDOUT <<"EOF";
+                  1         2         3         4         5         6         7         8         9         0         1         2         3        XX
+TTYtter> 1...5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5...XX
+EOF
+		&$prompt;
+		return 0;
+	}
 	if ($_ eq '/refresh' || $_ eq '/thump' || $_ eq '/r') {
 		&thump;
 		&$prompt;
@@ -703,6 +711,7 @@ sub grabjson {
 	my $tdata;
 	my $seed;
 	my $xurl;
+	my $my_json_ref = undef; # durrr hat go on foot
 
 	#undef $/; $data = <STDIN>;
 	$xurl = ($last_id) ? "?since_id=$last_id" : "";
@@ -807,9 +816,8 @@ sub grabjson {
 	1 while ($data =~ s/([^'])':(true|false|null|\'|\{|-?[0-9])/\1\',\2/);
 
 	# somewhat validated, so safe (errr ...) to eval() into a Perl struct
-	undef $my_json_ref;
 	eval "\$my_json_ref = $data;";
-	print STDOUT "$data => $@\n"  if ($superverbose);
+	print STDOUT "$data => $my_json_ref $@\n"  if ($superverbose);
 
 	# do a sanity check
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
@@ -821,7 +829,9 @@ sub grabjson {
 sub refresh {
 	my $interactive = shift;
 	my $my_json_ref = &grabjson($interactive, $url, $last_id);
-	return if (!defined($my_json_ref) || !scalar(@{ $my_json_ref }));
+	return if (!defined($my_json_ref) ||
+		ref($my_json_ref) ne 'ARRAY' ||
+		!scalar(@{ $my_json_ref }));
 	$last_id = &tdisplay($my_json_ref);
 	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
 	&$conclude;
@@ -861,7 +871,8 @@ sub dmrefresh {
 	return if (!$interactive && !$last_id); # NOT last_dm
 
 	my $my_json_ref = &grabjson($interactive, $dmurl, $last_dm);
-	return if (!defined($my_json_ref));
+	return if (!defined($my_json_ref)
+		|| ref($my_json_ref) ne 'ARRAY');
 
 	my $printed = 0;
 	my $max = 0;
