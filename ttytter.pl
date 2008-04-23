@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -161,10 +161,12 @@ sub defaultexception {
 $exception ||= \&defaultexception;
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 sub defaulthandle {
+	my ($tweet_ref, $class) = (@_);
+	$class = ($verbose) ? "{$class} " : "";
 	if ($silent) {
-		print DUPSTDOUT &standardtweet(shift);
+		print DUPSTDOUT $class . &standardtweet($tweet_ref);
 	} else {
-		print STDOUT &standardtweet(shift);
+		print STDOUT $class . &standardtweet($tweet_ref);
 	}
 	return 1;
 }
@@ -243,17 +245,28 @@ die("$0: specify -user=username:password\n")
 	if (!$anonymous && 
 		(!length($user) || $user !~ /:/ || $user =~ /[\s;><|]/));
 if ($lynx) {
-	$wend = &wherecheck("trying to find Lynx", "lynx",
+	if (length($lynx) > 1 && -x "/$lynx") {
+		$wend = $lynx;
+		print STDOUT "Lynx forced to $wend\n";
+	} else {
+		$wend = &wherecheck("trying to find Lynx", "lynx",
 "specify -curl to use curl instead, or just let TTYtter autodetect stuff.\n");
+	}
 } else {
-	$wend = (($curl) ? &wherecheck("trying to find curl", "curl",
+	if (length($curl) > 1 && -x "/$curl") {
+		$wend = $curl;
+		print STDOUT "cURL forced to $wend\n";
+	} else {
+		$wend = (($curl) ? &wherecheck("trying to find cURL", "curl",
 "specify -lynx to use Lynx instead, or just let TTYtter autodetect stuff.\n")
-			: &wherecheck("trying to find curl", "curl"));
-	if (!$curl && !length($wend)) {
-		$wend = &wherecheck("failed. trying to find Lynx", "lynx",
-	"you must have either Lynx or curl installed to use TTYtter.\n")
-				if (!length($wend));
-		$lynx = 1;
+			: &wherecheck("trying to find cURL", "curl"));
+		if (!$curl && !length($wend)) {
+			$wend = &wherecheck("failed. trying to find Lynx",
+				"lynx",
+	"you must have either Lynx or cURL installed to use TTYtter.\n")
+					if (!length($wend));
+			$lynx = 1;
+		}
 	}
 }
 if ($lynx) {
@@ -279,10 +292,16 @@ for(;;) {
 	die(
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
+	die(
+"sorry, status too long: reduce by @{[ length($status)-140 ]} characters.\n")
+		if (length($status) > 140);
 	if (length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
-		print "test-login "; $data = `$wind $url 2>/dev/null`;
+		$cline = "$wind $url 2>/dev/null";
+		print "test-login "; 
+		print "\n$cline\n" if ($superverbose);
+		$data = `$cline`;
 		$rv = $?;
 	}
 	if ($rv) {
@@ -291,10 +310,12 @@ for(;;) {
 		print "access failure on: ";
 		print (($phase) ? $update : $url);
 		print "\n";
+		print "--- data received ---\n$data\n--- data received ---\n"
+			if ($superverbose);
 		if ($hold) {
 			print
-			"trying again in 3 minutes, or kill process now.\n\n";
-			sleep 180;
+			"trying again in 2 minutes, or kill process now.\n\n";
+			sleep 120;
 			next;
 		}
 		print "to automatically wait for a connect, use -hold.\n";
@@ -546,7 +567,7 @@ EOF
 		if (defined($my_json_ref)
 			&& ref($my_json_ref) eq 'ARRAY'
 				&& scalar(@{ $my_json_ref })) {
-			&tdisplay($my_json_ref);
+			&tdisplay($my_json_ref, "again");
 		} # since interactive=1, errors are propagated in grabjson
 		&$conclude;
 		unless ($mode eq 'w') {
@@ -605,7 +626,7 @@ EOF
 			if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY'
 					&& scalar(@{ $my_json_ref })) {
-				&tdisplay($my_json_ref);
+				&tdisplay($my_json_ref, "replies");
 			} # since interactive=1, errors are shown by grabjson
 			&$conclude;
 		}
@@ -652,14 +673,15 @@ EOF
 	}
 
 	if (length > 140) {
+		$g = length($_) - 140;
 		$_ = substr($_, 0, 140);
 		# s.m.r.t. truncator (like Homer Simpson)
 		s/[^a-zA-Z0-9]+$//;
 		s/\s+[^\s]+$// if (length == 140);
 		$history[0] = $_;
 		print STDOUT
-			"*** sorry, tweet too long; truncated to \"$_\"\n";
-		print STDOUT "*** use %% for truncated version, or append to %%.\n";
+"*** sorry, tweet too long by $g characters; truncated to \"$_\" (@{[ length ]} chars)\n";
+	print STDOUT "*** use %% for truncated version, or append to %%.\n";
 		&$prompt;
 		return 0;
 	}
@@ -674,6 +696,7 @@ sub updatest {
 	my $urle = '';
 	my $i;
 	my $subpid;
+	my $istring;
 
 	if ($anonymous) {
 		print STDOUT "-- sorry, you can't tweet if you're anonymous.\n"
@@ -683,9 +706,9 @@ sub updatest {
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
-	$string = unpack("H280", $string);
-	for($i = 0; $i < length($string); $i+=2) {
-		$urle .= '%' . substr($string, $i, 2);
+	$istring = unpack("H280", $string);
+	for($i = 0; $i < length($istring); $i+=2) {
+		$urle .= '%' . substr($istring, $i, 2);
 	}
 	$subpid = open(N,
 		# I know the below is redundant. this is to remind me to see
@@ -704,6 +727,7 @@ ${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
 EOF
 		return $?;
 	}
+	$lasttwit = $string;
 	return 0;
 }
 
@@ -720,14 +744,15 @@ unless ($seven) {
 	binmode(STDIN, ":utf8");
 	binmode(STDOUT, ":utf8");
 }
-$interactive = $timeleft = 0;
+$interactive = $timeleft = $previous_last_id = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
 $effpause = $pause || undef;
 
 for(;;) {
 	&$heartbeat;
-	&refresh($interactive) unless ($timeleft
+	&refresh($interactive, $previous_last_id) unless ($timeleft
 		|| (!$pause && !$interactive));
+	$previous_last_id = $last_id;
 	if ($dmpause) {
 		if ($dm_first_time) {
 			&dmrefresh(0);
@@ -896,29 +921,37 @@ sub grabjson {
 
 sub refresh {
 	my $interactive = shift;
+	my $relative_last_id = shift;
 	my $my_json_ref = &grabjson($interactive, $url, $last_id);
 	return if (!defined($my_json_ref) ||
 		ref($my_json_ref) ne 'ARRAY' ||
 		!scalar(@{ $my_json_ref }));
-	$last_id = &tdisplay($my_json_ref);
-	print STDOUT "-- id bookmark is $last_id.\n" if ($verbose);
+	$last_id = &tdisplay($my_json_ref, undef, $relative_last_id);
+	print
+	STDOUT "-- id bookmark is $last_id, rollback is $relative_last_id.\n"
+		if ($verbose);
 	&$conclude;
 } 
 
 sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $my_json_ref = shift;
+	my $class = shift;
+	my $relative_last_id = shift;
 	my $printed = 0;
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 	my $i;
-	my $g;
 
 	for($i = $disp_max; $i > 0; $i--) {
-		$g = ($i-1);
-		next if ($my_json_ref->[$g]->{'id'} <= $last_id);
+		my $g = ($i-1);
+		my $id = $my_json_ref->[$g]->{'id'};
+
+		next if ($id <= $last_id);
 		next if
 		(!length($my_json_ref->[$g]->{'user'}->{'screen_name'}));
 
-		$printed += &$handle($my_json_ref->[$g]);
+		$printed += &$handle($my_json_ref->[$g],
+			($class || (($id <= $relative_last_id) ? 'again' :
+				undef)));
 	}
 	print STDOUT "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
