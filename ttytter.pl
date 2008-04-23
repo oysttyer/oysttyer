@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v0.7 (c)2007, 2008 cameron kaiser. all rights reserved.
+# TTYtter v0.8 (c)2007, 2008 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -18,8 +18,8 @@ require 5.005;
 #$maxhist=19;while(<>){last if(&prinput($_));}exit;
 
 BEGIN {
-	$TTYtter_VERSION = 0.7;
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_VERSION = 0.8;
+	$TTYtter_PATCH_VERSION = 0;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -30,7 +30,7 @@ BEGIN {
 		dmpause 1 silent 1 superverbose 1 maxhist 1 noansi 1
 		lib 1 verbose 1 hold 1 status 1 update 1 daemon 1
 		timestamp 1 ansi 1 uurl 1 rurl 1 twarg 1 anonymous 1
-		wurl 1
+		wurl 1 script 1
 	);
 	if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc"))) {
 		#open(W, $n) || die("wickedness: $!\n");
@@ -90,6 +90,11 @@ sub killkid {
 	}
 }
 
+# interpret script at this level
+if ($script) { $silent = 1; $pause = 0; $noansi = 1; }
+
+# dup STDOUT for benefit of various other scripts
+open(DUPSTDOUT, ">&STDOUT") || warn("** warning: could not dup STDOUT: $!\n");
 if ($silent) {
 	close(STDOUT);
 	open(STDOUT, ">>/dev/null"); # KLUUUUUUUDGE
@@ -107,7 +112,8 @@ $update ||= "http://twitter.com/statuses/update.json";
 $dmurl ||= "http://twitter.com/direct_messages.json";
 $dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
 $dmpause = 0 if ($anonymous);
-$pause ||= 120;
+$pause = 120 if (!defined $pause); # NOT ||= ... zero is a VALID value!
+$dmpause = 0 if (!$pause);
 $superverbose ||= 0;
 $verbose ||= $superverbose;
 $hold ||= 0;
@@ -147,10 +153,23 @@ $OFF = ($ansi) ? "${ESC}[0m" : '';
 # anything you don't define is overwritten by the defaults.
 # it's better'n'superclasses.
 
-sub defaultexception { shift; print STDOUT "${MAGENTA}@_${OFF}"; }
+sub defaultexception {
+	shift;
+	print STDOUT "${MAGENTA}@_${OFF}";
+	$laststatus = 1;
+}
 $exception ||= \&defaultexception;
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 sub defaulthandle {
+	if ($silent) {
+		print DUPSTDOUT &standardtweet(shift);
+	} else {
+		print STDOUT &standardtweet(shift);
+	}
+	return 1;
+}
+
+sub standardtweet {
 	my $ref = shift;
 	my $sn = &descape($ref->{'user'}->{'screen_name'});
 	my $tweet = &descape($ref->{'text'});
@@ -172,14 +191,13 @@ sub defaulthandle {
 	unless ($anonymous) {
 		if ($sn eq $whoami) {
 			#if it's me speaking, colour the line yellow
-			print STDOUT $YELLOW;
+			$g = "$YELLOW$g";
 		} elsif ($tweet =~ /\@$whoami/i) {
 			#if I'm in the tweet, colour red
-			print STDOUT $RED;
+			$g = "$RED$g";
 		}
 	}
-	print STDOUT $g;
-	return 1;
+	return $g;
 }
 $handle ||= \&defaulthandle;
 
@@ -188,6 +206,14 @@ $conclude ||= \&defaultconclude;
 
 # {"recipient_id":3841961,"sender":{"url":"http:\/\/www.xanga.com\/the_shambleyqueen","name":"Staci Gainor","screen_name":"emo_mom","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/7460892\/normal\/Staci_070818__2_.jpg?1187488390","description":"mildly neurotic; slightly compulsive; keenly observant  Christian mom of four, including identical twins","location":"Pennsylvania","id":7460892,"protected":false},"created_at":"Fri Aug 24 04:03:14 +0000 2007","sender_screen_name":"emo_mom","recipient_screen_name":"doctorlinguist","recipient":{"url":"http:\/\/www.cameronkaiser.com","name":"Cameron Kaiser","screen_name":"doctorlinguist","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","id":3841961,"protected":false},"text":"that is so cool; does she have a bit of an accent? do you? :-) and do you like vegemite sandwiches?","sender_id":7460892,"id":8570802}
 sub defaultdmhandle {
+	if ($silent) {
+		print DUPSTDOUT &standarddm(shift);
+	} else {
+		print STDOUT &standarddm(shift);
+	}
+	return 1;
+}
+sub standarddm {
 	my $ref = shift;
 	my $time = $ref->{'created_at'};
 	my $ts = $time;
@@ -201,8 +227,7 @@ sub defaultdmhandle {
 	my $g = "${GREEN}[DM ". &descape($ref->{'sender'}->{'screen_name'}) .
 		'/'. $ts .
 		'] '. &descape($ref->{'text'}) . "$OFF\n";
-	print STDOUT $g;
-	return 1;
+	return $g;
 }
 $dmhandle ||= \&defaultdmhandle;
 
@@ -288,6 +313,10 @@ exit 0 if (length($status));
 # daemon mode
 
 if ($daemon) {
+	if (!$pause) {
+		print STDOUT "*** kind of stupid to run daemon with pause=0\n";
+		exit 1;
+	}
 	if ($child = fork()) {
 		print STDOUT "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
@@ -368,6 +397,7 @@ exit;
 
 sub prinput {
 	my $i;
+	local($_) = shift; # bleh
 
 	chomp;
 	s/^\s+//;
@@ -380,7 +410,7 @@ sub prinput {
 
 	# handle history display
 	if ($_ eq '/history' || $_ eq '/h') {
-		for ($i = 1; $i <= scalar(@history); $i++) {
+		for ($i = scalar(@history); $i >= 1; $i--) {
 			print STDOUT "\t$i\t$history[($i-1)]\n";
 		}
 		&$prompt;
@@ -402,25 +432,39 @@ sub prinput {
 		return 0;
 	}
 
-	# handle history substitution (including /%%)
+	# handle history substitution (including /%%, %%--, etc.)
 	$i = 0;
-	if (/^(\/?)\%(\%|-\d+)/) {
+	if (/^(\/?)\%(\%|-\d+)(--|-\d+)?/) {
 		$i = 1;
-		my $x = $2;
 		my $y = $1;
+		my $r = $2;
+		my $s = $3;
+		my $x;
+		my $q;
 		$_ = substr($_, 1) if ($y eq '/');
-		if ($x eq '%') {
-			s/^\%\%/$history[0]/;
+		if ($r eq '%') {
+			$x = -1;
 		} else {
-			$x += 0;
-			if (!$x || $x < -(scalar(@history))) {
-				print STDOUT "*** illegal index\n";
-				&$prompt;
-				return 0;
-			} else {
-				s/^\%-\d+/$history[-($x + 1)]/;
+			$x = $r + 0;
+		}
+		if (!$x || $x < -(scalar(@history))) {
+			print STDOUT "*** illegal index\n";
+			&$prompt;
+			return 0;
+		}
+		my $proband = $history[-($x + 1)];
+		if ($s eq '--') {
+			$q = 1;
+		} else {
+			$q = -(0+$s);
+		} 
+		if ($q) {
+			my $j;
+			for($j=0; $j<$q; $j++) {
+				$proband =~ s/\s+[^\s]+$//;
 			}
 		}
+		s/^\%$r$s/$proband/;
 		$_ = "$y$_";
 	}
 
@@ -447,10 +491,10 @@ sub prinput {
      is nothing new)             :*; :***O@Aaaa*o,         ============
      by thumping     .+++++:       o#o                      REMEMBER!!
      the background  :OOOOOOA*:::, =@o       ,:::::.       ============
-     process.          .+++++++++: =@*.....=a$OOOB#;     ALL COMMANDS AND
-                                   =@OoO@BAAA#@$o,          TWEETS ARE
+     process.          .+++++++++: =@*.....=a$OOOB#;    MANY COMMANDS, AND
+                                   =@OoO@BAAA#@$o,        ALL TWEETS ARE
                                    =@o  .+aaaaa:         --ASYNCHRONOUS--
-   /again                          =@Aaaaaaaaaa*o*a;,    and don't always
+   /again                          =@Aaaaaaaaaa*o*a;,  and might not always
       displays last twenty         =@$++=++++++:,;+aA:       respond
       tweets, both old and       ,+$@*.=O+  ...oO; oAo+.   immediately!
       new.                     ,+o$OO=.+aA#####Oa;.*OO$o+.
@@ -499,7 +543,9 @@ EOF
 			if ($verbose);
 		my $my_json_ref = &grabjson(1, "$uurl/${uname}.json", 0);
 
-		if (defined($my_json_ref) && scalar(@{ $my_json_ref })) {
+		if (defined($my_json_ref)
+			&& ref($my_json_ref) eq 'ARRAY'
+				&& scalar(@{ $my_json_ref })) {
 			&tdisplay($my_json_ref);
 		} # since interactive=1, errors are propagated in grabjson
 		&$conclude;
@@ -516,7 +562,7 @@ EOF
 
 # {"status":{"created_at":"Thu Jan 10 16:03:20 +0000 2008","text":"@ijastram grand theft probably.","id":584052732},"profile_text_color":"000000","profile_link_color":"0000ff","name":"Cameron Kaiser","profile_background_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_background_images\/564672\/shbak.gif","profile_sidebar_fill_color":"e0ff92","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","followers_count":277,"screen_name":"doctorlinguist","profile_sidebar_border_color":"87bc44","profile_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/20933022\/me2_normal.jpg","location":"Southern California","profile_background_tile":true,"favourites_count":49,"following":false,"statuses_count":9878,"friends_count":99,"profile_background_color":"9ae4e8","url":"http:\/\/www.cameronkaiser.com","id":3841961,"utc_offset":-28800,"protected":false}
 
-		if (defined $my_json_ref) {
+		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH') {
 			print STDOUT <<"EOF"; 
 
 ${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
@@ -556,7 +602,9 @@ EOF
 			print STDOUT "-- synchronous /replies command\n"
 				if ($verbose);
 			my $my_json_ref = &grabjson(1, $rurl, 0);
-			if (defined($my_json_ref) && scalar(@{$my_json_ref})) {
+			if (defined($my_json_ref)
+				&& ref($my_json_ref) eq 'ARRAY'
+					&& scalar(@{ $my_json_ref })) {
 				&tdisplay($my_json_ref);
 			} # since interactive=1, errors are shown by grabjson
 			&$conclude;
@@ -575,6 +623,18 @@ EOF
 		print C "dmreset--\n";
 		&$prompt;
 		return 0;
+	}
+
+	if ($_ eq '/end' || $_ eq '/e') {
+		if ($child) {
+			print "waiting for child ...\n";
+			print C "sync-----\n";
+			waitpid $child, 0;
+			$child = 0;
+			print "exiting.\n";
+			exit ($? >> 8);
+		}
+		exit;
 	}
 
 	if (m#^/me\s#) {
@@ -662,10 +722,12 @@ unless ($seven) {
 }
 $interactive = $timeleft = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
+$effpause = $pause || undef;
 
 for(;;) {
 	&$heartbeat;
-	&refresh($interactive) unless ($timeleft);
+	&refresh($interactive) unless ($timeleft
+		|| (!$pause && !$interactive));
 	if ($dmpause) {
 		if ($dm_first_time) {
 			&dmrefresh(0);
@@ -677,9 +739,14 @@ for(;;) {
 		}
 	}
 	$interactive = $timeleft = 0;
-	if($timeleft=select($rout=$rin, undef, undef, ($timeleft || $pause))) {
+	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
 		sysread(STDIN, $rout, 10);
 		next if (!length($rout));
+		if ($rout =~ /^sync/) {
+			print STDOUT "-- synced; exiting at ", scalar localtime
+				if ($verbose);
+			exit $laststatus;
+		}
 		$last_id = 0 if ($rout =~ /^reset/);
 		$last_dm = 0 if ($rout =~ /^dmreset/);
 		$interactive = 1;
@@ -823,6 +890,7 @@ sub grabjson {
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
 		if (!defined($my_json_ref));
 
+	$laststatus = 0;
 	return $my_json_ref;
 }
 
