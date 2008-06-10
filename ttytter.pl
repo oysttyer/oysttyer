@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -30,7 +30,7 @@ BEGIN {
 		dmpause 1 silent 1 superverbose 1 maxhist 1 noansi 1
 		lib 1 verbose 1 hold 1 status 1 update 1 daemon 1
 		timestamp 1 ansi 1 uurl 1 rurl 1 twarg 1 anonymous 1
-		wurl 1 script 1
+		wurl 1 script 1 avatar 1 ttytteristas 1 frurl 1
 	);
 	if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc"))) {
 		#open(W, $n) || die("wickedness: $!\n");
@@ -110,6 +110,7 @@ $uurl ||= "http://twitter.com/statuses/user_timeline";
 $wurl ||= "http://twitter.com/users/show";
 $update ||= "http://twitter.com/statuses/update.json";
 $dmurl ||= "http://twitter.com/direct_messages.json";
+$frurl ||= "http://twitter.com/friendships/exists.json";
 $dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
 $dmpause = 0 if ($anonymous);
 $pause = 120 if (!defined $pause); # NOT ||= ... zero is a VALID value!
@@ -119,8 +120,9 @@ $verbose ||= $superverbose;
 $hold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
-$ansi ||= ($noansi) ? 0 :
-	(($ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color') ? 1 : 0);
+$ansi = ($noansi) ? 0 :
+	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
+		? 1 : 0);
 $timestamp ||= 0;
 $whoami = (split(/\:/, $user, 2))[0];
 $twarg ||= undef;
@@ -145,6 +147,7 @@ $YELLOW = ($ansi) ? "${ESC}[33m" : '';
 $MAGENTA = ($ansi) ? "${ESC}[35m" : '';
 $CYAN = ($ansi) ? "${ESC}[36m" : '';
 $EM = ($ansi) ? "${ESC}[1;3m" : '';
+$UNDER = ($ansi) ? "${ESC}[4m" : '';
 $OFF = ($ansi) ? "${ESC}[0m" : '';
 
 # default exposed methods
@@ -175,7 +178,21 @@ sub standardtweet {
 	my $ref = shift;
 	my $sn = &descape($ref->{'user'}->{'screen_name'});
 	my $tweet = &descape($ref->{'text'});
-	my $g = "<$sn> $tweet$OFF\n";
+	my $colour;
+	my $g;
+
+	# br3nda's and smb's modified colour patch
+	unless ($anonymous) {
+		if ($sn eq $whoami) {
+			#if it's me speaking, colour the line yellow
+			$g = $colour = $YELLOW;
+		} elsif ($tweet =~ /\@$whoami/i) {
+			#if I'm in the tweet, colour red
+			$g = $colour = $RED;
+		}
+	}
+	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
+
 	# br3nda's modified timestamp patch
 	if ($timestamp) {
 		my $time = $ref->{'created_at'};
@@ -187,18 +204,13 @@ sub standardtweet {
 			eval '$ts = time2str($timestamp, $time);' ||
 				die("time2str failed: $timestamp $time $@\n");
 		}
-		$g = "$ts $g";
+		$g .= "[$ts] ";
 	}
-	# br3nda's modified colour patch
-	unless ($anonymous) {
-		if ($sn eq $whoami) {
-			#if it's me speaking, colour the line yellow
-			$g = "$YELLOW$g";
-		} elsif ($tweet =~ /\@$whoami/i) {
-			#if I'm in the tweet, colour red
-			$g = "$RED$g";
-		}
-	}
+	$colour = $OFF . $colour;
+	# smb's underline/bold patch
+	$tweet =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${colour}/g;
+	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n";
+
 	return $g;
 }
 $handle ||= \&defaulthandle;
@@ -226,9 +238,11 @@ sub standarddm {
 		eval '$ts = time2str($timestamp, $time);' ||
 			die("time2str failed: $timestamp $time $@\n");
 	}
-	my $g = "${GREEN}[DM ". &descape($ref->{'sender'}->{'screen_name'}) .
-		'/'. $ts .
-		'] '. &descape($ref->{'text'}) . "$OFF\n";
+	my $text = &descape($ref->{'text'});
+	$text =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${OFF}${GREEN}/g;
+	my $g = "${GREEN}[DM ${EM}".
+		&descape($ref->{'sender'}->{'screen_name'}) .
+		"${OFF}${GREEN}/$ts] $text $OFF\n";
 	return $g;
 }
 $dmhandle ||= \&defaultdmhandle;
@@ -238,6 +252,15 @@ $dmconclude ||= \&defaultdmconclude;
 
 sub defaultheartbeat { ; }
 $heartbeat ||= \&defaultheartbeat;
+
+sub defaultprecommand { return ("@_"); }
+$precommand ||= \&defaultprecommand;
+
+sub defaultprepost { return ("@_"); }
+$prepost ||= \&defaultprepost;
+
+sub defaultpostpost { ; }
+$postpost ||= \&defaultpostpost;
 
 select(STDOUT); $|++;
 
@@ -276,7 +299,7 @@ if ($lynx) {
 	$wind = "$wand";
 	$wend = "$wend -post_data";
 } else {
-	$wend = "$wend --basic -m 13 -f";
+	$wend = "$wend -s --basic -m 13 -f";
 	$wend = "$wend -u $user" unless ($anonymous);
 	$wand = "$wend -f";
 	$wind = "$wend";
@@ -421,6 +444,7 @@ sub prinput {
 	local($_) = shift; # bleh
 
 	chomp;
+	$_ = &$precommand($_);
 	s/^\s+//;
 	s/\s+$//;
 
@@ -500,6 +524,13 @@ sub prinput {
 	my $slash_first = ($_ =~ m#^/#);
 	return -1 if ($_ eq '/quit' || $_ eq '/q');
 
+	if ($_ eq '/verbose' || $_ eq '/ve') {
+		$verbose ^= 1;
+		print STDOUT "-- verbosity.\n" if ($verbose);
+		&prompt;
+		return 0;
+	}
+
 	if ($_ eq '/help' || $_ eq '/?') {
 		print <<'EOF';
       *** BASIC COMMANDS:  :a$AAOOOOOOOOOOOOOOOOOAA$a,
@@ -570,7 +601,7 @@ EOF
 			&tdisplay($my_json_ref, "again");
 		} # since interactive=1, errors are propagated in grabjson
 		&$conclude;
-		unless ($mode eq 'w') {
+		unless ($mode eq 'w' || $mode eq 'wf') {
 			&$prompt;
 			return 0;
 		} # else fallthrough
@@ -584,6 +615,15 @@ EOF
 # {"status":{"created_at":"Thu Jan 10 16:03:20 +0000 2008","text":"@ijastram grand theft probably.","id":584052732},"profile_text_color":"000000","profile_link_color":"0000ff","name":"Cameron Kaiser","profile_background_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_background_images\/564672\/shbak.gif","profile_sidebar_fill_color":"e0ff92","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","followers_count":277,"screen_name":"doctorlinguist","profile_sidebar_border_color":"87bc44","profile_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/20933022\/me2_normal.jpg","location":"Southern California","profile_background_tile":true,"favourites_count":49,"following":false,"statuses_count":9878,"friends_count":99,"profile_background_color":"9ae4e8","url":"http:\/\/www.cameronkaiser.com","id":3841961,"utc_offset":-28800,"protected":false}
 
 		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH') {
+			my $purl =
+				&descape($my_json_ref->{'profile_image_url'});
+			if ($avatar && length($purl) && $purl ne
+"http://static.twitter.com/images/default_profile_normal.png") {
+				my $exec = $avatar;
+				$exec =~ s/\%U/'$purl'/g;
+				print STDOUT "\n($exec)\n";
+				system($exec);
+			}
 			print STDOUT <<"EOF"; 
 
 ${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
@@ -601,6 +641,19 @@ EOF
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
+			unless ($anonymous || $whoami eq $uname) {
+				my $g =
+		&grabjson(1, "$frurl?user_a=$whoami&user_b=$uname", 0);
+				print STDOUT 
+	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n"
+					if (ref($g) eq 'HASH');
+				my $g =
+		&grabjson(1, "$frurl?user_a=$uname&user_b=$whoami", 0);
+				print STDOUT
+"${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n"
+					if (ref($g) eq 'HASH');
+				print STDOUT "\n";
+			}
 		}
 		&$prompt;
 		return 0;
@@ -703,6 +756,8 @@ sub updatest {
 			if ($interactive);
 		return 99;
 	}
+	$string = &$prepost($string);
+
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
@@ -728,6 +783,7 @@ EOF
 		return $?;
 	}
 	$lasttwit = $string;
+	&$postpost($string);
 	return 0;
 }
 
@@ -834,6 +890,22 @@ sub grabjson {
 		return undef;
 	}
 
+	# handle things like 304, or other things that look like HTTP
+	# error codes
+	if ($data =~ m#^HTTP/\d\.\d\s+(\d+)\s+#) {
+		$code = 0+$1;
+
+		# 304 is actually a cop-out code and is not usually
+		# returned, so we should consider it a non-fatal error
+		if ($code == 304 || $code == 200 || $code == 204) {
+			&$exception(1, "*** warning: timeout or no data\n");
+			return undef;
+		}
+		&$exception(4,
+"*** warning: unexpected HTTP return code $code from Twitter server\n");
+		return undef;
+	}
+
 # process the JSON data ... simplemindedly, because I just write utter crap,
 # am not a professional programmer, and don't give a flying fig whether
 # kludges suck or no.
@@ -844,6 +916,13 @@ sub grabjson {
 			"*** \"$3\"\n");
 		return undef;
 	}
+
+	# test for single logicals
+	return {
+		'ok' => 1,
+		'result' => (($data eq 'true') ? 1 : 0),
+		'literal' => $data,
+			} if ($data =~ /^(true|false)$/);
 
 	# first isolate escaped backslashes with a unique sequence.
 	$bbqqmask = "BBQQ";
@@ -923,9 +1002,7 @@ sub refresh {
 	my $interactive = shift;
 	my $relative_last_id = shift;
 	my $my_json_ref = &grabjson($interactive, $url, $last_id);
-	return if (!defined($my_json_ref) ||
-		ref($my_json_ref) ne 'ARRAY' ||
-		!scalar(@{ $my_json_ref }));
+	return if (!defined($my_json_ref) || ref($my_json_ref) ne 'ARRAY');
 	$last_id = &tdisplay($my_json_ref, undef, $relative_last_id);
 	print
 	STDOUT "-- id bookmark is $last_id, rollback is $relative_last_id.\n"
@@ -941,17 +1018,19 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 	my $i;
 
-	for($i = $disp_max; $i > 0; $i--) {
-		my $g = ($i-1);
-		my $id = $my_json_ref->[$g]->{'id'};
+	if ($disp_max) { # null list may be valid if we get code 304
+		for($i = $disp_max; $i > 0; $i--) {
+			my $g = ($i-1);
+			my $id = $my_json_ref->[$g]->{'id'};
 
-		next if ($id <= $last_id);
-		next if
+			next if ($id <= $last_id);
+			next if
 		(!length($my_json_ref->[$g]->{'user'}->{'screen_name'}));
 
-		$printed += &$handle($my_json_ref->[$g],
+			$printed += &$handle($my_json_ref->[$g],
 			($class || (($id <= $relative_last_id) ? 'again' :
 				undef)));
+		}
 	}
 	print STDOUT "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
