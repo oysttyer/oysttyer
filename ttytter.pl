@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -862,7 +862,10 @@ sub grabjson {
 	my $my_json_ref = undef; # durrr hat go on foot
 
 	#undef $/; $data = <STDIN>;
-	$xurl = ($last_id) ? "?since_id=$last_id" : "";
+	# this is really, really gross. but it works. to be revised in 0.9
+	# or possibly if Twitter returns a proper null list.
+	$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
+		"?count=50" ;
 	print STDOUT "$wand \"$url$xurl\"\n" if ($superverbose);
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
 
