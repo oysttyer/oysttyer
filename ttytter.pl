@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 3;
+	$TTYtter_PATCH_VERSION = 4;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -612,7 +612,10 @@ EOF
 			if ($verbose);
 		my $my_json_ref = &grabjson(1, "$wurl/${uname}.json", 0);
 
+# originally
 # {"status":{"created_at":"Thu Jan 10 16:03:20 +0000 2008","text":"@ijastram grand theft probably.","id":584052732},"profile_text_color":"000000","profile_link_color":"0000ff","name":"Cameron Kaiser","profile_background_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_background_images\/564672\/shbak.gif","profile_sidebar_fill_color":"e0ff92","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","followers_count":277,"screen_name":"doctorlinguist","profile_sidebar_border_color":"87bc44","profile_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/20933022\/me2_normal.jpg","location":"Southern California","profile_background_tile":true,"favourites_count":49,"following":false,"statuses_count":9878,"friends_count":99,"profile_background_color":"9ae4e8","url":"http:\/\/www.cameronkaiser.com","id":3841961,"utc_offset":-28800,"protected":false}
+# now
+#{'profile_image_url':'http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/54729098\/me2_normal.jpg','name':'Cameron Kaiser','followers_count':563,'description':'Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?','location':'Southern California','screen_name':'doctorlinguist','id':3841961,'protected':false,'status':{'text':'thatSSQQ0s enough. ISSQQ0m dying here. crashing.','created_at':'Wed Jul 16 05:42:07 +0000 2008','id':859733472},'url':'http:\/\/www.cameronkaiser.com'}
 
 		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH') {
 			my $purl =
@@ -624,9 +627,11 @@ EOF
 				print STDOUT "\n($exec)\n";
 				system($exec);
 			}
+#${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
 			print STDOUT <<"EOF"; 
 
-${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
+${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (is followed by $my_json_ref->{'followers_count'} users)
+
 EOF
 			print STDOUT
 "\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
@@ -641,7 +646,9 @@ EOF
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
-			unless ($anonymous || $whoami eq $uname) {
+# THIS IS A TEMPORARY KLUDGE
+# this has stopped working so it is disabled
+			unless (1 || $anonymous || $whoami eq $uname) {
 				my $g =
 		&grabjson(1, "$frurl?user_a=$whoami&user_b=$uname", 0);
 				print STDOUT 
@@ -862,10 +869,14 @@ sub grabjson {
 	my $my_json_ref = undef; # durrr hat go on foot
 
 	#undef $/; $data = <STDIN>;
-	# this is really, really gross. but it works. to be revised in 0.9
-	# or possibly if Twitter returns a proper null list.
+
+	# THIS IS A TEMPORARY KLUDGE for API issue #16
+	# http://code.google.com/p/twitter-api/issues/detail?id=16
 	$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
-		"?count=50" ;
+		"";
+	# count needs to be removed for the default case due to show, etc.
+	#$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
+
 	print STDOUT "$wand \"$url$xurl\"\n" if ($superverbose);
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
 
@@ -879,12 +890,14 @@ sub grabjson {
 
 	# old non-JSON based error reporting code still supported
 	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i) {
+		print STDOUT $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
 				"*** \"$1\"\n" : ''));
 		return undef;
 	}
 	if ($data =~ /^rate\s*limit/i) {
+		print STDOUT $data if ($superverbose);
 		&$exception(3,
 "*** warning: exceeded API rate limit for this interval.\n" .
 ((($verbose) && $icount > 1) ? "*** total requests: $icount\n" : "") .
@@ -897,6 +910,7 @@ sub grabjson {
 	# error codes
 	if ($data =~ m#^HTTP/\d\.\d\s+(\d+)\s+#) {
 		$code = 0+$1;
+		print STDOUT $data if ($superverbose);
 
 		# 304 is actually a cop-out code and is not usually
 		# returned, so we should consider it a non-fatal error
@@ -915,6 +929,7 @@ sub grabjson {
 
 	# test for error/warning conditions with trivial case
 	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s) {
+		print STDOUT $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter $2 message received\n" .
 			"*** \"$3\"\n");
 		return undef;
@@ -926,6 +941,13 @@ sub grabjson {
 		'result' => (($data eq 'true') ? 1 : 0),
 		'literal' => $data,
 			} if ($data =~ /^(true|false)$/);
+
+	# THIS IS A TEMPORARY KLUDGE for API issue #26
+	# http://code.google.com/p/twitter-api/issues/detail?id=26
+	if ($data =~ s/Couldn't find Status with ID=[0-9]+,//) {
+		print STDOUT ">>> cfswi sucky kludge tripped <<<\n"
+			if ($superverbose);
+	}
 
 	# first isolate escaped backslashes with a unique sequence.
 	$bbqqmask = "BBQQ";
@@ -952,6 +974,7 @@ sub grabjson {
 	# here's why: we're going to turn doublequoted strings into single
 	# quoted strings to avoid nastiness like variable interpolation.
 	$data =~ s/\"/\'/g;
+
 
 	print STDOUT "$data\n" if ($superverbose);
 
