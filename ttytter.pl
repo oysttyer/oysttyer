@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v0.8 (c)2007, 2008 cameron kaiser. all rights reserved.
+# TTYtter v0.9 (c)2007, 2008 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -18,25 +18,37 @@ require 5.005;
 #$maxhist=19;while(<>){last if(&prinput($_));}exit;
 
 BEGIN {
-	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 6;
+	$TTYtter_VERSION = 0.9;
+	$TTYtter_PATCH_VERSION = 0;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
 
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
-	%valid = qw(
-		url 1 lynx 1 curl 1 pause 1 user 1 seven 1 dmurl 1
-		dmpause 1 silent 1 superverbose 1 maxhist 1 noansi 1
-		lib 1 verbose 1 hold 1 status 1 update 1 daemon 1
-		timestamp 1 ansi 1 uurl 1 rurl 1 twarg 1 anonymous 1
-		wurl 1 script 1 avatar 1 ttytteristas 1 frurl 1
-	);
+	%opts_boolean = map { $_ => 1 } qw(
+		ansi noansi verbose superverbose ttytteristas noprompt
+		seven silent hold daemon script anonymous readline ssl
+	); %opts_sync = map { $_ => 1 } qw(
+		ansi pause dmpause ttytteristas verbose superverbose
+		url rlurl dmurl
+	); %opts_urls = map {$_ => 1} qw(
+		url dmurl uurl rurl wurl frurl rlurl update shorturl
+	); %opts_secret = map { $_ => 1} qw(
+		superverbose ttytteristas
+	); %opts_can_set = map { $_ => 1 } qw(
+		url pause dmurl dmpause superverbose ansi verbose
+		update uurl rurl wurl avatar ttytteristas frurl
+		rlurl noprompt shorturl
+	); %opts_others = map { $_ => 1 } qw(
+		lynx curl seven silent maxhist noansi lib hold status
+		daemon timestamp twarg user anonymous script readline
+		leader ssl
+	); %valid = (%opts_can_set, %opts_others);
 	if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc"))) {
-		#open(W, $n) || die("wickedness: $!\n");
 		while(<W>) {
 			chomp;
 			next if (/^\s*$/ || /^#/);
+			s/^-//;
 			($key, $value) = split(/\=/, $_, 2);
 			if ($valid{$key} && !length($$key)) {
 				$$key = $value;
@@ -51,18 +63,42 @@ BEGIN {
 	$parent = $$;
 
 	# defaults that our lib can override
-	$icount = 1;
 	$last_id = 0;
 	$last_dm = 0;
 	$print_max = 20;
 
+	# try to init Term::ReadLine if it was requested
+	# (shakes fist at @br3nda, it's all her fault)
+	%readline_completion = ();
+	if ($readline) {
+		die(
+		"you can't use -silent and -readline together. pick one.\n")
+			if ($silent || $script);
+		eval
+'use Term::ReadLine; $termrl = new Term::ReadLine ("TTYtter", \*STDIN, \*STDOUT)'
+		|| die(
+	"$@\nthis perl doesn't have ReadLine. don't use -readline.\n");
+		$stdout = $termrl->OUT || \*STDOUT;
+		$stdin = $termrl->IN || \*STDIN;
+		$readline = '' if ($readline eq '1');
+		$readline =~ s/^"//; # for optimizer
+		$readline =~ s/"$//;
+		#$termrl->Attribs()->{'autohistory'} = undef; # not yet
+		(%readline_completion) = map {$_ => 1} split(/\s+/, $readline);
+	} else {
+		$stdout = \*STDOUT;
+		$stdin = \*STDIN;
+	}
+
+	print $stdout "$leader\n" if (length($leader));
 	if (length($lib)) {
 		warn "** attempting to load library: $lib\n" unless ($silent);
 		require $lib;
 	}
 	unless ($seven) {
 		eval
-'use utf8;binmode(STDIN,":utf8");binmode(STDOUT,":utf8");return 1' ||
+# 0.8.5
+'use utf8;use encoding "utf8";binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
 	die("$@\nthis perl doesn't fully support UTF-8. use -seven.\n");
 	}
 	if ($timestamp) {
@@ -85,49 +121,101 @@ END {
 
 sub killkid {
 	if ($child) {
-		print STDOUT "\n\ncleaning up.\n";
+		print $stdout "\n\ncleaning up.\n";
+		if (scalar(@j = keys(%readline_completion))) {
+			# print optimized readline. include all that we
+			# manually specified, plus/including top @s, total 10.
+			@keys = sort { $readline_completion{$b} <=>
+				$readline_completion{$a} } @j;
+			$factor = $readline_completion{$keys[0]};
+			foreach(split(/\s+/, $readline)) {
+				$readline_completion{$_} += $factor;
+			}
+			print $stdout "*** optimized readline:\n";
+			@keys = sort { $readline_completion{$b} <=>
+				$readline_completion{$a} } keys
+					%readline_completion;
+			@keys = @keys[0..14] if (scalar(@keys) > 15);
+			print $stdout "-readline=\"@keys\"\n";
+		}
 		kill 9, $child;
 	}
 }
 
 # interpret script at this level
-if ($script) { $silent = 1; $pause = 0; $noansi = 1; }
+if ($script) { $silent = 1; $pause = 0; $noansi = 1; $noprompt = 1; }
 
-# dup STDOUT for benefit of various other scripts
-open(DUPSTDOUT, ">&STDOUT") || warn("** warning: could not dup STDOUT: $!\n");
+# dup $stdout for benefit of various other scripts
+if ($termrl) {
+	# this is mostly for 5.005 which doesn't have three-item open()
+	eval 'open(DUPSTDOUT,">&", $stdout); return 1;' || do {
+		warn("** warning: could not dup STDOUT: $!\n");
+	};
+	warn(<<"EOF") if ($] < 5.006);
+*************************************************
+** -readline is not supported on Perls < 5.6.0 **
+** your terminal may not display correctly!!!! **
+*************************************************
+EOF
+} else {
+	open(DUPSTDOUT, ">&STDOUT") ||
+		warn("** warning: could not dup $stdout: $!\n");
+}
 if ($silent) {
-	close(STDOUT);
-	open(STDOUT, ">>/dev/null"); # KLUUUUUUUDGE
+	close($stdout);
+	open($stdout, ">>/dev/null"); # KLUUUUUUUDGE
 }
 
 # defaults
 $anonymous ||= 0;
+undef $user if ($anonymous);
+if ($ssl) {
+	print $stdout "-- using SSL for default URLs.\n";
+}
+$http_proto = ($ssl) ? 'https' : 'http';
+
 $url ||= ($anonymous)
-	? "http://twitter.com/statuses/public_timeline.json"
-	: "http://twitter.com/statuses/friends_timeline.json";
-$rurl ||= "http://twitter.com/statuses/replies.json";
-$uurl ||= "http://twitter.com/statuses/user_timeline";
-$wurl ||= "http://twitter.com/users/show";
-$update ||= "http://twitter.com/statuses/update.json";
-$dmurl ||= "http://twitter.com/direct_messages.json";
-$frurl ||= "http://twitter.com/friendships/exists.json";
-$dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
-$dmpause = 0 if ($anonymous);
-$pause = 120 if (!defined $pause); # NOT ||= ... zero is a VALID value!
-$dmpause = 0 if (!$pause);
+	? "${http_proto}://twitter.com/statuses/public_timeline.json"
+	: "${http_proto}://twitter.com/statuses/friends_timeline.json";
+$rurl ||= "${http_proto}://twitter.com/statuses/replies.json";
+$uurl ||= "${http_proto}://twitter.com/statuses/user_timeline";
+$wurl ||= "${http_proto}://twitter.com/users/show";
+$update ||= "${http_proto}://twitter.com/statuses/update.json";
+$dmurl ||= "${http_proto}://twitter.com/direct_messages.json";
+$frurl ||= "${http_proto}://twitter.com/friendships/exists.json";
+$rlurl ||= "${http_proto}://twitter.com/account/rate_limit_status.json";
+
+#$shorturl ||= "http://bit.ly/api?url=";
+$shorturl ||= "http://is.gd/api.php?longurl=";
+# figure out the domain to stop shortener loops
+sub generate_shortdomain {
+	($shorturl =~ m#^(http://[^/]+/)#) && ($shorturldomain = $1);
+	print $stdout "-- warning: couldn't parse shortener service\n"
+		if (!length($shorturldomain));
+}
+&generate_shortdomain;
+
+$pause = (($anonymous) ? 120 : "auto") if (!defined $pause);
+	# NOT ||= ... zero is a VALID value!
 $superverbose ||= 0;
-$verbose ||= $superverbose;
 $hold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
+$timestamp ||= 0;
+$noprompt ||= 0;
+$twarg ||= undef;
+
+$verbose ||= $superverbose;
+$dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
+$dmpause = 0 if ($anonymous);
+$dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
-$timestamp ||= 0;
-$whoami = (split(/\:/, $user, 2))[0];
-$twarg ||= undef;
+$whoami = (split(/\:/, $user, 2))[0] unless ($anonymous);
 
 $dmcount = $dmpause;
+$lastshort = undef;
 
 # to force unambiguous bareword interpretation
 $true = 'true';
@@ -140,15 +228,18 @@ sub null { return undef; }
 # ANSI sequences
 $ESC = pack("C", 27);
 $BEL = pack("C", 7);
-$BLUE = ($ansi) ? "${ESC}[34;1m" : '';
-$RED = ($ansi) ? "${ESC}[31;1m" : '';
-$GREEN = ($ansi) ? "${ESC}[32;1m" : '';
-$YELLOW = ($ansi) ? "${ESC}[33m" : '';
-$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
-$CYAN = ($ansi) ? "${ESC}[36m" : '';
-$EM = ($ansi) ? "${ESC}[1;3m" : '';
-$UNDER = ($ansi) ? "${ESC}[4m" : '';
-$OFF = ($ansi) ? "${ESC}[0m" : '';
+sub generate_ansi {
+	$BLUE = ($ansi) ? "${ESC}[34;1m" : '';
+	$RED = ($ansi) ? "${ESC}[31;1m" : '';
+	$GREEN = ($ansi) ? "${ESC}[32;1m" : '';
+	$YELLOW = ($ansi) ? "${ESC}[33m" : '';
+	$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
+	$CYAN = ($ansi) ? "${ESC}[36m" : '';
+	$EM = ($ansi) ? "${ESC}[1;3m" : '';
+	$UNDER = ($ansi) ? "${ESC}[4m" : '';
+	$OFF = ($ansi) ? "${ESC}[0m" : '';
+}
+&generate_ansi;
 
 # default exposed methods
 # don't change these here. instead, use -lib=yourlibrary.pl and set them there.
@@ -158,7 +249,7 @@ $OFF = ($ansi) ? "${ESC}[0m" : '';
 
 sub defaultexception {
 	shift;
-	print STDOUT "${MAGENTA}@_${OFF}";
+	print $stdout "${MAGENTA}@_${OFF}";
 	$laststatus = 1;
 }
 $exception ||= \&defaultexception;
@@ -169,9 +260,22 @@ sub defaulthandle {
 	if ($silent) {
 		print DUPSTDOUT $class . &standardtweet($tweet_ref);
 	} else {
-		print STDOUT $class . &standardtweet($tweet_ref);
+		print $stdout $class . &standardtweet($tweet_ref);
 	}
 	return 1;
+}
+
+sub wraptime {
+	my $time = shift;
+	my $ts = $time;
+	if ($mtimestamp) {
+		# avoid precompiling these in case .pm not present
+		eval '$time = str2time($time);' ||
+			die("str2time failed: $time $@ $!\n");
+		eval '$ts = time2str($timestamp, $time);' ||
+			die("time2str failed: $timestamp $time $@\n");
+	}
+	return ($time, $ts);
 }
 
 sub standardtweet {
@@ -195,22 +299,13 @@ sub standardtweet {
 
 	# br3nda's modified timestamp patch
 	if ($timestamp) {
-		my $time = $ref->{'created_at'};
-		my $ts = $time;
-		if ($mtimestamp) {
-			# avoid precompiling these in case .pm not present
-			eval '$time = str2time($time);' ||
-				die("str2time failed: $time $@ $!\n");
-			eval '$ts = time2str($timestamp, $time);' ||
-				die("time2str failed: $timestamp $time $@\n");
-		}
+		my ($time, $ts) = &wraptime($ref->{'created_at'});
 		$g .= "[$ts] ";
 	}
 	$colour = $OFF . $colour;
 	# smb's underline/bold patch
-# 0.8.6
-	$tweet =~ s/(^|[^\w])\@(\w+)/\1\@${UNDER}\2${colour}/g;
-	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n";
+	$tweet =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${colour}/g;
+	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n" ;
 
 	return $g;
 }
@@ -224,21 +319,13 @@ sub defaultdmhandle {
 	if ($silent) {
 		print DUPSTDOUT &standarddm(shift);
 	} else {
-		print STDOUT &standarddm(shift);
+		print $stdout &standarddm(shift);
 	}
 	return 1;
 }
 sub standarddm {
 	my $ref = shift;
-	my $time = $ref->{'created_at'};
-	my $ts = $time;
-	if ($mtimestamp) {
-		# avoid precompiling these in case .pm not present
-		eval '$time = str2time($time);' ||
-			die("str2time failed: $time $@ $!\n");
-		eval '$ts = time2str($timestamp, $time);' ||
-			die("time2str failed: $timestamp $time $@\n");
-	}
+	my ($time, $ts) = &wraptime($ref->{'created_at'});
 	my $text = &descape($ref->{'text'});
 	$text =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${OFF}${GREEN}/g;
 	my $g = "${GREEN}[DM ${EM}".
@@ -260,10 +347,70 @@ $precommand ||= \&defaultprecommand;
 sub defaultprepost { return ("@_"); }
 $prepost ||= \&defaultprepost;
 
-sub defaultpostpost { ; }
+sub defaultpostpost {
+	my $line = shift;
+	return if (!$termrl);
+
+	# populate %readline_completion if readline is on
+	while($line =~ s/^\@(\w+)\s+//) {
+		$readline_completion{'@'.$1}++;
+	}
+	if ($line =~ /^[dD]\s+(\w+)\s+/) {
+		$readline_completion{'@'.$1}++;
+	}
+}
 $postpost ||= \&defaultpostpost;
 
-select(STDOUT); $|++;
+sub defaultautocompletion {
+	my ($text, $line, $start) = (@_);
+	my @proband;
+	my @rlkeys;
+
+	# handle / completion
+	if ($start == 0 && $text =~ m#^/#) {
+		return grep(/^$text/, '/history',
+			'/print', '/quit', '/bye', '/again',
+			'/wagain', '/whois', '/thump', '/dm',
+			'/refresh', '/dmagain', '/set', '/help',
+			'/replies', '/ruler', '/exit', '/me',
+			'/verbose', '/short');
+	}
+	@rlkeys = keys(%readline_completion);
+	# handle @ completion. this works slightly weird because
+	# readline hands us the string WITHOUT the @, so we have to
+	# test somewhat blindly. this works even if a future readline
+	# DOES give us the word with @. also handles D, /wa, /wagain,
+	# /a, /again, etc.
+	if (($line =~ m#^(D|/wa|/wagain|/a|/again) #) ||
+		($start == 1 && substr($line, 0, 1) eq '@') ||
+		# this code is needed to prevent inline @ from flipping out
+		($start >= 1 && substr($line, ($start-2), 2) eq ' @')) {
+		@proband = grep(/^\@$text/, @rlkeys);
+		if (scalar(@proband)) {
+			@proband = map { s/^\@//;$_ } @proband;
+			return @proband;
+		}
+	}
+	# definites that are left over, including @ if it were included
+	if(scalar(@proband = grep(/^$text/, @rlkeys))) {
+		return @proband;
+	}
+
+	# heuristics
+	# URL completion (this doesn't always work of course)
+	if ($text =~ m#http://#) {
+		return (&urlshorten($text) || $text);
+	}
+
+	# "I got nothing."
+	return ();
+}
+if ($termrl) {
+	$termrl->Attribs()->{'completion_function'} =
+		($autocompletion) ? $autocompletion : \&defaultautocompletion;
+}
+
+select($stdout); $|++;
 
 die("$0: specify -user=username:password\n")
 	if (!$anonymous && 
@@ -271,7 +418,7 @@ die("$0: specify -user=username:password\n")
 if ($lynx) {
 	if (length($lynx) > 1 && -x "/$lynx") {
 		$wend = $lynx;
-		print STDOUT "Lynx forced to $wend\n";
+		print $stdout "Lynx forced to $wend\n";
 	} else {
 		$wend = &wherecheck("trying to find Lynx", "lynx",
 "specify -curl to use curl instead, or just let TTYtter autodetect stuff.\n");
@@ -279,7 +426,7 @@ if ($lynx) {
 } else {
 	if (length($curl) > 1 && -x "/$curl") {
 		$wend = $curl;
-		print STDOUT "cURL forced to $wend\n";
+		print $stdout "cURL forced to $wend\n";
 	} else {
 		$wend = (($curl) ? &wherecheck("trying to find cURL", "curl",
 "specify -lynx to use Lynx instead, or just let TTYtter autodetect stuff.\n")
@@ -295,12 +442,14 @@ if ($lynx) {
 }
 if ($lynx) {
 	$wend = "$wend -nostatus";
+	$weld = "$wend -source";
 	$wend = "$wend -auth=$user" unless ($anonymous);
 	$wand = "$wend -source";
 	$wind = "$wand";
 	$wend = "$wend -post_data";
 } else {
 	$wend = "$wend -s --basic -m 13 -f";
+	$weld = $wend;
 	$wend = "$wend -u $user" unless ($anonymous);
 	$wand = "$wend -f";
 	$wind = "$wend";
@@ -330,7 +479,7 @@ for(;;) {
 	}
 	if ($rv) {
 		$x = $rv >> 8;
-		print "FAILED. ($x) bad username? bad url? resource down?\n";
+		print "FAILED. ($x) bad login? bad url? resource down?\n";
 		print "access failure on: ";
 		print (($phase) ? $update : $url);
 		print "\n";
@@ -359,15 +508,15 @@ exit 0 if (length($status));
 
 if ($daemon) {
 	if (!$pause) {
-		print STDOUT "*** kind of stupid to run daemon with pause=0\n";
+		print $stdout "*** kind of stupid to run daemon with pause=0\n";
 		exit 1;
 	}
 	if ($child = fork()) {
-		print STDOUT "*** detached daemon released. pid = $child\n";
+		print $stdout "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
 		exit 0;
 	} elsif (!defined($child)) {
-		print STDOUT "*** fork() failed: $!\n";
+		print $stdout "*** fork() failed: $!\n";
 		exit 1;
 	} else {
 		# using our regular MONITOR select() loop won't work, because
@@ -404,7 +553,7 @@ $e = <<'EOF';
   freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
         http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-         ${EM}tweet me: http://twitter.com/ttytter${OFF}                   #;;${YELLOW}ooo${OFF};;
+     ${EM}tweet me: http://twitter.com/doctorlinguist${OFF}                   #;;${YELLOW}ooo${OFF};;
             ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
 ######################################################           ,$B.${RED}*o***${OFF} O$,
 #                                                                a=o${RED}$*O*O*$${OFF}o=a
@@ -413,26 +562,39 @@ $e = <<'EOF';
 # starting background monitoring process.                           @=@ @=@
 #
 EOF
-$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print STDOUT $e;
+$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 if ($superverbose) {
-	print STDOUT "-- OMGSUPERVERBOSITYSPAM enabled.\n\n";
+	print $stdout "-- OMGSUPERVERBOSITYSPAM enabled.\n\n";
 } else {
-	print STDOUT "-- verbosity enabled.\n\n" if ($verbose);
+	print $stdout "-- verbosity enabled.\n\n" if ($verbose);
 }
 sleep 2 unless ($silent);
 
 if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
-select(C); $|++; select(STDOUT);
+select(C); $|++; select($stdout);
 
-sub defaultprompt { print STDOUT "${CYAN}TTYtter>${OFF} "; }
+sub defaultprompt {
+	my $rv = ($noprompt) ? "" : "TTYtter> ";
+	my $rvl = ($noprompt) ? 0 : 9;
+	return ($rv, $rvl) if (shift);
+	print $stdout "${CYAN}$rv${OFF}" unless ($termrl);
+}
 $prompt ||= \&defaultprompt;
 
 sub defaultconsole {
 	@history = ();
-	&$prompt;
-	while(<>) {
-		$rv = &prinput($_);
-		last if ($rv);
+	if ($termrl) {
+		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
+			$rv = &prinput($_);
+			last if ($rv);
+		}
+	} else {
+		&$prompt;
+		while(<>) { #not stdin so we can read from script files
+			$rv = &prinput($_);
+			last if ($rv);
+			&$prompt;
+		}
 	}
 }
 
@@ -448,43 +610,29 @@ sub prinput {
 	$_ = &$precommand($_);
 	s/^\s+//;
 	s/\s+$//;
-	my $cfc = 0;
-	$cfc++ while (s/\033\[[0-9]?[ABCD]// || s/.[\177]// || s/.[\010]//
-		|| s/[\000-\037\177]//);
-	if ($cfc) {
+	if (s/\033\[[ABCD]//g || s/[\000-\037]//g) {
 		$history[0] = $_;
-		print STDOUT "*** filtered control characters; now \"$_\"\n";
-	print STDOUT "*** use %% for truncated version, or append to %%.\n";
-		&$prompt;
+		print $stdout "*** filtered control characters; now \"$_\"\n";
+	print $stdout "*** use %% for truncated version, or append to %%.\n";
 		return 0;
 	}
 
 	if (/^$/) {
-		&$prompt;
 		return 0;
 	}
 
-	# handle history display
-	if ($_ eq '/history' || $_ eq '/h') {
-		for ($i = scalar(@history); $i >= 1; $i--) {
-			print STDOUT "\t$i\t$history[($i-1)]\n";
-		}
-		&$prompt;
-		return 0;
-	}	
 	if (/^\%(\%|-\d+):p$/) {
 		my $x = $1;
 		if ($x eq '%') {
-			print STDOUT "=> \"$history[0]\"\n";
+			print $stdout "=> \"$history[0]\"\n";
 		} else {
 			$x += 0;
 			if (!$x || $x < -(scalar(@history))) {
-				print STDOUT "*** illegal index\n";
+				print $stdout "*** illegal index\n";
 			} else {
-				print STDOUT "=> \"$history[-($x + 1)]\"\n";
+				print $stdout "=> \"$history[-($x + 1)]\"\n";
 			}
 		}
-		&$prompt;
 		return 0;
 	}
 
@@ -504,8 +652,7 @@ sub prinput {
 			$x = $r + 0;
 		}
 		if (!$x || $x < -(scalar(@history))) {
-			print STDOUT "*** illegal index\n";
-			&$prompt;
+			print $stdout "*** illegal index\n";
 			return 0;
 		}
 		my $proband = $history[-($x + 1)];
@@ -523,22 +670,127 @@ sub prinput {
 		s/^\%$r$s/$proband/;
 		$_ = "$y$_";
 	}
+	$i = 1 if (s/^\%URL\%/$urlshort/ || s/\%URL\%$/$urlshort/);
 
 	# and escaped history
 	s/^\\\%/%/;
 
-	print STDOUT "(expanded to \"$_\")\n" if ($i);
+	print $stdout "(expanded to \"$_\")\n" if ($i);
+	# handle history display
+	if ($_ eq '/history' || $_ eq '/h') {
+		@history = (($_, @history)[0..&min(scalar(@history),
+			$maxhist)]) if ($termrl); # this is fricking gross.
+		for ($i = scalar(@history); $i >= 1; $i--) {
+			print $stdout "\t$i\t$history[($i-1)]\n";
+		}
+		return 0;
+	}	
 	@history = (($_, @history)[0..&min(scalar(@history), $maxhist)]);
+	$termrl->addhistory($_) if ($termrl);
 
-	#print STDOUT join("|", @history); print STDOUT scalar(@history),"\n"; &$prompt; return 0;
+	#print $stdout join("|", @history); print $stdout scalar(@history),"\n"; &$prompt; return 0;
 
 	my $slash_first = ($_ =~ m#^/#);
-	return -1 if ($_ eq '/quit' || $_ eq '/q');
+	return -1 if ($_ eq '/quit' || $_ eq '/q' || $_ eq '/bye' ||
+			$_ eq '/exit');
 
+	# evaluator
+	if (m#^/ev(al)? (.+)$#) {
+		$k = eval $2;
+		print $stdout "==> $k $@\n";
+		return 0;
+	}
+
+	# url shortener routine
+	if (m#^/sh(ort)? (http://[^ ]+)#) {
+		print $stdout
+"*** shortened to: @{[ (&urlshorten($2) || 'FAILED -- %% to retry') ]}\n";
+		return 0;
+	}
+
+	# getter and setter for internal value settings
+	if (/^\/r(ate)?l(imit)?$/) {
+		$_ = '/print rate_limit_rate';
+		# and fall through to ...
+	}
+	if (/^\/p(rint)? ?([^ ]*)/) {
+		$key = $2;
+		if (!length($key)) {
+			foreach $key (sort keys %opts_can_set) {
+				print $stdout "*** $key => $$key\n"
+					if (!$opts_secret{$key});
+			}
+		} elsif ($valid{$key}) {
+			print $stdout "*** ";
+			print $stdout "(read-only value) "
+				if (!$opts_can_set{$key});
+			print $stdout "$key => $$key\n";
+		} elsif ($key eq 'effpause' ||
+				$key eq 'rate_limit_rate' ||
+				$key eq 'rate_limit_left') {
+			print $stdout "*** (requesting read-only value)\n";
+			print C (substr("?$key                    ", 0, 19)
+					. "\n");
+			sleep 1;
+		} else {
+			print "*** not a valid option or setting: $key\n";
+		}
+		return 0;
+	}
 	if ($_ eq '/verbose' || $_ eq '/ve') {
 		$verbose ^= 1;
-		print STDOUT "-- verbosity.\n" if ($verbose);
-		&prompt;
+		$_ = "/set verbose $verbose";
+		print $stdout "-- verbosity.\n" if ($verbose);
+		# and fall through to ...
+	}
+	if (/^\/s(et)? ([^ ]+) ([^ ]+)/) {
+		$key = $2;
+		$value = $3;
+		if ($opts_can_set{$key}) {
+			if (length($value) > 1023) {
+				# can't transmit this in a packet
+				print $stdout "*** value too long\n";
+			} elsif ($opts_boolean{$key} && $value ne '0' &&
+					$value ne '1') {
+				print $stdout "*** 0|1 only (boolean): $key\n";
+			} elsif ($opts_urls{$key} &&
+		$value !~ m#^(http|https|gopher)://#) {
+				print $stdout "*** must be valid URL: $key\n";
+			} else {
+				$$key = $value;
+				print $stdout "*** changed: $key => $$key\n";
+
+				# handle special values
+				&generate_ansi if ($key eq 'ansi');
+				&generate_shortdomain if ($key eq 'shorturl');
+
+				# transmit to background process sync-ed values
+				if ($opts_sync{$key}) {
+					print $stdout
+					"*** (transmitting to background)\n";
+					print C (
+				substr("=$key                           ",
+						0, 19) . "\n");
+					print C (substr(($value . (" " x 1024)),
+						0, 1024));
+					sleep 1;
+				}
+			}
+		} elsif ($valid{$key}) {
+			print $stdout
+			"*** read-only, must change on command line: $key\n";
+		} else {
+			print $stdout
+			"*** not a valid option or setting: $key\n";
+		}
+		return 0;
+	}
+
+	# shell escape
+	if (s/^\/\!// && length) {
+		system("$_");
+		$x = $? >> 8;
+		print $stdout "*** exited with $x\n" if ($x);
 		return 0;
 	}
 
@@ -568,156 +820,172 @@ sub prinput {
                                      o@*.a@o a@o.$@+     for OTHER COMMANDS.
  ** EVERYTHING ELSE IS TWEETED **    o@B$B@o a@A$#@+  
 EOF
-		print "PRESS RETURN/ENTER> ";
-		$j = <STDIN>;
+		if ($termrl) {
+			$termrl->readline("PRESS RETURN/ENTER> ");
+		} else {
+			print "PRESS RETURN/ENTER> ";
+			$j = <$stdin>;
+		}
 		print <<"EOF";
 
  TTYtter $TTYtter_VERSION is (c)2008 cameron kaiser. all rights reserved. this software
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
- --- http://www.floodgap.com/software/ttytter/ ---
+ --- twitter: doctorlinguist --- http://www.floodgap.com/software/ttytter/ ---
 
            *** subscribe to updates at http://twitter.com/ttytter
                                     or http://twitter.com/floodgap
                send your suggestions to me at ckaiser\@floodgap.com
-                                           or http://twitter.com/doctorlinguist
 
 EOF
-		&$prompt;
 		return 0;
 	}
 	if ($_ eq '/ruler' || $_ eq '/ru') {
-		print STDOUT <<"EOF";
-                  1         2         3         4         5         6         7         8         9         0         1         2         3        XX
-TTYtter> 1...5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5...XX
+		my ($prompt, $prolen) = &$prompt(1);
+		$prolen = $prolen x " ";
+		print $stdout <<"EOF";
+${prolen}         1         2         3         4         5         6         7         8         9         0         1         2         3        XX
+${prompt}1...5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5...XX
 EOF
-		&$prompt;
 		return 0;
 	}
 	if ($_ eq '/refresh' || $_ eq '/thump' || $_ eq '/r') {
 		&thump;
-		&$prompt;
 		return 0;
 	}
 	if ($_ =~ m#^/(w)?a(gain)?\s+([^\s]+)#) { # the synchronous form
 		my $mode = $1;
 		my $uname = $3;
-		print STDOUT "-- synchronous /again command for $uname\n"
+		
+		$uname =~ s/^\@//;
+		$readline_completion{'@'.$uname}++ if ($termrl);
+		print $stdout "-- synchronous /again command for $uname\n"
 			if ($verbose);
-		my $my_json_ref = &grabjson(1, "$uurl/${uname}.json", 0);
+		my $my_json_ref = &grabjson("$uurl/${uname}.json", 0);
 
 		if (defined($my_json_ref)
-			&& ref($my_json_ref) eq 'ARRAY'
+				&& ref($my_json_ref) eq 'ARRAY'
 				&& scalar(@{ $my_json_ref })) {
-			&tdisplay($my_json_ref, "again");
-		} # since interactive=1, errors are propagated in grabjson
+			my ($crap, $art) =
+				&tdisplay($my_json_ref, "again");
+			my ($time, $ts) = &wraptime($art->{'created_at'});
+			print $stdout "-- last update: $ts\n"
+				unless ($timestamp);
+		}
 		&$conclude;
 		unless ($mode eq 'w' || $mode eq 'wf') {
-			&$prompt;
 			return 0;
 		} # else fallthrough
 	}
 	if ($_ =~ m#^/w(hois|a|again)?\s+([^\s]+)#) {
 		my $uname = $2;
-		print STDOUT "-- synchronous /whois command for $uname\n"
+
+		$uname =~ s/^\@//;
+		$readline_completion{'@'.$uname}++ if ($termrl);
+		print $stdout "-- synchronous /whois command for $uname\n"
 			if ($verbose);
-		my $my_json_ref = &grabjson(1, "$wurl/${uname}.json", 0);
+		my $my_json_ref = &grabjson("$wurl/${uname}.json", 0);
 
 # originally
 # {"status":{"created_at":"Thu Jan 10 16:03:20 +0000 2008","text":"@ijastram grand theft probably.","id":584052732},"profile_text_color":"000000","profile_link_color":"0000ff","name":"Cameron Kaiser","profile_background_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_background_images\/564672\/shbak.gif","profile_sidebar_fill_color":"e0ff92","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","followers_count":277,"screen_name":"doctorlinguist","profile_sidebar_border_color":"87bc44","profile_image_url":"http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/20933022\/me2_normal.jpg","location":"Southern California","profile_background_tile":true,"favourites_count":49,"following":false,"statuses_count":9878,"friends_count":99,"profile_background_color":"9ae4e8","url":"http:\/\/www.cameronkaiser.com","id":3841961,"utc_offset":-28800,"protected":false}
 # now
 #{'profile_image_url':'http:\/\/s3.amazonaws.com\/twitter_production\/profile_images\/54729098\/me2_normal.jpg','name':'Cameron Kaiser','followers_count':563,'description':'Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?','location':'Southern California','screen_name':'doctorlinguist','id':3841961,'protected':false,'status':{'text':'thatSSQQ0s enough. ISSQQ0m dying here. crashing.','created_at':'Wed Jul 16 05:42:07 +0000 2008','id':859733472},'url':'http:\/\/www.cameronkaiser.com'}
 
-		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH') {
+		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
+				length($my_json_ref->{'screen_name'})) {
 			my $purl =
 				&descape($my_json_ref->{'profile_image_url'});
 			if ($avatar && length($purl) && $purl ne
 "http://static.twitter.com/images/default_profile_normal.png") {
 				my $exec = $avatar;
+				my $fext;
+				($purl =~ /\.([a-z0-9A-Z]+)$/) &&
+					($fext = $1);
 				$exec =~ s/\%U/'$purl'/g;
-				print STDOUT "\n($exec)\n";
+				$exec =~ s/\%N/$uname/g;
+				$exec =~ s/\%E/$fext/g;
+				print $stdout "\n($exec)\n";
 				system($exec);
 			}
-			print STDOUT <<"EOF"; 
+#${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
+			print $stdout <<"EOF"; 
 
-${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
+${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (is followed by $my_json_ref->{'followers_count'} users)
+
 EOF
-			print STDOUT
+			print $stdout
 "\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
 				if (length($my_json_ref->{'description'}));
-			print STDOUT
+			print $stdout
 "${EM}Location:${OFF}\t@{[ &descape($my_json_ref->{'location'}) ]}\n"
 				if (length($my_json_ref->{'location'}));
-			print STDOUT
+			print $stdout
 "${EM}URL:${OFF}\t\t@{[ &descape($my_json_ref->{'url'}) ]}\n"
 				if (length($my_json_ref->{'url'}));
-			print STDOUT <<"EOF";
+			print $stdout <<"EOF";
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
+# THIS IS A TEMPORARY KLUDGE
+# this has stopped working so it is disabled
 			unless (0 || $anonymous || $whoami eq $uname) {
 				my $g =
-		&grabjson(1, "$frurl?user_a=$whoami&user_b=$uname", 0);
-				print STDOUT 
+		&grabjson("$frurl?user_a=$whoami&user_b=$uname", 0);
+				print $stdout 
 	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n"
 					if (ref($g) eq 'HASH');
 				my $g =
-		&grabjson(1, "$frurl?user_a=$uname&user_b=$whoami", 0);
-				print STDOUT
+		&grabjson("$frurl?user_a=$uname&user_b=$whoami", 0);
+				print $stdout
 "${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n"
 					if (ref($g) eq 'HASH');
-				print STDOUT "\n";
+				print $stdout "\n";
 			}
 		}
-		&$prompt;
 		return 0;
 	}
 		
 	if ($_ eq '/again' || $_ eq '/a') { # the asynchronous form
-		print C "reset----\n";
-		&$prompt;
+		print C "reset--------------\n";
 		return 0;
 	}
 
 	if ($_ eq '/replies' || $_ eq '/re') {
 		if ($anonymous) {
-			print STDOUT
+			print $stdout
 		"-- sorry, how can anyone reply to you if you're anonymous?\n";
 		} else {
 			# we are intentionally not keeping track of "last_re"
 			# in this version because it is not automatically
 			# updated and may not act as we expect.
-			print STDOUT "-- synchronous /replies command\n"
+			print $stdout "-- synchronous /replies command\n"
 				if ($verbose);
-			my $my_json_ref = &grabjson(1, $rurl, 0);
+			my $my_json_ref = &grabjson($rurl, 0);
 			if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY'
 					&& scalar(@{ $my_json_ref })) {
 				&tdisplay($my_json_ref, "replies");
-			} # since interactive=1, errors are shown by grabjson
+			}
 			&$conclude;
 		}
-		&$prompt;
 		return 0;
 	}
 
 	if ($_ eq '/dm' || $_ eq '/dmrefresh' || $_ eq '/dmr') {
-		print C "dmthump--\n";
-		&$prompt;
+		print C "dmthump------------\n";
 		return 0;
 	}
 
 	if ($_ eq '/dmagain' || $_ eq '/dma') {
-		print C "dmreset--\n";
-		&$prompt;
+		print C "dmreset------------\n";
 		return 0;
 	}
 
 	if ($_ eq '/end' || $_ eq '/e') {
 		if ($child) {
 			print "waiting for child ...\n";
-			print C "sync-----\n";
+			print C "sync---------------\n";
 			waitpid $child, 0;
 			$child = 0;
 			print "exiting.\n";
@@ -732,9 +1000,8 @@ EOF
 
 	if ($slash_first) {
 		if (!m#^//#) {
-			print STDOUT "*** command not recognized\n";
-			print STDOUT "*** to pass as a tweet, type /%%\n";
-			&$prompt;
+			print $stdout "*** command not recognized\n";
+			print $stdout "*** to pass as a tweet, type /%%\n";
 			return 0;
 		}
 		s#^/##; # leave the second slash on
@@ -747,14 +1014,12 @@ EOF
 		s/[^a-zA-Z0-9]+$//;
 		s/\s+[^\s]+$// if (length == 140);
 		$history[0] = $_;
-		print STDOUT
+		print $stdout
 "*** sorry, tweet too long by $g characters; truncated to \"$_\" (@{[ length ]} chars)\n";
-	print STDOUT "*** use %% for truncated version, or append to %%.\n";
-		&$prompt;
+	print $stdout "*** use %% for truncated version, or append to %%.\n";
 		return 0;
 	}
 	&updatest($_, 1);
-	&$prompt;
 	return 0;
 }
 
@@ -767,7 +1032,7 @@ sub updatest {
 	my $istring;
 
 	if ($anonymous) {
-		print STDOUT "-- sorry, you can't tweet if you're anonymous.\n"
+		print $stdout "-- sorry, you can't tweet if you're anonymous.\n"
 			if ($interactive);
 		return 99;
 	}
@@ -784,14 +1049,14 @@ sub updatest {
 		# I know the below is redundant. this is to remind me to see
 		# if there is something cleverer to do with it later.
 "|$wend $update 2>/dev/null >/dev/null") || do{
-		print STDOUT "post failure: $!\n" if ($interactive);
+		print $stdout "post failure: $!\n" if ($interactive);
 		return 99;
 	};
 	print N "source=TTYtter&status=$urle\n";
 	close(N);
 	if ($? > 0) {
 		$x = $? >> 8;
-		print STDOUT <<"EOF" if ($interactive);
+		print $stdout <<"EOF" if ($interactive);
 ${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
 *** to attempt a resend, type %%${OFF}
 EOF
@@ -799,11 +1064,20 @@ EOF
 	}
 	$lasttwit = $string;
 	&$postpost($string);
+
 	return 0;
 }
 
+sub thump { print C "update-------------\n"; }
 
-sub thump { print C "update---\n"; }
+sub urlshorten {
+	my $url = shift;
+	my $rc;
+
+	return $url if ($url =~ /^$shorturldomain/i); # stop loops
+	chomp($rc = `$weld "${shorturl}$url"`);
+	return ($urlshort = (($rc =~ m#^http://#) ? $rc : undef));
+}
 
 MONITOR:
 # asynchronous monitoring process -- uses select() to receive from console
@@ -813,20 +1087,87 @@ vec($rin,fileno(STDIN),1) = 1;
 # paranoia
 unless ($seven) {
 	binmode(STDIN, ":utf8");
-	binmode(STDOUT, ":utf8");
+	binmode($stdout, ":utf8");
 }
+binmode($stdout, ":crlf") if ($termrl);
 $interactive = $timeleft = $previous_last_id = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
-$effpause = $pause || undef;
+$last_rate_limit = undef;
+$rate_limit_left = undef;
+$rate_limit_rate = undef;
+$rate_limit_next = 0;
+$effpause = 0;
 
 for(;;) {
 	&$heartbeat;
+	$effpause = 0+$pause if ($anonymous || (!$pause && $pause ne 'auto'));
+	if (!$rate_limit_next && !$anonymous && ($pause > 0 ||
+		$pause eq 'auto')) {
+
+# {'reset_time_in_seconds':1218948315,'remaining_hits':98,'reset_time':'Sun Aug 17 04:45:15 +0000 2008','hourly_limit':100}
+
+		$rate_limit_next = 5;
+		$rate_limit_ref = &grabjson($rlurl, 0);
+
+		if (defined $rate_limit_ref &&
+				ref($rate_limit_ref) eq 'HASH') {
+			$rate_limit_left =
+				$rate_limit_ref->{'remaining_hits'};
+			$rate_limit_rate =
+				$rate_limit_ref->{'hourly_limit'};
+			if ($rate_limit_left < 10) {
+				$estring = 
+"*** warning: $rate_limit_left API requests remain";
+				if ($pause eq 'auto') {
+					$estring .=
+				"; temporarily halting autofetch";
+					$effpause = 0;
+				}
+				&$exception(5, "$estring\n");
+			} else {
+				if ($pause eq 'auto') {
+# this is computed to give you approximately 40% over the limit for client
+# requests
+# first, how many requests do we want to make an hour? $dmpause in a sec
+$effpause = $rate_limit_rate - ($rate_limit_rate * 0.4);
+# second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
+$effpause -= ((1/$dmpause) * $effpause) if ($dmpause);
+# finally determine how many seconds should elapse
+print $stdout "-- that's funny: effpause is zero, using fallback 120sec\n"
+	if (!$effpause && $verbose);
+$effpause = ($effpause) ? int(3600/$effpause) : 120;
+				} else {
+					$effpause = 0+$pause;
+				}
+			}
+			print $stdout
+"-- rate limit check: $rate_limit_left/$rate_limit_rate (rate is $effpause sec)\n"
+				if ($verbose);
+			$adverb = (!$last_rate_limit) ? ' currently' :
+		($last_rate_limit < $rate_limit_rate) ? ' INCREASED to':
+		($last_rate_limit > $rate_limit_rate) ? ' REDUCED to':
+					'';
+			$notify_rate = 
+"-- notification: API rate limit is${adverb} ${rate_limit_rate} req/hr\n"
+				if ($last_rate_limit != $rate_limit_rate);
+			$last_rate_limit = $rate_limit_rate;
+		} else {
+			$rate_limit_next = 0;
+			$effpause = ($pause eq 'auto') ? 120 : 0+$pause;
+			print $stdout
+"-- failed to fetch rate limit (rate is $effpause sec)\n"
+				if ($verbose);
+		}
+	} else {
+		$rate_limit_next-- unless ($anonymous);
+	}
 	&refresh($interactive, $previous_last_id) unless ($timeleft
-		|| (!$pause && !$interactive));
+		|| (!$effpause && !$interactive));
 	$previous_last_id = $last_id;
-	if ($dmpause) {
+	if ($dmpause && $effpause) {
 		if ($dm_first_time) {
 			&dmrefresh(0);
+			$dmcount = $dmpause;
 		} elsif (!$interactive) {
 			if (!--$dmcount) {
 				&dmrefresh($interactive); # using dm_first_time
@@ -834,30 +1175,48 @@ for(;;) {
 			}
 		}
 	}
-	$interactive = $timeleft = 0;
+	$interactive = 0;
+	print $stdout $notify_rate;
+	$notify_rate = "";
+	$timeleft = ($effpause) ? $effpause : 60;
 	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
-		sysread(STDIN, $rout, 10);
+		sysread(STDIN, $rout, 20);
 		next if (!length($rout));
 		if ($rout =~ /^sync/) {
-			print STDOUT "-- synced; exiting at ", scalar localtime
+			print $stdout "-- synced; exiting at ", scalar localtime
 				if ($verbose);
 			exit $laststatus;
 		}
-		$last_id = 0 if ($rout =~ /^reset/);
-		$last_dm = 0 if ($rout =~ /^dmreset/);
-		$interactive = 1;
-		$icount++;
-		print STDOUT "-- command received ($icount) ", scalar
-			localtime, " $rout" if ($verbose);
-		if ($rout =~ /^dm/) {
-			&dmrefresh($interactive);
-			$dmcount = $dmpause;
+		if ($rout =~ /([\=\?])([^ ]+)/) {
+			$comm = $1;
+			$key =$2;
+			if ($comm eq '?') {
+				print $stdout "*** $key => $$key\n";
+			} else {
+				sysread(STDIN, $value, 1024);
+				$value =~ s/\s+$//;
+				$$key = $value;
+				print $stdout "*** changed: $key => $$key\n";
+
+				&generate_ansi if ($key eq 'ansi');
+				$rate_limit_next = 0 if ($key eq 'pause' &&
+					$value eq 'auto');
+			}
 		} else {
-			$timeleft = 0;
+			$interactive = 1;
+			$last_id = 0 if ($rout =~ /^reset/);
+			$last_dm = 0 if ($rout =~ /^dmreset/);
+			print $stdout "-- command received ", scalar
+				localtime, " $rout" if ($verbose);
+			if ($rout =~ /^dm/) {
+				&dmrefresh($interactive);
+				$dmcount = $dmpause;
+			} else {
+				$timeleft = 0;
+			}
 		}
 	} else {
-		$icount++;
-		print STDOUT "-- routine refresh ($icount/$dmcount) ", scalar
+		print $stdout "-- routine refresh ($dmcount to next dm) ", scalar
 			localtime, "\n" if ($verbose);
 	}
 }
@@ -868,7 +1227,6 @@ for(;;) {
 
 sub grabjson {
 	my $data;
-	my $interactive = shift;
 	my $url = shift;
 	my $last_id = shift;
 	my $tdata;
@@ -880,16 +1238,17 @@ sub grabjson {
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #16
 	# http://code.google.com/p/twitter-api/issues/detail?id=16
-	#$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
-	#	"";
+	$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
+		"";
 	# count needs to be removed for the default case due to show, etc.
-	$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
+	#$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
 
-	print STDOUT "$wand \"$url$xurl\"\n" if ($superverbose);
+	print $stdout "$wand \"$url$xurl\"\n" if ($superverbose);
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
 
 	$data =~ s/[\r\l\n\s]*$//s;
 	$data =~ s/^[\r\l\n\s]*//s;
+	#print unpack("H90", $data);
 
 	if (!length($data)) {
 		&$exception(1, "*** warning: timeout or no data\n");
@@ -898,19 +1257,17 @@ sub grabjson {
 
 	# old non-JSON based error reporting code still supported
 	if ($data =~ /^<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i) {
-		print STDOUT $data if ($superverbose);
+		print $stdout $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
 				"*** \"$1\"\n" : ''));
 		return undef;
 	}
 	if ($data =~ /^rate\s*limit/i) {
-		print STDOUT $data if ($superverbose);
+		print $stdout $data if ($superverbose);
 		&$exception(3,
 "*** warning: exceeded API rate limit for this interval.\n" .
-((($verbose) && $icount > 1) ? "*** total requests: $icount\n" : "") .
 "*** no updates available until interval ends.\n");
-		$icount = 0;
 		return undef;
 	}
 
@@ -918,7 +1275,7 @@ sub grabjson {
 	# error codes
 	if ($data =~ m#^HTTP/\d\.\d\s+(\d+)\s+#) {
 		$code = 0+$1;
-		print STDOUT $data if ($superverbose);
+		print $stdout $data if ($superverbose);
 
 		# 304 is actually a cop-out code and is not usually
 		# returned, so we should consider it a non-fatal error
@@ -938,7 +1295,7 @@ sub grabjson {
 	# test for error/warning conditions with trivial case
 	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s
 		|| $data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
-		print STDOUT $data if ($superverbose);
+		print $stdout $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter $2 message received\n" .
 			"*** \"$3\"\n");
 		return undef;
@@ -954,7 +1311,7 @@ sub grabjson {
 	# THIS IS A TEMPORARY KLUDGE for API issue #26
 	# http://code.google.com/p/twitter-api/issues/detail?id=26
 	if ($data =~ s/Couldn't find Status with ID=[0-9]+,//) {
-		print STDOUT ">>> cfswi sucky kludge tripped <<<\n"
+		print $stdout ">>> cfswi sucky kludge tripped <<<\n"
 			if ($superverbose);
 	}
 
@@ -985,7 +1342,7 @@ sub grabjson {
 	$data =~ s/\"/\'/g;
 
 
-	print STDOUT "$data\n" if ($superverbose);
+	print $stdout "$data\n" if ($superverbose);
 
 	# trust, but verify. I'm sure twitter wouldn't send us malicious
 	# or bogus JSON, but one day this might talk to something that would.
@@ -997,7 +1354,7 @@ sub grabjson {
 	$tdata =~ s/(true|false|null)//g;
 	$tdata =~ s/\s//g;
 
-	print STDOUT "$tdata\n" if ($superverbose);
+	print $stdout "$tdata\n" if ($superverbose);
 
 	# the remaining stuff should just be enclosed in [ ], and only {}:,
 	# for example, imagine if a bare semicolon were in this ...
@@ -1023,7 +1380,7 @@ sub grabjson {
 
 	# somewhat validated, so safe (errr ...) to eval() into a Perl struct
 	eval "\$my_json_ref = $data;";
-	print STDOUT "$data => $my_json_ref $@\n"  if ($superverbose);
+	print $stdout "$data => $my_json_ref $@\n"  if ($superverbose);
 
 	# do a sanity check
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
@@ -1036,11 +1393,12 @@ sub grabjson {
 sub refresh {
 	my $interactive = shift;
 	my $relative_last_id = shift;
-	my $my_json_ref = &grabjson($interactive, $url, $last_id);
+	my $my_json_ref = &grabjson($url, $last_id);
 	return if (!defined($my_json_ref) || ref($my_json_ref) ne 'ARRAY');
-	$last_id = &tdisplay($my_json_ref, undef, $relative_last_id);
+	($last_id, $crap) =
+		&tdisplay($my_json_ref, undef, $relative_last_id);
 	print
-	STDOUT "-- id bookmark is $last_id, rollback is $relative_last_id.\n"
+	$stdout "-- id bookmark is $last_id, rollback is $relative_last_id.\n"
 		if ($verbose);
 	&$conclude;
 } 
@@ -1052,30 +1410,31 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $printed = 0;
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 	my $i;
+	my $j;
 
 	if ($disp_max) { # null list may be valid if we get code 304
 		for($i = $disp_max; $i > 0; $i--) {
 			my $g = ($i-1);
-			my $id = $my_json_ref->[$g]->{'id'};
+			$j = $my_json_ref->[$g];
+			my $id = $j->{'id'};
 
 			next if ($id <= $last_id);
-			next if
-		(!length($my_json_ref->[$g]->{'user'}->{'screen_name'}));
+			next if (!length($j->{'user'}->{'screen_name'}));
 
-			$printed += &$handle($my_json_ref->[$g],
+			$printed += &$handle($j,
 			($class || (($id <= $relative_last_id) ? 'again' :
 				undef)));
 		}
 	}
-	print STDOUT "-- sorry, nothing to display.\n"
+	print $stdout "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
-	return &max(0+$my_json_ref->[0]->{'id'}, $last_id);
+	return (&max(0+$my_json_ref->[0]->{'id'}, $last_id), $j);
 }
 
 sub dmrefresh {
 	my $interactive = shift;
 	if ($anonymous) {
-		print STDOUT
+		print $stdout
 			"-- sorry, you can't read DMs if you're anonymous.\n"
 			if ($interactive);
 		return;
@@ -1085,7 +1444,7 @@ sub dmrefresh {
 	# (unless user specifically requested it)
 	return if (!$interactive && !$last_id); # NOT last_dm
 
-	my $my_json_ref = &grabjson($interactive, $dmurl, $last_dm);
+	my $my_json_ref = &grabjson($dmurl, $last_dm);
 	return if (!defined($my_json_ref)
 		|| ref($my_json_ref) ne 'ARRAY');
 
@@ -1097,7 +1456,7 @@ sub dmrefresh {
 
 	if ($disp_max) { # an empty list can be valid
 		if ($dm_first_time) {
-			print STDOUT
+			print $stdout
 			"-- checking for most recent direct messages:\n";
 			$disp_max = 2;
 			$interactive = 1;
@@ -1112,11 +1471,12 @@ sub dmrefresh {
 		}
 		$max = 0+$my_json_ref->[0]->{'id'};
 	}
-	print STDOUT "-- sorry, no new direct messages.\n"
+	print $stdout "-- sorry, no new direct messages.\n"
 		if (($interactive || $verbose) && !$printed);
 	$last_dm = &max($last_dm, $max);
+	# 0.8.5
 	$dm_first_time = 0 if ($last_dm || !scalar(@{ $my_json_ref }));
-	print STDOUT "-- dm bookmark is $last_dm.\n" if ($verbose);
+	print $stdout "-- dm bookmark is $last_dm.\n" if ($verbose);
 	&$dmconclude;
 }	
 
@@ -1128,7 +1488,7 @@ sub wherecheck {
 	unshift(@paths, '/usr/bin'); # the usual place
 	@paths = ('') if ($filename =~ m#^/#); # for absolute paths
 
-	print STDOUT "$prompt ... ";
+	print $stdout "$prompt ... ";
 	foreach(@paths) {
 		if (-r "$_/$filename") {
 			$setv = "$_/$filename";
@@ -1145,7 +1505,7 @@ sub wherecheck {
 }
 
 sub screech {
-	print STDOUT "\n\n${BEL}${BEL}@_";
+	print $stdout "\n\n${BEL}${BEL}@_";
 	kill 9, $parent;
 	kill 9, $$;
 	die("death not achieved conventionally");
