@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 4;
+	$TTYtter_PATCH_VERSION = 5;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -928,7 +928,8 @@ sub grabjson {
 # kludges suck or no.
 
 	# test for error/warning conditions with trivial case
-	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s) {
+	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s
+		|| $data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
 		print STDOUT $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter $2 message received\n" .
 			"*** \"$3\"\n");
@@ -940,7 +941,7 @@ sub grabjson {
 		'ok' => 1,
 		'result' => (($data eq 'true') ? 1 : 0),
 		'literal' => $data,
-			} if ($data =~ /^(true|false)$/);
+			} if ($data =~ /^['"]?(true|false)['"]?$/);
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #26
 	# http://code.google.com/p/twitter-api/issues/detail?id=26
@@ -1106,7 +1107,7 @@ sub dmrefresh {
 	print STDOUT "-- sorry, no new direct messages.\n"
 		if (($interactive || $verbose) && !$printed);
 	$last_dm = &max($last_dm, $max);
-	$dm_first_time = 0 if ($last_dm);
+	$dm_first_time = 0 if ($last_dm || !scalar(@{ $my_json_ref }));
 	print STDOUT "-- dm bookmark is $last_dm.\n" if ($verbose);
 	&$dmconclude;
 }	
