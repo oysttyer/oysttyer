@@ -15,22 +15,23 @@
 require 5.005;
 
 #&grabjson;exit;
-#$maxhist=19;while(<>){last if(&prinput($_));}exit;
 
 BEGIN {
 	$TTYtter_VERSION = 0.9;
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
 
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
+
 	%opts_boolean = map { $_ => 1 } qw(
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
+		newline
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
-		url rlurl dmurl
+		url rlurl dmurl newline
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 	); %opts_secret = map { $_ => 1} qw(
@@ -38,7 +39,7 @@ BEGIN {
 	); %opts_can_set = map { $_ => 1 } qw(
 		url pause dmurl dmpause superverbose ansi verbose
 		update uurl rurl wurl avatar ttytteristas frurl
-		rlurl noprompt shorturl
+		rlurl noprompt shorturl newline
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -98,8 +99,30 @@ BEGIN {
 	unless ($seven) {
 		eval
 # 0.8.5
-'use utf8;use encoding "utf8";binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
+'use utf8;binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
 	die("$@\nthis perl doesn't fully support UTF-8. use -seven.\n");
+	# this is for the prinput utf8 validator.
+	# adapted from http://mail.nl.linux.org/linux-utf8/2003-03/msg00087.html
+		$badutf8='[\x00-\x7f][\x80-\xbf]+|^[\x80-\xbf]+|'.
+			 '[\xc0-\xdf][\x00-\x7f\xc0-\xff]|'.
+	 		 '[\xc0-\xdf][\x80-\xbf]{2}|'.
+	 		 '[\xe0-\xef][\x80-\xbf]{0,1}[\x00-\x7f\xc0-\xff]|'.
+	 		 '[\xe0-\xef][\x80-\xbf]{3}|'.
+	 		 '[\xf0-\xf7][\x80-\xbf]{0,2}[\x00-\x7f\xc0-\xff]|'.
+	 		 '[\xf0-\xf7][\x80-\xbf]{4}|'.
+	 		 '[\xf8-\xfb][\x80-\xbf]{0,3}[\x00-\x7f\xc0-\xff]|'.
+	 		 '[\xf8-\xfb][\x80-\xbf]{5}|'.
+	 	'[\xfc-\xfd][\x80-\xbf]{0,4}[\x00-\x7f\xc0-\xff]|'.
+			'\xed[\xa0-\xbf][\x80-\xbf]|'.
+			'\xef\xbf[\xbe-\xbf]|'.
+ 			'[\xf0-\xf7][\x8f,\x9f,\xaf,\xbf]\xbf[\xbe-\xbf]|'.
+			'\xfe|\xff|'.
+	 		 '[\xc0-\xc1][\x80-\xbf]|'.
+	 		 '\xe0[\x80-\x9f][\x80-\xbf]|'.
+	 		 '\xf0[\x80-\x8f][\x80-\xbf]{2}|'.
+	 		 '\xf8[\x80-\x87][\x80-\xbf]{3}|'.
+	 		 '\xfc[\x80-\x83][\x80-\xbf]{4}';
+
 	}
 	if ($timestamp) {
 		if (length($timestamp) > 1) { # pattern specified
@@ -115,31 +138,36 @@ BEGIN {
 	}
 }
 
+sub end_me { exit; } # which falls through to ...
 END {
 	&killkid;
 }
-
+sub generate_otabcomp {
+	if (scalar(@j = keys(%readline_completion))) {
+		# print optimized readline. include all that we
+		# manually specified, plus/including top @s, total 10.
+		@keys = sort { $readline_completion{$b} <=>
+			$readline_completion{$a} } @j;
+		$factor = $readline_completion{$keys[0]};
+		foreach(split(/\s+/, $readline)) {
+			$readline_completion{$_} += $factor;
+		}
+		print $stdout "*** optimized readline:\n";
+		@keys = sort { $readline_completion{$b} <=>
+			$readline_completion{$a} } keys
+				%readline_completion;
+		@keys = @keys[0..14] if (scalar(@keys) > 15);
+		print $stdout "-readline=\"@keys\"\n";
+	}
+}
 sub killkid {
 	if ($child) {
 		print $stdout "\n\ncleaning up.\n";
-		if (scalar(@j = keys(%readline_completion))) {
-			# print optimized readline. include all that we
-			# manually specified, plus/including top @s, total 10.
-			@keys = sort { $readline_completion{$b} <=>
-				$readline_completion{$a} } @j;
-			$factor = $readline_completion{$keys[0]};
-			foreach(split(/\s+/, $readline)) {
-				$readline_completion{$_} += $factor;
-			}
-			print $stdout "*** optimized readline:\n";
-			@keys = sort { $readline_completion{$b} <=>
-				$readline_completion{$a} } keys
-					%readline_completion;
-			@keys = @keys[0..14] if (scalar(@keys) > 15);
-			print $stdout "-readline=\"@keys\"\n";
-		}
+		&generate_otabcomp;
 		kill 9, $child;
 	}
+	#print $stdout "done.\n";
+	exit;
 }
 
 # interpret script at this level
@@ -165,6 +193,7 @@ if ($silent) {
 	close($stdout);
 	open($stdout, ">>/dev/null"); # KLUUUUUUUDGE
 }
+binmode(DUPSTDOUT, ":utf8") unless ($seven);
 
 # defaults
 $anonymous ||= 0;
@@ -571,6 +600,7 @@ if ($superverbose) {
 sleep 2 unless ($silent);
 
 if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
+$SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
 select(C); $|++; select($stdout);
 
 sub defaultprompt {
@@ -605,6 +635,19 @@ exit;
 sub prinput {
 	my $i;
 	local($_) = shift; # bleh
+
+	# validate this string if we are in UTF-8 mode
+	unless ($seven) {
+		$probe = $_;
+		eval 'utf8::encode($probe);';
+		die("utf8 doesn't work right in this perl. run with -seven.\n")
+			if (length($probe) < length($_)); # should be at least
+		if ($probe =~ /($badutf8)/) {
+print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
+			print $stdout "*** ignoring this string\n";
+			return 0;
+		}
+	}
 
 	chomp;
 	$_ = &$precommand($_);
@@ -688,8 +731,6 @@ sub prinput {
 	@history = (($_, @history)[0..&min(scalar(@history), $maxhist)]);
 	$termrl->addhistory($_) if ($termrl);
 
-	#print $stdout join("|", @history); print $stdout scalar(@history),"\n"; &$prompt; return 0;
-
 	my $slash_first = ($_ =~ m#^/#);
 	return -1 if ($_ eq '/quit' || $_ eq '/q' || $_ eq '/bye' ||
 			$_ eq '/exit');
@@ -732,6 +773,12 @@ sub prinput {
 			print C (substr("?$key                    ", 0, 19)
 					. "\n");
 			sleep 1;
+		} elsif ($key eq 'tabcomp') {
+			if ($termrl) {
+				&generate_otabcomp;
+			} else {
+				print $stdout "*** readline isn't on\n";
+			}
 		} else {
 			print "*** not a valid option or setting: $key\n";
 		}
@@ -1041,7 +1088,9 @@ sub updatest {
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
-	$istring = unpack("H280", $string);
+	$istring = $string;
+	eval 'utf8::encode($istring)' unless ($seven);
+	$istring = unpack("H280", $istring);
 	for($i = 0; $i < length($istring); $i+=2) {
 		$urle .= '%' . substr($istring, $i, 2);
 	}
@@ -1085,11 +1134,11 @@ MONITOR:
 $rin = '';
 vec($rin,fileno(STDIN),1) = 1;
 # paranoia
+binmode($stdout, ":crlf") if ($termrl);
 unless ($seven) {
 	binmode(STDIN, ":utf8");
 	binmode($stdout, ":utf8");
 }
-binmode($stdout, ":crlf") if ($termrl);
 $interactive = $timeleft = $previous_last_id = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
 $last_rate_limit = undef;
@@ -1133,9 +1182,9 @@ $effpause = $rate_limit_rate - ($rate_limit_rate * 0.4);
 # second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
 $effpause -= ((1/$dmpause) * $effpause) if ($dmpause);
 # finally determine how many seconds should elapse
-print $stdout "-- that's funny: effpause is zero, using fallback 120sec\n"
+print $stdout "-- that's funny: effpause is zero, using fallback 180sec\n"
 	if (!$effpause && $verbose);
-$effpause = ($effpause) ? int(3600/$effpause) : 120;
+$effpause = ($effpause) ? int(3600/$effpause) : 180;
 				} else {
 					$effpause = 0+$pause;
 				}
@@ -1521,12 +1570,15 @@ sub descape {
 	$x =~ s/$bbqqmask/\\/g;
 
 	# try to do something sensible with unicode
-	if ($mode) {
+	if ($mode) { # this probably needs to be revised
 		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
 	} else {
 		if ($seven) {
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
+			$x =~ s/[\x80-\xff]/./g;
 		} else {
+			# try to promote to UTF-8
+			eval 'utf8::decode($x)';
 			$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
 		}
 		$x =~ s/\&quot;/"/g;
@@ -1534,6 +1586,10 @@ sub descape {
 		$x =~ s/\&lt;/\</g;
 		$x =~ s/\&gt;/\>/g;
 		$x =~ s/\&amp;/\&/g;
+	}
+	if ($newline) {
+		$x =~ s/\\n/\n/sg;
+		$x =~ s/\\r//sg;
 	}
 	return $x;
 }
