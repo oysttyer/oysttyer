@@ -19,7 +19,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.8;
-	$TTYtter_PATCH_VERSION = 5;
+	$TTYtter_PATCH_VERSION = 6;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -208,7 +208,8 @@ sub standardtweet {
 	}
 	$colour = $OFF . $colour;
 	# smb's underline/bold patch
-	$tweet =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${colour}/g;
+# 0.8.6
+	$tweet =~ s/(^|[^\w])\@(\w+)/\1\@${UNDER}\2${colour}/g;
 	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n";
 
 	return $g;
@@ -403,7 +404,7 @@ $e = <<'EOF';
   freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
         http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-     ${EM}tweet me: http://twitter.com/doctorlinguist${OFF}                   #;;${YELLOW}ooo${OFF};;
+         ${EM}tweet me: http://twitter.com/ttytter${OFF}                   #;;${YELLOW}ooo${OFF};;
             ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
 ######################################################           ,$B.${RED}*o***${OFF} O$,
 #                                                                a=o${RED}$*O*O*$${OFF}o=a
@@ -447,6 +448,16 @@ sub prinput {
 	$_ = &$precommand($_);
 	s/^\s+//;
 	s/\s+$//;
+	my $cfc = 0;
+	$cfc++ while (s/\033\[[0-9]?[ABCD]// || s/.[\177]// || s/.[\010]//
+		|| s/[\000-\037\177]//);
+	if ($cfc) {
+		$history[0] = $_;
+		print STDOUT "*** filtered control characters; now \"$_\"\n";
+	print STDOUT "*** use %% for truncated version, or append to %%.\n";
+		&$prompt;
+		return 0;
+	}
 
 	if (/^$/) {
 		&$prompt;
@@ -565,11 +576,12 @@ EOF
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
- --- twitter: doctorlinguist --- http://www.floodgap.com/software/ttytter/ ---
+ --- http://www.floodgap.com/software/ttytter/ ---
 
            *** subscribe to updates at http://twitter.com/ttytter
                                     or http://twitter.com/floodgap
                send your suggestions to me at ckaiser\@floodgap.com
+                                           or http://twitter.com/doctorlinguist
 
 EOF
 		&$prompt;
@@ -627,11 +639,9 @@ EOF
 				print STDOUT "\n($exec)\n";
 				system($exec);
 			}
-#${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
 			print STDOUT <<"EOF"; 
 
-${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (is followed by $my_json_ref->{'followers_count'} users)
-
+${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
 EOF
 			print STDOUT
 "\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
@@ -646,9 +656,7 @@ EOF
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
-# THIS IS A TEMPORARY KLUDGE
-# this has stopped working so it is disabled
-			unless (1 || $anonymous || $whoami eq $uname) {
+			unless (0 || $anonymous || $whoami eq $uname) {
 				my $g =
 		&grabjson(1, "$frurl?user_a=$whoami&user_b=$uname", 0);
 				print STDOUT 
@@ -872,10 +880,10 @@ sub grabjson {
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #16
 	# http://code.google.com/p/twitter-api/issues/detail?id=16
-	$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
-		"";
+	#$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
+	#	"";
 	# count needs to be removed for the default case due to show, etc.
-	#$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
+	$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
 
 	print STDOUT "$wand \"$url$xurl\"\n" if ($superverbose);
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
@@ -939,8 +947,8 @@ sub grabjson {
 	# test for single logicals
 	return {
 		'ok' => 1,
-		'result' => (($data eq 'true') ? 1 : 0),
-		'literal' => $data,
+		'result' => (($1 eq 'true') ? 1 : 0),
+		'literal' => $1,
 			} if ($data =~ /^['"]?(true|false)['"]?$/);
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #26
