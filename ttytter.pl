@@ -18,7 +18,7 @@ require 5.005;
 
 BEGIN {
 	$TTYtter_VERSION = 0.9;
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -43,21 +43,31 @@ BEGIN {
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
-		leader ssl
+		leader ssl rc norc
 	); %valid = (%opts_can_set, %opts_others);
-	if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc"))) {
-		while(<W>) {
-			chomp;
-			next if (/^\s*$/ || /^#/);
-			s/^-//;
-			($key, $value) = split(/\=/, $_, 2);
-			if ($valid{$key} && !length($$key)) {
-				$$key = $value;
-			} elsif (!$valid{$key}) {
-		warn "** setting $key not supported in this version\n";
+	$rc = (defined($rc) && length($rc)) ? $rc : "";
+	unless ($norc) {
+		if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc${rc}"))) {
+			while(<W>) {
+				chomp;
+				next if (/^\s*$/ || /^#/);
+				s/^-//;
+				($key, $value) = split(/\=/, $_, 2);
+				if ($key eq 'rc') {
+			warn "** that's stupid, setting rc in an rc file\n";
+				} elsif ($key eq 'norc') {
+			warn "** that's dumb, using norc in an rc file\n";
+				} elsif ($valid{$key} && !length($$key)) {
+					$$key = $value;
+				} elsif (!$valid{$key}) {
+			warn "** setting $key not supported in this version\n";
+				}
 			}
+			close(W);
+		} elsif (length($rc)) {
+			die("couldn't access rc file $n: $!\n".
+	"to use defaults, use -norc or don't specify the -rc option.\n\n");
 		}
-		close(W);
 	}
 	$seven ||= 0;
 	$lib ||= "";
@@ -86,6 +96,7 @@ BEGIN {
 		$readline =~ s/"$//;
 		#$termrl->Attribs()->{'autohistory'} = undef; # not yet
 		(%readline_completion) = map {$_ => 1} split(/\s+/, $readline);
+		%original_readline = %readline_completion;
 	} else {
 		$stdout = \*STDOUT;
 		$stdin = \*STDIN;
@@ -98,7 +109,6 @@ BEGIN {
 	}
 	unless ($seven) {
 		eval
-# 0.8.5
 'use utf8;binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
 	die("$@\nthis perl doesn't fully support UTF-8. use -seven.\n");
 	# this is for the prinput utf8 validator.
@@ -121,7 +131,7 @@ BEGIN {
 	 		 '\xe0[\x80-\x9f][\x80-\xbf]|'.
 	 		 '\xf0[\x80-\x8f][\x80-\xbf]{2}|'.
 	 		 '\xf8[\x80-\x87][\x80-\xbf]{3}|'.
-	 		 '\xfc[\x80-\x83][\x80-\xbf]{4}';
+	 		 '\xfc[\x80-\x83][\x80-\xbf]{4}'; # gah!
 
 	}
 	if ($timestamp) {
@@ -149,7 +159,7 @@ sub generate_otabcomp {
 		@keys = sort { $readline_completion{$b} <=>
 			$readline_completion{$a} } @j;
 		$factor = $readline_completion{$keys[0]};
-		foreach(split(/\s+/, $readline)) {
+		foreach(keys %original_readline) {
 			$readline_completion{$_} += $factor;
 		}
 		print $stdout "*** optimized readline:\n";
@@ -333,7 +343,8 @@ sub standardtweet {
 	}
 	$colour = $OFF . $colour;
 	# smb's underline/bold patch
-	$tweet =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${colour}/g;
+# 0.8.6
+	$tweet =~ s/(^|[^\w])\@(\w+)/\1\@${UNDER}\2${colour}/g;
 	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n" ;
 
 	return $g;
@@ -397,7 +408,7 @@ sub defaultautocompletion {
 
 	# handle / completion
 	if ($start == 0 && $text =~ m#^/#) {
-		return grep(/^$text/, '/history',
+		return grep(/^$text/i, '/history',
 			'/print', '/quit', '/bye', '/again',
 			'/wagain', '/whois', '/thump', '/dm',
 			'/refresh', '/dmagain', '/set', '/help',
@@ -410,18 +421,18 @@ sub defaultautocompletion {
 	# test somewhat blindly. this works even if a future readline
 	# DOES give us the word with @. also handles D, /wa, /wagain,
 	# /a, /again, etc.
-	if (($line =~ m#^(D|/wa|/wagain|/a|/again) #) ||
+	if (($line =~ m#^(D|/wa|/wagain|/a|/again) #i) ||
 		($start == 1 && substr($line, 0, 1) eq '@') ||
 		# this code is needed to prevent inline @ from flipping out
 		($start >= 1 && substr($line, ($start-2), 2) eq ' @')) {
-		@proband = grep(/^\@$text/, @rlkeys);
+		@proband = grep(/^\@$text/i, @rlkeys);
 		if (scalar(@proband)) {
 			@proband = map { s/^\@//;$_ } @proband;
 			return @proband;
 		}
 	}
 	# definites that are left over, including @ if it were included
-	if(scalar(@proband = grep(/^$text/, @rlkeys))) {
+	if(scalar(@proband = grep(/^$text/i, @rlkeys))) {
 		return @proband;
 	}
 
@@ -582,7 +593,7 @@ $e = <<'EOF';
   freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
         http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-     ${EM}tweet me: http://twitter.com/doctorlinguist${OFF}                   #;;${YELLOW}ooo${OFF};;
+         ${EM}tweet me: http://twitter.com/ttytter${OFF}                   #;;${YELLOW}ooo${OFF};;
             ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
 ######################################################           ,$B.${RED}*o***${OFF} O$,
 #                                                                a=o${RED}$*O*O*$${OFF}o=a
@@ -610,6 +621,9 @@ sub defaultprompt {
 	print $stdout "${CYAN}$rv${OFF}" unless ($termrl);
 }
 $prompt ||= \&defaultprompt;
+
+sub defaultaddaction { return 0; }
+$addaction ||= \&defaultaddaction;
 
 sub defaultconsole {
 	@history = ();
@@ -653,7 +667,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	$_ = &$precommand($_);
 	s/^\s+//;
 	s/\s+$//;
-	if (s/\033\[[ABCD]//g || s/[\000-\037]//g) {
+	my $cfc = 0;
+	$cfc++ while (s/\033\[[0-9]?[ABCD]// || s/.[\177]// || s/.[\010]//
+		|| s/[\000-\037\177]//);
+	if ($cfc) {
 		$history[0] = $_;
 		print $stdout "*** filtered control characters; now \"$_\"\n";
 	print $stdout "*** use %% for truncated version, or append to %%.\n";
@@ -732,8 +749,11 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	$termrl->addhistory($_) if ($termrl);
 
 	my $slash_first = ($_ =~ m#^/#);
+
 	return -1 if ($_ eq '/quit' || $_ eq '/q' || $_ eq '/bye' ||
 			$_ eq '/exit');
+
+	return 0 if (&$addaction($_));
 
 	# evaluator
 	if (m#^/ev(al)? (.+)$#) {
@@ -779,6 +799,21 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			} else {
 				print $stdout "*** readline isn't on\n";
 			}
+		} elsif ($key eq 'ntabcomp') { # sigh
+			if ($termrl) {
+				print $stdout "*** new TAB-comp entries: ";
+				$did_print = 0;
+				foreach(keys %readline_completion) {
+					next if ($original_readline{$_});
+					$did_print = 1;
+					print $stdout "$_ ";
+				}
+				print $stdout "(none)" if (!$did_print);
+				print $stdout "\n";
+			} else {
+				print $stdout "*** readline isn't on\n";
+			}
+
 		} else {
 			print "*** not a valid option or setting: $key\n";
 		}
@@ -879,11 +914,12 @@ EOF
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
- --- twitter: doctorlinguist --- http://www.floodgap.com/software/ttytter/ ---
+ --- http://www.floodgap.com/software/ttytter/ ---
 
            *** subscribe to updates at http://twitter.com/ttytter
                                     or http://twitter.com/floodgap
                send your suggestions to me at ckaiser\@floodgap.com
+                                           or http://twitter.com/doctorlinguist
 
 EOF
 		return 0;
@@ -916,9 +952,13 @@ EOF
 				&& scalar(@{ $my_json_ref })) {
 			my ($crap, $art) =
 				&tdisplay($my_json_ref, "again");
-			my ($time, $ts) = &wraptime($art->{'created_at'});
-			print $stdout "-- last update: $ts\n"
-				unless ($timestamp);
+			unless ($timestamp) {
+				my ($time, $ts1) = &wraptime(
+$my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
+				my ($time, $ts2) =
+					&wraptime($art->{'created_at'});
+			print $stdout "-- update covers $ts1 thru $ts2\n";
+			}
 		}
 		&$conclude;
 		unless ($mode eq 'w' || $mode eq 'wf') {
@@ -955,11 +995,10 @@ EOF
 				print $stdout "\n($exec)\n";
 				system($exec);
 			}
-#${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
+# 0.8.6
 			print $stdout <<"EOF"; 
 
-${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (is followed by $my_json_ref->{'followers_count'} users)
-
+${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
 EOF
 			print $stdout
 "\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
@@ -974,9 +1013,7 @@ EOF
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
-# THIS IS A TEMPORARY KLUDGE
-# this has stopped working so it is disabled
-			unless (0 || $anonymous || $whoami eq $uname) {
+			unless ($anonymous || $whoami eq $uname) {
 				my $g =
 		&grabjson("$frurl?user_a=$whoami&user_b=$uname", 0);
 				print $stdout 
@@ -1287,10 +1324,10 @@ sub grabjson {
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #16
 	# http://code.google.com/p/twitter-api/issues/detail?id=16
-	$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
-		"";
+	#$xurl = ($last_id) ? "?since_id=@{[ ($last_id-1) ]}&count=50" :
+	#	"";
 	# count needs to be removed for the default case due to show, etc.
-	#$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
+	$xurl = ($last_id) ? "?since_id=$last_id&count=50" : "";
 
 	print $stdout "$wand \"$url$xurl\"\n" if ($superverbose);
 	chomp($data = `$wand "$url$xurl" 2>/dev/null`);
