@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v0.9 (c)2007, 2008 cameron kaiser. all rights reserved.
+# TTYtter v0.9 (c)2007-2009 cameron kaiser. all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
 # distributed under the floodgap free software license
@@ -14,11 +14,11 @@
 
 require 5.005;
 
-#&grabjson;exit;
-
 BEGIN {
+#	@INC = (); # wreck intentionally for testing
 	$TTYtter_VERSION = 0.9;
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
+	$0 = "TTYtter";
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
 		if ($version);
@@ -28,10 +28,10 @@ BEGIN {
 	%opts_boolean = map { $_ => 1 } qw(
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
-		newline
+		newline vcheck verify
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
-		url rlurl dmurl newline
+		url rlurl dmurl newline wrap autosplit
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 	); %opts_secret = map { $_ => 1} qw(
@@ -39,13 +39,14 @@ BEGIN {
 	); %opts_can_set = map { $_ => 1 } qw(
 		url pause dmurl dmpause superverbose ansi verbose
 		update uurl rurl wurl avatar ttytteristas frurl
-		rlurl noprompt shorturl newline
+		rlurl noprompt shorturl newline wrap verify autosplit
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
-		leader ssl rc norc
+		leader ssl rc norc filter vcheck
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
+	$supreturnto = $verbose + 0;
 	unless ($norc) {
 		if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc${rc}"))) {
 			while(<W>) {
@@ -146,6 +147,32 @@ BEGIN {
 				    $timestamp eq "def");
 		}
 	}
+
+	# do we have POSIX::Termios? (usually we do)
+	eval 'use POSIX; $termios = new POSIX::Termios;';
+	print $stdout "-- termios test: $termios\n" if ($verbose);
+
+	# wrap warning
+	die(
+"** dude, what the hell kind of terminal can't handle a 5 character line?\n")
+		if ($wrap > 1 && $wrap < 5);
+	print $stdout "** warning: prompts not wrapped for wrap < 70\n"
+		if ($wrap > 1 && $wrap < 70);
+
+	# precompile filter line for speed
+	if ($filter) {
+		# note attributes
+		${"filter_$1"}++ while ($filter =~ s/^([a-z]+),//);
+		my $b = <<"EOF";
+		\$filter = sub {
+			local \$_ = shift;
+			return ($filter);
+		};
+EOF
+		undef $filter;
+		eval $b;
+		die("syntax error in your filter: $@\n") if (!length($filter));
+	}
 }
 
 sub end_me { exit; } # which falls through to ...
@@ -181,7 +208,10 @@ sub killkid {
 }
 
 # interpret script at this level
-if ($script) { $silent = 1; $pause = 0; $noansi = 1; $noprompt = 1; }
+if ($script) {
+	$silent = $noansi = $noprompt = 1;
+	$pause = $vcheck = 0;
+}
 
 # dup $stdout for benefit of various other scripts
 if ($termrl) {
@@ -294,7 +324,9 @@ sub defaultexception {
 $exception ||= \&defaultexception;
 # [{"text":"\"quote test\" -- let's see what that does to the code.","id":56487562,"user":{"name":"Cameron Kaiser","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","screen_name":"doctorlinguist","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","url":"http:\/\/www.cameronkaiser.com","id":3841961,"protected":false},"created_at":"Wed May 09 03:28:38 +0000 2007"},
 sub defaulthandle {
-	my ($tweet_ref, $class) = (@_);
+	my $tweet_ref = shift;
+	my $class = shift;
+
 	$class = ($verbose) ? "{$class} " : "";
 	if ($silent) {
 		print DUPSTDOUT $class . &standardtweet($tweet_ref);
@@ -324,6 +356,9 @@ sub standardtweet {
 	my $colour;
 	my $g;
 
+	# wordwrap really ruins our day here, thanks a lot, @augmentedfourth
+	# have to insinuate the ansi sequences after the string is wordwrapped
+
 	# br3nda's and smb's modified colour patch
 	unless ($anonymous) {
 		if ($sn eq $whoami) {
@@ -334,24 +369,36 @@ sub standardtweet {
 			$g = $colour = $RED;
 		}
 	}
-	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
+	$colour = $OFF . $colour;
 
+	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
+	$tweet = "<$sn> $tweet";
 	# br3nda's modified timestamp patch
 	if ($timestamp) {
 		my ($time, $ts) = &wraptime($ref->{'created_at'});
-		$g .= "[$ts] ";
+		$tweet = "[$ts] $tweet";
 	}
-	$colour = $OFF . $colour;
-	# smb's underline/bold patch
-# 0.8.6
-	$tweet =~ s/(^|[^\w])\@(\w+)/\1\@${UNDER}\2${colour}/g;
-	$g .= "<${EM}${sn}${colour}> ${tweet}${OFF}\n" ;
+	
+	# pull it all together
+	$tweet = &wwrap($tweet, ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0)
+		if ($wrap); # remember to account for prompt length on #1
+	$tweet =~ s/^([^<]*)<([^>]+)>/${g}\1<${EM}\2${colour}>/;
+	$tweet =~ s/\n*$//;
+	$tweet .= "$OFF\n";
 
-	return $g;
+	# smb's underline/bold patch goes on last
+	$tweet =~ s/(^|[^a-zA-Z0-9_])\@(\w+)/\1\@${UNDER}\2${colour}/g;
+
+	return $tweet;
 }
 $handle ||= \&defaulthandle;
 
-sub defaultconclude { ; }
+sub defaultconclude {
+	if ($filtered && $filter_count) {
+		print $stdout "-- (filtered $filtered tweets)\n";
+		$filtered = 0;
+	}
+}
 $conclude ||= \&defaultconclude;
 
 # {"recipient_id":3841961,"sender":{"url":"http:\/\/www.xanga.com\/the_shambleyqueen","name":"Staci Gainor","screen_name":"emo_mom","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/7460892\/normal\/Staci_070818__2_.jpg?1187488390","description":"mildly neurotic; slightly compulsive; keenly observant  Christian mom of four, including identical twins","location":"Pennsylvania","id":7460892,"protected":false},"created_at":"Fri Aug 24 04:03:14 +0000 2007","sender_screen_name":"emo_mom","recipient_screen_name":"doctorlinguist","recipient":{"url":"http:\/\/www.cameronkaiser.com","name":"Cameron Kaiser","screen_name":"doctorlinguist","profile_image_url":"http:\/\/assets2.twitter.com\/system\/user\/profile_image\/3841961\/normal\/me2.jpg?1176083923","description":"Christian conservative physician computer and road geek. Am I really as interesting as everyone says I am?","location":"Southern California","id":3841961,"protected":false},"text":"that is so cool; does she have a bit of an accent? do you? :-) and do you like vegemite sandwiches?","sender_id":7460892,"id":8570802}
@@ -367,10 +414,13 @@ sub standarddm {
 	my $ref = shift;
 	my ($time, $ts) = &wraptime($ref->{'created_at'});
 	my $text = &descape($ref->{'text'});
-	$text =~ s/(^|\s)\@(\w+)/\1\@${UNDER}\2${OFF}${GREEN}/g;
-	my $g = "${GREEN}[DM ${EM}".
+	my $g = &wwrap("[DM ".
 		&descape($ref->{'sender'}->{'screen_name'}) .
-		"${OFF}${GREEN}/$ts] $text $OFF\n";
+		"/$ts] $text", ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0);
+	$g =~ s/^\[DM ([^\/]+)\//${GREEN}[DM ${EM}\1${OFF}${GREEN}\//;
+	$g =~ s/\n*$//;
+	$g .= "$OFF\n";
+	$g =~ s/(^|[^a-zA-Z0-9_])\@(\w+)/\1\@${UNDER}\2${colour}/g;
 	return $g;
 }
 $dmhandle ||= \&defaultdmhandle;
@@ -416,6 +466,7 @@ sub defaultautocompletion {
 			'/verbose', '/short');
 	}
 	@rlkeys = keys(%readline_completion);
+
 	# handle @ completion. this works slightly weird because
 	# readline hands us the string WITHOUT the @, so we have to
 	# test somewhat blindly. this works even if a future readline
@@ -452,9 +503,6 @@ if ($termrl) {
 
 select($stdout); $|++;
 
-die("$0: specify -user=username:password\n")
-	if (!$anonymous && 
-		(!length($user) || $user !~ /:/ || $user =~ /[\s;><|]/));
 if ($lynx) {
 	if (length($lynx) > 1 && -x "/$lynx") {
 		$wend = $lynx;
@@ -477,25 +525,113 @@ if ($lynx) {
 	"you must have either Lynx or cURL installed to use TTYtter.\n")
 					if (!length($wend));
 			$lynx = 1;
+		} else {
+			$curl = 1;
 		}
 	}
 }
+
+sub defaultauthenticate {
+	my @foo;
+	my $pass;
+
+	return undef if ($anonymous);
+	@foo = split(/:/, $user, 2);
+	$whoami = $foo[0];
+	die("choose -user=username[:password], or -anonymous.\n")
+		if (!length($whoami) || $whoami eq '1');
+	$pass = $foo[1];
+	if (!length($pass)) {
+		# original idea by @jcscoobyrs, heavily modified
+		my $k;
+		my $l;
+
+		$l = "no termios; password WILL";
+		if ($termios) {
+			$termios->getattr(fileno($stdin));
+			$k = $termios->getlflag;
+			$termios->setlflag($k ^ &POSIX::ECHO);
+			$termios->setattr(fileno($stdin));
+			$l = "password WILL NOT";
+		}
+		print $stdout "enter password for $whoami ($l be echoed): ";
+		chomp($pass = <$stdin>);
+		if ($termios) {
+			print $stdout "\n";
+			$termios->setlflag($k);
+			$termios->setattr(fileno($stdin));
+		}
+	}
+	die("a password must be specified.\n") if (!length($pass));
+	return ($lynx) ? "-auth=$whoami:$pass" :
+		($curl) ? "--basic -u $whoami:$pass" :
+		die("authenticating for an unknown browser: wtf\n");
+}
+$authenticate ||= \&defaultauthenticate;
+
+# authenticate sets $whoami, sphincter says $what
+$auth = ($anonymous) ? "" : &$authenticate;
 if ($lynx) {
 	$wend = "$wend -nostatus";
 	$weld = "$wend -source";
-	$wend = "$wend -auth=$user" unless ($anonymous);
+	$wend = "$wend $auth";
 	$wand = "$wend -source";
 	$wind = "$wand";
 	$wend = "$wend -post_data";
 } else {
-	$wend = "$wend -s --basic -m 13 -f";
+	$wend = "$wend -s -m 13 -f";
 	$weld = $wend;
-	$wend = "$wend -u $user" unless ($anonymous);
+	$wend = "$wend $auth";
 	$wand = "$wend -f";
 	$wind = "$wend";
 	$wend = "$wend --data \@-";
 }
-$whoami = ($anonymous) ? undef : ((split(/\:/, $user, 2))[0]);
+
+# update check
+sub updatecheck {
+	my $vcheck_url =
+		"http://www.floodgap.com/software/ttytter/00current.txt";
+	my $vs;
+	my $tverify;
+	my $inversion;
+	my $vittles;
+	my $maj;
+	my $min;
+
+	print $stdout "-- checking version at $vcheck_url\n";
+	chomp($vs = `$weld $vcheck_url`);
+	($tverify, $inversion, $vittles) = split(/;/, $vs, 3);
+	if ($tverify ne 'ttytter') {
+		$vs = "-- warning: unable to verify version\n";
+	} else {
+		($inversion =~/^(\d+\.\d+)\.(\d+)$/) && ($maj = 0+$1,
+			$min = 0+$2);
+		if ($TTYtter_VERSION < $maj ||
+				($TTYtter_VERSION == $maj &&
+				 $TTYtter_PATCH_VERSION < $min)) {
+			$vs =
+	"** NEWER TTYtter VERSION NOW AVAILABLE: $inversion **\n";
+		} elsif ($TTYtter_VERSION > $maj ||
+				($TTYtter_VERSION == $maj &&
+				 $TTYtter_PATCH_VERSION > $min)) {
+			$vs = 
+	"** REMINDER: you are using a beta or unofficial release\n";
+		} else {
+			$vs =
+	"-- your version of TTYtter is up to date ($inversion)\n";
+		}
+	}
+	$vs .= "** TTYtter NOTICE: $vittles\n" if (length($vittles));
+	return $vs;
+}
+if ($vcheck && !length($status)) {
+	$vs = &updatecheck;
+} else {
+	$vs =
+	"-- no version check performed (use -vcheck to check on startup)\n"
+	unless ($script);
+}
+print $stdout $vs; # and then again when client starts up
 
 # initial login tests and command line controls
 
@@ -506,8 +642,16 @@ for(;;) {
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
 	die(
-"sorry, status too long: reduce by @{[ length($status)-140 ]} characters.\n")
-		if (length($status) > 140);
+"sorry, status too long: reduce by @{[ &ulength($status)-140 ]} bytes, ".
+"or use -autosplit={word,char,cut}.\n")
+		if (&ulength($status) > 140 && !$autosplit);
+	($status, $next) = &usplit($status, ($autosplit eq 'char' ||
+			$autosplit eq 'cut') ? 1 : 0)
+		if (!length($next));
+	if ($autosplit eq 'cut' && length($next)) {
+		print "-- warning: input autotrimmed to 140 bytes\n";
+		$next = "";
+	}
 	if (length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
@@ -519,7 +663,7 @@ for(;;) {
 	}
 	if ($rv) {
 		$x = $rv >> 8;
-		print "FAILED. ($x) bad login? bad url? resource down?\n";
+		print "FAILED. ($x) bad password, login or URL? server down?\n";
 		print "access failure on: ";
 		print (($phase) ? $update : $url);
 		print "\n";
@@ -537,6 +681,12 @@ for(;;) {
 	if ($status && !$phase) {
 		print "SUCCEEDED!\n";
 		$phase++;
+		next;
+	}
+	if (length($next)) {
+		print "SUCCEEDED!\n(autosplit) ";
+		$status = $next;
+		$next = "";
 		next;
 	}
 	last;
@@ -584,7 +734,7 @@ if ($daemon) {
 print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-         ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2008 cameron kaiser${OFF}                 @             @
+         ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2009 cameron kaiser${OFF}                 @             @
 EOF
 $e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
@@ -610,14 +760,11 @@ if ($superverbose) {
 }
 sleep 2 unless ($silent);
 
-if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
-$SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
-select(C); $|++; select($stdout);
-
 sub defaultprompt {
 	my $rv = ($noprompt) ? "" : "TTYtter> ";
 	my $rvl = ($noprompt) ? 0 : 9;
 	return ($rv, $rvl) if (shift);
+	$wrapseq = 0;
 	print $stdout "${CYAN}$rv${OFF}" unless ($termrl);
 }
 $prompt ||= \&defaultprompt;
@@ -643,6 +790,12 @@ sub defaultconsole {
 }
 
 $console ||= \&defaultconsole;
+
+# this has to be last or the background process can't see the full API
+if ($child = open(C, "|-")) { ; } else { goto MONITOR; }
+$SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
+select(C); $|++; select($stdout);
+
 &$console;
 exit;
 
@@ -655,7 +808,8 @@ sub prinput {
 		$probe = $_;
 		eval 'utf8::encode($probe);';
 		die("utf8 doesn't work right in this perl. run with -seven.\n")
-			if (length($probe) < length($_)); # should be at least
+			if (&ulength($probe) < length($_));
+			# should be at least as big
 		if ($probe =~ /($badutf8)/) {
 print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			print $stdout "*** ignoring this string\n";
@@ -762,6 +916,12 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		return 0;
 	}
 
+	# version check
+	if (m#^/v(ersion)?check$# || m#^/u(pdate)?check$#) {
+		print $stdout &updatecheck;
+		return 0;
+	}
+
 	# url shortener routine
 	if (m#^/sh(ort)? (http://[^ ]+)#) {
 		print $stdout
@@ -839,7 +999,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$value !~ m#^(http|https|gopher)://#) {
 				print $stdout "*** must be valid URL: $key\n";
 			} else {
-				$$key = $value;
+				KEYAGAIN: $$key = $value;
 				print $stdout "*** changed: $key => $$key\n";
 
 				# handle special values
@@ -856,6 +1016,14 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 					print C (substr(($value . (" " x 1024)),
 						0, 1024));
 					sleep 1;
+				}
+				if ($key eq 'superverbose') {
+					if ($value eq '0') {
+						$key = 'verbose';
+						$value = $supreturnto;
+						goto KEYAGAIN;
+					}
+					$supreturnto = $verbose;
 				}
 			}
 		} elsif ($valid{$key}) {
@@ -910,7 +1078,7 @@ EOF
 		}
 		print <<"EOF";
 
- TTYtter $TTYtter_VERSION is (c)2008 cameron kaiser. all rights reserved. this software
+ TTYtter $TTYtter_VERSION is (c)2009 cameron kaiser. all rights reserved. this software
  is offered AS IS, with no guarantees. it is not endorsed by Obvious or the
  executives and developers of Twitter.
 
@@ -995,7 +1163,6 @@ $my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
 				print $stdout "\n($exec)\n";
 				system($exec);
 			}
-# 0.8.6
 			print $stdout <<"EOF"; 
 
 ${CYAN}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'})
@@ -1091,19 +1258,32 @@ EOF
 		s#^/##; # leave the second slash on
 	}
 
-	if (length > 140) {
-		$g = length($_) - 140;
-		$_ = substr($_, 0, 140);
-		# s.m.r.t. truncator (like Homer Simpson)
-		s/[^a-zA-Z0-9]+$//;
-		s/\s+[^\s]+$// if (length == 140);
+	(@tweetstack) = &usplit($_, ($autosplit eq 'char' ||
+		$autosplit eq 'cut') ? 1 : 0);
+	$_ = shift(@tweetstack);
+	if (scalar(@tweetstack)) {
 		$history[0] = $_;
-		print $stdout
-"*** sorry, tweet too long by $g characters; truncated to \"$_\" (@{[ length ]} chars)\n";
+		if (!$autosplit) {
+			print $stdout &wwrap(
+"*** sorry, tweet too long; ".
+"truncated to \"$_\" (@{[ &ulength($_) ]} bytes)\n");
 	print $stdout "*** use %% for truncated version, or append to %%.\n";
-		return 0;
+			return 0;
+		}
+		print $stdout "*** overlong tweet; autosplitting to \"$_\"\n";
 	}
 	&updatest($_, 1);
+	if (scalar(@tweetstack)) {
+		$_ = shift(@tweetstack);
+		@history = (($_, @history)[0..&min(scalar(@history),
+			$maxhist)]);
+		$termrl->addhistory($_) if ($termrl);
+		print $stdout &wwrap("*** next tweet part is ready: \"$_\"\n");
+		print $stdout "*** (this will also be automatically split)\n"
+			if (&ulength($_) > 140);
+		print $stdout
+		"*** to send this next portion of your tweet, use %%.\n";
+	}
 	return 0;
 }
 
@@ -1122,6 +1302,19 @@ sub updatest {
 	}
 	$string = &$prepost($string);
 
+	if ($verify) {
+		my $answer;
+
+		warn &wwrap("-- verify you want to post: \"$string\"\n");
+		print $stdout
+"-- do you want to post this tweet? (only y or Y is affirmative): ";
+		chomp($answer = lc(<$stdin>));
+		if ($answer ne 'y') {
+			warn "-- ok, tweet is NOT posted.\n";
+			return 0;
+		}
+	}
+
 	# to avoid unpleasantness with UTF-8 interactions, this will simply
 	# turn the whole thing into a hex string and insert %, thus URL
 	# escaping the whole thing whether it needs it or not. ugly? well ...
@@ -1131,14 +1324,18 @@ sub updatest {
 	for($i = 0; $i < length($istring); $i+=2) {
 		$urle .= '%' . substr($istring, $i, 2);
 	}
+	my $credirect = ($superverbose) ? "" : " 2>/dev/null >/dev/null";
+	my $cline = "$wend ${update}${credirect}";
+	print $stdout "$cline\n" if ($superverbose);
 	$subpid = open(N,
 		# I know the below is redundant. this is to remind me to see
 		# if there is something cleverer to do with it later.
-"|$wend $update 2>/dev/null >/dev/null") || do{
+"|$cline") || do{
 		print $stdout "post failure: $!\n" if ($interactive);
 		return 99;
 	};
 	print N "source=TTYtter&status=$urle\n";
+	print $stdout "source=TTYtter&status=$urle\n" if ($superverbose);
 	close(N);
 	if ($? > 0) {
 		$x = $? >> 8;
@@ -1247,6 +1444,7 @@ $effpause = ($effpause) ? int(3600/$effpause) : 180;
 	} else {
 		$rate_limit_next-- unless ($anonymous);
 	}
+	$wrapseq = 0; # remember, we don't know when commands are sent.
 	&refresh($interactive, $previous_last_id) unless ($timeleft
 		|| (!$effpause && !$interactive));
 	$previous_last_id = $last_id;
@@ -1264,6 +1462,8 @@ $effpause = ($effpause) ? int(3600/$effpause) : 180;
 	$interactive = 0;
 	print $stdout $notify_rate;
 	$notify_rate = "";
+	print $stdout $vs;
+	$vs = "";
 	$timeleft = ($effpause) ? $effpause : 60;
 	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
 		sysread(STDIN, $rout, 20);
@@ -1506,7 +1706,12 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 
 			next if ($id <= $last_id);
 			next if (!length($j->{'user'}->{'screen_name'}));
+			if ($filter && &$filter(&descape($j->{'text'}))) {
+				$filtered++;
+				next;
+			}
 
+			$wrapseq++;
 			$printed += &$handle($j,
 			($class || (($id <= $relative_last_id) ? 'again' :
 				undef)));
@@ -1553,6 +1758,7 @@ sub dmrefresh {
 			next if
 		(!length($my_json_ref->[$g]->{'sender'}->{'screen_name'}));
 
+			$wrapseq++;
 			$printed += &$dmhandle($my_json_ref->[$g]);
 		}
 		$max = 0+$my_json_ref->[0]->{'id'};
@@ -1560,7 +1766,6 @@ sub dmrefresh {
 	print $stdout "-- sorry, no new direct messages.\n"
 		if (($interactive || $verbose) && !$printed);
 	$last_dm = &max($last_dm, $max);
-	# 0.8.5
 	$dm_first_time = 0 if ($last_dm || !scalar(@{ $my_json_ref }));
 	print $stdout "-- dm bookmark is $last_dm.\n" if ($verbose);
 	&$dmconclude;
@@ -1633,3 +1838,99 @@ sub descape {
 
 sub max { return ($_[0] > $_[1]) ? $_[0] : $_[1]; }
 sub min { return ($_[0] < $_[1]) ? $_[0] : $_[1]; }
+# this is mostly a utility function for /eval
+sub a   { return "('" . join("', '", @_) . "')"; }
+
+sub wwrap {
+	return shift if (!$wrap);
+
+	my $k;
+	my $klop = ($wrap > 1) ? $wrap : ($ENV{'COLUMNS'} || 79);
+	$klop--; # don't ask me why
+	my $lop;
+	my $buf = '';
+	my $string = shift;
+	my $indent = shift; # for very first time with the prompt
+	my $needspad = 0;
+
+	$lop = $klop - $indent;
+	$lop -= $indent;
+	W: while($k = length($string)) {
+		$lop += $indent if ($lop < $klop);
+		($buf .= $string, last W) if ($k <= $lop && $string !~ /\n/);
+		($string =~ s/^\s*\n//) && ($buf .= "\n",
+			$needspad = 1,
+			next W);
+		if ($needspad) {
+			$string = "   $string";
+			$needspad = 0;
+		}
+		# I don't know if people will want this, so it's commented out.
+		#($string =~ s#^(http://[^\s]+)# #) && ($buf .= "$1\n",
+		#	next W);
+		($string =~ s/^(.{4,$lop})\s/   /) && ($buf .= "$1\n",
+			next W); # i.e., at least one char, plus 3 space indent
+		($string =~ s/^(.{$lop})/   /) && ($buf .= "$1\n",
+			next W);
+		warn
+		"-- pathologic string somehow failed wordwrap! \"$string\"\n";
+		return $buf;
+	}               
+	1 while ($buf =~ s/\n\n\n/\n\n/s); # mostly paranoia
+	return $buf;
+}
+
+# these subs look weird, but they're encoding-independent and run anywhere
+sub ulength { my @k; return (scalar(@k = unpack("C*", shift))); }
+sub usplit {
+	# take a string and return up to 140 bytes plus the rest.
+	# this is tricky because we don't want to split up UTF-8 sequences, so
+        # we let Perl do the work since it internally knows where they end.
+	my $k = shift;
+	my $z;
+	my $mode = shift;
+	my @m;
+	my $q;
+	my $r;
+
+	$mode += 0;
+
+	# optimize whitespace
+	$k =~ s/^\s+//;
+	$k =~ s/\s+$//;
+	$k =~ s/\s+/ /g;
+	$z = &ulength($k);
+	return ($k) if ($z <= 140); # also handles the trivial case
+
+	# this needs to be reply-aware, so we put @'s at the beginning of
+	# the second half too (and also Ds for DMs)
+	$r .= $1 if ($k =~ s/^(\@[^\s]+\s)\s*// ||
+			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # not while -- just one
+	$k = "$r$k";
+
+	my $i = 140;
+	$i-- while(($z = &ulength($q = substr($k, 0, $i))) > 140);
+	$m = substr($k, $i);
+
+	# if we just wanted split-on-byte, return now (mode = 1)
+	if ($mode) {
+		# optimize again in case we split on whitespace
+		$q =~ s/\s+$//;
+		$m =~ s/^\s+//;
+		return ($q, "$r$m");
+	}
+
+	# else try to do word boundary and cut even more
+	if (!$autosplit) { # use old mechanism first: drop trailing non-alfanum
+		($q =~ s/([^a-zA-Z0-9]+)$//) && ($m = "$1$m");
+		# optimize again in case we split on whitespace
+		$q =~ s/\s+$//;
+		if (&ulength($q) < 140) {
+			$m =~ s/^\s+//;
+			return($q, "$r$m")
+		}
+	}
+	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
+	return ($q, "$r$m");
+}
+
