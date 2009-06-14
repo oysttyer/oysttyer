@@ -17,9 +17,9 @@ require 5.005;
 
 BEGIN {
 #	@INC = (); # wreck intentionally for testing
-	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 5;
 	$0 = "TTYtter";
+	$TTYtter_VERSION = "0.9";
+	$TTYtter_PATCH_VERSION = 6;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -38,7 +38,7 @@ BEGIN {
 		colourdm colourreply colourwarn coloursearch idurl
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
-		apibase queryurl trendurl idurl delurl
+		apibase queryurl trendurl idurl delurl dmdelurl
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas
 	); %opts_can_set = map { $_ => 1 } qw(
@@ -47,7 +47,7 @@ BEGIN {
 		rlurl noprompt shorturl newline wrap verify autosplit
 		notimeline queryurl trendurl colourprompt colourme
 		colourdm colourreply colourwarn coloursearch idurl
-		urlopen delurl noratelimit notrack
+		urlopen delurl notrack dmdelurl
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -169,6 +169,8 @@ BEGIN {
 
 	# precompile filter line for speed
 	if ($filter) {
+		$filter =~ s/^\"//;
+		$filter =~ s/\"$//;
 		# note attributes
 		${"filter_$1"}++ while ($filter =~ s/^([a-z]+),//);
 		my $b = <<"EOF";
@@ -178,16 +180,22 @@ BEGIN {
 		};
 EOF
 		undef $filter;
+		#print $b;
 		eval $b;
 		die("syntax error in your filter: $@\n") if (!length($filter));
 	}
 	$is_background = 0;
+	$alphabet = "abcdefghijkLmnopqrstuvwxyz";
+
 	%store_hash = ();
 	$back_split = 200; # i.e., 200 tweets reserved for background menuroll
 	$mini_split = 250; # i.e., 10 tweets for the mini-menu (/th)
 	# leaving 50 tweets for the foreground temporary menus
 	$tweet_counter = 0;
-	$alphabet = "abcdefghijkLmnopqrstuvwxyz";
+
+	%dm_store_hash = ();
+	$dm_counter = 0;
+
 	$in_reply_to = 0;
 	$expected_tweet_ref = undef;
 }
@@ -269,7 +277,7 @@ sub compile_tracktags {
 
 sub end_me { exit; } # which falls through to ...
 END {
-	&killkid;
+	&killkid unless ($in_backticks); # this is disgusting
 }
 sub generate_otabcomp {
 	if (scalar(@j = keys(%readline_completion))) {
@@ -361,6 +369,7 @@ $frurl ||= "${apibase}/friendships/exists.json";
 $rlurl ||= "${apibase}/account/rate_limit_status.json";
 $idurl ||= "${apibase}/statuses/show";
 $delurl ||= "${apibase}/statuses/destroy";
+$dmdelurl ||= "${apibase}/direct_messages/destroy";
 
 #$shorturl ||= "http://bit.ly/api?url=";
 $shorturl ||= "http://is.gd/api.php?longurl=";
@@ -427,7 +436,7 @@ sub generate_ansi {
 	$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
 	$CYAN = ($ansi) ? "${ESC}[36m" : '';
 
-	$EM = ($ansi) ? "${ESC}[1;3m" : '';
+	$EM = ($ansi) ? "${ESC}[1m" : '';
 	$UNDER = ($ansi) ? "${ESC}[4m" : '';
 	$OFF = ($ansi) ? "${ESC}[0m" : '';
 
@@ -544,10 +553,11 @@ sub defaultchoosecolour {
 		} elsif ($tweet =~ /\@$whoami/i) {
 			# if I'm in the tweet, colour red
 			return $CCreply;
-		} elsif ($ref->{'class'} eq 'search') {
-			# if this is a search result, colour cyan
-			return $CCsearch;
-		}
+		} 
+	}
+	if ($ref->{'class'} eq 'search') { # anonymous allows this too
+		# if this is a search result, colour cyan
+		return $CCsearch;
 	}
 	return '';
 }
@@ -573,7 +583,7 @@ sub standarddm {
 	my $ref = shift;
 	my ($time, $ts) = &wraptime($ref->{'created_at'});
 	my $text = &descape($ref->{'text'});
-	my $g = &wwrap("[DM ".
+	my $g = &wwrap("[DM d$ref->{'menu_select'}][".
 		&descape($ref->{'sender'}->{'screen_name'}) .
 		"/$ts] $text", ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0);
 	$g =~ s/^\[DM ([^\/]+)\//${CCdm}[DM ${EM}\1${OFF}${CCdm}\//;
@@ -621,6 +631,7 @@ sub defaultautocompletion {
 			'/print', '/quit', '/bye', '/again',
 			'/wagain', '/whois', '/thump', '/dm',
 			'/refresh', '/dmagain', '/set', '/help',
+			'/reply', '/url', '/thread',
 			'/replies', '/ruler', '/exit', '/me',
 			'/verbose', '/short');
 	}
@@ -724,8 +735,8 @@ sub defaultauthenticate {
 		}
 	}
 	die("a password must be specified.\n") if (!length($pass));
-	return ($lynx) ? "-auth=$whoami:$pass" :
-		($curl) ? "-u $whoami:$pass" : # no --basic now (ktj)
+	return ($lynx) ? ("-auth=$whoami:$pass") :
+		($curl) ? ("-u", "$whoami:$pass") : # no --basic now (ktj)
 		die("authenticating for an unknown browser: wtf\n");
 }
 $authenticate ||= \&defaultauthenticate;
@@ -734,21 +745,52 @@ $authenticate ||= \&defaultauthenticate;
 sub update_authenticationheaders {
 #TODO
 # needs to stop asking for password all the damn time when not given
-	$auth = ($anonymous) ? "" : &$authenticate;
+	(@auth) = ($anonymous) ? "" : &$authenticate;
 	if ($lynx) {
-		$wend = "$baseagent -nostatus";
-		$weld = "$wend -source";
-		$wend = "$wend $auth";
-		$wand = "$wend -source";
-		$wind = "$wand";
-		$wend = "$wend -post_data";
+		$weld = "$baseagent -nostatus -source";
+
+		@wend = ('-nostatus');
+		@weld = (@wend, '-source');
+		@wend = (@wend, @auth);
+		@wand = (@wend, '-source');
+		@wind = (@wand);
+		@wend = (@wend, '-post_data');
+		$stringify_args = sub {
+			my $basecom = shift;
+			my $resource = shift;
+			my $data = shift;
+			my @k = join("\n", @_);
+
+			$basecom = "$basecom \"$resource\" -";
+			return ($basecom, "@k", $data);
+		};
 	} else {
-		$wend = "$baseagent -s -m 13 -f";
-		$weld = $wend;
-		$wend = "$wend $auth";
-		$wand = "$wend -f";
-		$wind = "$wend";
-		$wend = "$wend --data \@-";
+		$weld = "$baseagent -s -m 13 -f";
+
+		@wend = ('-s', '-m', '13', '-f');
+		@weld = @wend;
+		@wend = (@wend, @auth);
+		@wand = (@wend, '-f');
+		@wind = @wend;
+		$stringify_args = sub {
+			my $basecom = shift;
+			my $resource = shift;
+			my $data = shift;
+			my $p;
+			my $l = '';
+
+			foreach $p (@_) {
+				if ($p =~ /^-/) {
+					$l .= "\n" if (length($l));
+					$l .= "$p ";
+					next;
+				}
+				$l .= $p;
+			}
+			$l .= "\nurl = \"$resource\"\n";
+			$l .= "data = \"$data\"\n" if length($data);
+			return ("$basecom -K -", $l, undef);
+		};
 	}
 }
 &update_authenticationheaders;
@@ -821,10 +863,9 @@ for(;;) {
 	if (length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
-		$cline = "$wind $url 2>/dev/null";
 		print "test-login "; 
-		print "\n$cline\n" if ($superverbose);
-		$data = `$cline`;
+		$data = &backticks($baseagent, '/dev/null', undef,
+					$url, undef, @wind);
 		$rv = $?;
 	}
 	if ($rv) {
@@ -1081,6 +1122,9 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$expected_tweet_ref = undef;
 	}
 
+	return 0 unless length; # actually possible to happen
+				# with control char filters and history.
+
 	# handle history display
 	if ($_ eq '/history' || $_ eq '/h') {
 		@history = (($_, @history)[0..&min(scalar(@history),
@@ -1101,9 +1145,9 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	return 0 if (&$addaction($_));
 
 	# add commands here
-	if (m#^/zipet (..)#) {
-		$k = &get_tweet($1);
-		warn "$k->{'user'}->{'screen_name'} said $k->{'text'}\n";
+	if (m#^/zipet (...)#) {
+		$k = &get_dm($1);
+		warn "$k->{'sender'}->{'screen_name'} said $k->{'text'}\n";
 		return 0;
 	}
 
@@ -1206,6 +1250,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		} else {
 			print $stdout "-- sorry, no results were found.\n";
 		}
+		&$conclude;
 		return 0;
 	}
 	if ($_ eq '/notrack') { # special case
@@ -1414,10 +1459,10 @@ EOF
 |                 |  you can also FOLLOW or LEAVE a username (no slash) 
 +-----------------+  or send them a DM via D username message (no slash)
 
-+--- TWEET SELECTION --------------------------------------------------------+
-| all tweets have a menu code (letter + number). example:                    |
++--- TWEET AND DM SELECTION -------------------------------------------------+
+| all DMs and tweets have a menu code (letter + number, d for DMs). example: |
 |      a5> <ttytter> Send me Dr Pepper http://www.floodgap.com/TTYtter       |
-|                                                                            |
+|      [DM da0][ttytter/Sun Jan 32 1969] I think you are cute
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
 |      becomes  \@ttytter I also like Dr Pepper     (and is threaded)         |
@@ -1428,7 +1473,7 @@ EOF
 |      Dummy terminal users, try /set urlopen lynx -dump %U | more           |
 | /delete a5                        deletes tweet a5, if it's your tweet     |
 +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
-
+=====> /reply, /delete and /url work for direct message menu codes too! <=====
 EOF
 		if ($termrl) {
 			$termrl->readline("PRESS RETURN/ENTER> ");
@@ -1466,8 +1511,8 @@ EOF
 		return 0;
 	}
 	if ($_ eq '/ruler' || $_ eq '/ru') {
-		my ($prompt, $prolen) = &$prompt(1);
-		$prolen = $prolen x " ";
+		my ($prompt, $prolen) = (&$prompt(1));
+		$prolen = " " x $prolen;
 		print $stdout <<"EOF";
 ${prolen}         1         2         3         4         5         6         7         8         9         0         1         2         3        XX
 ${prompt}1...5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5...XX
@@ -1498,7 +1543,8 @@ EOF
 $my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
 				my ($time, $ts2) =
 					&wraptime($art->{'created_at'});
-			print $stdout "-- update covers $ts1 thru $ts2\n";
+			print $stdout &wwrap(
+				"-- update covers $ts1 thru $ts2\n");
 			}
 		}
 		&$conclude;
@@ -1595,18 +1641,30 @@ EOF
 		return 0;
 	}
 
-	if (m#^/url ([a-zA-Z][0-9])$#) {
+	if (m#^/url (d?[a-zA-Z][0-9])$#) {
 		my $code = lc($1);
-		my $tweet = &get_tweet($code);
+		my $tweet;
 		$urlshort = undef;
-		if (!defined($tweet)) {
-			print $stdout "-- no such tweet (yet?): $code\n";
-			return 0;
-		}
+
+		if ($code =~ /^d/ && length($code) == 3) {
+			$tweet = &get_dm($code); # USO!
+			if (!defined($tweet)) {
+				print $stdout
+					"-- no such DM (yet?): $code\n";
+				return 0;
+			}
+		} else {
+			$tweet = &get_tweet($code);
+			if (!defined($tweet)) {
+				print $stdout
+					"-- no such tweet (yet?): $code\n";
+				return 0;
+			}
+		} 
 		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
-	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#]+)##) {
+	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
 			my $url = $1 . "://$2";
 			$url =~ s/[\.\?]$//;
 			my $comm = $urlopen;
@@ -1619,6 +1677,7 @@ EOF
 			if (!defined($urlshort));
 		return 0;
 	}
+
 	if (s#^/(e?)r(etweet|t) ([a-zA-Z][0-9])\s*##) {
 		my $mode = $1;
 		my $code = lc($3);
@@ -1627,6 +1686,8 @@ EOF
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
+		$in_reply_to = $tweet->{'id'};
+		$expected_tweet_ref = $tweet;
 		$retweet = "RT @" .
 			&descape($tweet->{'user'}->{'screen_name'}) .
 			": " . &descape($tweet->{'text'});
@@ -1666,6 +1727,28 @@ EOF
 		&deletest($tweet->{'id'}, 1);
 		return 0;
 	}
+	# DM delete version
+	if (m#^/del(ete)? ([dD][a-zA-Z][0-9])$#) {
+		my $code = lc($2);
+		my $dm = &get_dm($code);
+		if (!defined($dm)) {
+			print $stdout "-- no such DM (yet?): $code\n";
+			return 0;
+		}
+		print $stdout &wwrap(
+			"-- verify you want to delete: " .
+		"(from @{[ &descape($dm->{'sender'}->{'screen_name'}) ]}) ".
+			"\"@{[ &descape($dm->{'text'}) ]}\"");
+		print $stdout
+"\n-- sure you want to delete? (only y or Y is affirmative): ";
+		chomp($answer = lc(<$stdin>));
+		if ($answer ne 'y') {
+			warn "-- ok, DM is NOT deleted.\n";
+			return 0;
+		}
+		&deletedm($dm->{'id'}, 1);
+		return 0;
+	}
 
 	if (s#^/re(ply)? ([a-zA-Z][0-9]) ## && length) {
 		my $code = lc($2);
@@ -1676,7 +1759,25 @@ EOF
 		}
 		$in_reply_to = $tweet->{'id'};
 		$expected_tweet_ref = $tweet;
-		$_ = '@' . &descape($tweet->{'user'}->{'screen_name'}) . " $_";
+		my $target = &descape($tweet->{'user'}->{'screen_name'});
+		$readline_completion{'@'.$target}++ if ($termrl);
+		$_ = '@' . $target . " $_";
+		print $stdout &wwrap("(expanded to \"$_\")");
+		print $stdout "\n";
+		goto TWEETPRINT; # fugly! FUGLY!
+	}
+	# DM reply version
+	if (s#^/(dm)?re(ply)? ([dD][a-zA-Z][0-9]) ## && length) {
+		my $code = lc($3);
+		my $dm = &get_dm($code);
+		if (!defined($dm)) {
+			print $stdout "-- no such DM (yet?): $code\n";
+			return 0;
+		}
+		# in the future, add DM in_reply_to here
+		my $target = &descape($dm->{'sender'}->{'screen_name'});
+		$readline_completion{'@'.$target}++ if ($termrl);
+		$_ = "D $target $_";
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -1811,22 +1912,13 @@ sub updatest {
 	for($i = 0; $i < length($istring); $i+=2) {
 		$urle .= '%' . substr($istring, $i, 2);
 	}
-	my $credirect = ($superverbose) ? "" : " 2>/dev/null >/dev/null";
 	#&update_authenticationheaders;
-	my $cline = "$wend ${update}${credirect}";
-	print $stdout "$cline\n" if ($superverbose);
-	my $subpid = open(N,
-		# I know the below is redundant. this is to remind me to see
-		# if there is something cleverer to do with it later.
-"|$cline") || do{
-		print $stdout "post failure: $!\n" if ($interactive);
-		return 99;
-	};
-	
-	my $i = "source=TTYtter&status=${urle}${in_reply_to}\n";
-	print $stdout $i if ($superverbose);
-	print N $i;
-	close(N);
+
+	my $i = "source=TTYtter&status=${urle}${in_reply_to}";
+	my $return = &backticks($baseagent, '/dev/null', undef,
+		$update, $i, @wend);
+	print $stdout "-- return --\n$return\n-- return --\n"
+		if ($superverbose);
 	if ($? > 0) {
 		$x = $? >> 8;
 		print $stdout <<"EOF" if ($interactive);
@@ -1847,19 +1939,11 @@ sub deletest {
 	my $interactive = shift;
 
 	my $update = "${delurl}/${id}.json";
-	my $credirect = ($superverbose) ? "" : " 2>/dev/null >/dev/null";
 	#&update_authenticationheaders;
-	my $cline = "$wend ${update}${credirect}";
-	print $stdout "$cline\n" if ($superverbose);
-
-	my $subpid = open(N,
-		# I know the below is redundant. this is to remind me to see
-		# if there is something cleverer to do with it later.
-"|$cline") || do{
-		print $stdout "delete failure: $!\n" if ($interactive);
-		return 99;
-	};
-	close(N);
+	my $return = &backticks($baseagent, '/dev/null', undef,
+		$update, "id=$id", @wend);
+	print $stdout "-- return --\n$return\n-- return --\n"
+		if ($superverbose);
 	if ($? > 0) {
 		$x = $? >> 8;
 		print $stdout <<"EOF" if ($interactive);
@@ -1873,12 +1957,35 @@ EOF
 	return 0;
 }
 
+sub deletedm {
+	my $id = shift;
+	my $interactive = shift;
+
+	my $update = "${dmdelurl}/${id}.json";
+	#&update_authenticationheaders;
+	my $return = &backticks($baseagent, '/dev/null', undef,
+		$update, "id=$id", @wend);
+	print $stdout "-- return --\n$return\n-- return --\n"
+		if ($superverbose);
+	if ($? > 0) {
+		$x = $? >> 8;
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
+*** to attempt again, type %%${OFF}
+EOF
+		return $?;
+	}
+	print $stdout "-- DM id #${id} has been removed\n"
+		if ($interactive);
+	return 0;
+}
+
 # this is the central routine that takes a rolling tweet code, figures
 # out where that tweet is, and returns something approximating a tweet
 # structure (or the actual tweet structure itself if it can).
 sub get_tweet {
 	my $code = lc(shift);
-	return undef if (length($code) != 2);
+	return undef if (length($code) != 2 || $code !~ /^[a-z][0-9]$/);
 	my $source = ($code =~ /^[u-z]/) ? 1 : 0;
 	my $k = '';
 	my $l = '';
@@ -1903,10 +2010,37 @@ sub get_tweet {
 	($w->{'menu_select'}, $w->{'id'}, $w->{'in_reply_to_status_id'},
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
 			$w->{'text'}) = split(/\s/, $k, 6);
+	return undef if (!length($w->{'text'})); # not possible
 	$w->{'created_at'} =~ s/_/ /g;
 	return $w;
 }
-		
+
+# this is the analogous function for a rolling DM code. it is somewhat
+# simpler as DM codes are always rolling and have no foreground store
+# currently, so it always executes a background request.
+sub get_dm {
+	my $code = lc(shift);
+	my $k = '';
+	my $l = '';
+	my $w = {'sender' => {}};
+
+	return undef if (length($code) != 3 || $code !~ s/^d// ||
+				$code !~ /^[a-z][0-9]$/);
+	print C "piped $code ----------\n"; # internally two alphanum, recall
+	while(length($k) < 1024) {
+		sysread(W, $l, 1024);
+		$k .= $l;
+	}
+	return undef if ($k !~ /[^\s]/);
+	$k =~ s/\s+$//; # remove trailing spaces
+	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	($w->{'menu_select'}, $w->{'id'},
+		$w->{'sender'}->{'screen_name'}, $w->{'created_at'},
+			$w->{'text'}) = split(/\s/, $k, 5);
+	return undef if (!length($w->{'text'})); # not possible
+	$w->{'created_at'} =~ s/_/ /g;
+	return $w;
+}
 
 sub thump { print C "update-------------\n"; }
 
@@ -1915,8 +2049,6 @@ sub synckey {
 	my $value = shift;
 	print $stdout "*** (transmitting to background)\n";
 	print C (substr("=$key                           ", 0, 19) . "\n");
-#TODO
-# got a WIDE CHARACTER IN PRINT error here
 	print C (substr(($value . $space_pad), 0, 1024));
 	sleep 1;
 }
@@ -2023,6 +2155,7 @@ unless ($seven) {
 }
 $interactive = $timeleft = $previous_last_id = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
+$SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
 
 for(;;) {
 	&$heartbeat;
@@ -2062,8 +2195,17 @@ for(;;) {
 		$key->{'user'}->{'screen_name'}." $ds ".$key->{'text'}.
 			$space_pad), 0, 1024);
 			print P $key;
+		} elsif ($rout =~ /^piped (..)/) {
+			my $key = $dm_store_hash{$1};
+			my $ms = $key->{'menu_select'} || 'XX';
+			my $ds = $key->{'created_at'} || 'argh, no created_at';
+			$ds =~ s/\s/_/g;
+			$key = substr(( "$ms ".(0+$key->{'id'})." ".
+		$key->{'sender'}->{'screen_name'}." $ds ".$key->{'text'}.
+			$space_pad), 0, 1024);
+			print P $key;
 		} elsif ($rout =~ /^sync/) {
-			print $stdout "-- synced; exiting at ", scalar localtime
+			print $stdout "-- synced; exiting at ",scalar localtime
 				if ($verbose);
 			exit $laststatus;
 		} elsif ($rout =~ /([\=\?])([^ ]+)/) {
@@ -2115,6 +2257,47 @@ for(;;) {
 	}
 }
 
+sub backticks {
+	# more efficient/flexible backticks system
+	my $comm = shift;
+	my $rerr = shift;
+	my $rout = shift;
+	my $resource = shift;
+	my $data = shift;
+	my $buf = '';
+	my $undersave = $_;
+
+	($comm, $args, $data) = &$stringify_args($comm, $resource, $data, @_);
+	print $stdout "$comm\n$args\n$data\n" if ($superverbose);
+	if(open(BACTIX, '-|')) {
+		while(<BACTIX>) {
+			$buf .= $_;
+		} close(BACTIX);
+		$_ = $undersave;
+		return $buf; # and $?
+	} else {
+		$in_backticks = 1;
+		if (length($rerr)) {
+			close(STDERR); 
+			open(STDERR, ">$rerr");
+		}
+		if (length($rout)) {
+			close(STDOUT);
+			open(STDOUT, ">$rout");
+		}
+		if(open(FRONTIX, "|$comm")) {
+			print FRONTIX "$args\n";
+			print FRONTIX "$data" if (length($data));
+			close(FRONTIX);
+		} else {
+			die(
+			"backticks() failure for $comm $rerr $rout @_: $!\n");
+		}
+		$rv = $? >> 8;
+		exit $rv;
+	}
+}
+
 # the refresh engine depends on later tweets having higher id numbers.
 # Obvious, don't change this if you know what's good for you, ya twerps,
 # or I will poison all of yer kitties. *pats my Burmese, who purrs*
@@ -2123,7 +2306,7 @@ sub grabjson {
 	my $data;
 	my $url = shift;
 	my $last_id = shift;
-	my $agent = (shift) ? $weld : $wand;
+	my @agent = (shift) ? @weld : @wand;
 	my $count = shift;
 	my $tdata;
 	my $seed;
@@ -2143,8 +2326,9 @@ sub grabjson {
 			if ($count);
 
 	#&update_authenticationheaders;
-	print $stdout "$agent \"$url$xurl\"\n" if ($superverbose);
-	chomp($data = `$agent "$url$xurl" 2>/dev/null`);
+	my @cargs = ($baseagent,
+			'/dev/null', undef, "$url$xurl", undef, @agent);
+	chomp($data = &backticks(@cargs));
 
 	$data =~ s/[\r\l\n\s]*$//s;
 	$data =~ s/^[\r\l\n\s]*//s;
@@ -2350,7 +2534,7 @@ sub refresh {
 	if (!$notrack && scalar(@trackstrings)) {
 		foreach $k (@trackstrings) {
 			my $r = &grabjson("$queryurl?${k}&rpp=20",
-				$last_id, 1);
+				0, 1); # $last_id, 1);
 			push(@streams, $r)
 				if (defined($r) &&
 					ref($r) eq 'ARRAY' &&
@@ -2490,6 +2674,7 @@ sub dmrefresh {
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 	my $i;
 	my $g;
+	my $key;
 
 	if ($disp_max) { # an empty list can be valid
 		if ($dm_first_time) {
@@ -2500,12 +2685,18 @@ sub dmrefresh {
 		}
 		for($i = $disp_max; $i > 0; $i--) {
 			$g = ($i-1);
-			next if ($my_json_ref->[$g]->{'id'} <= $last_dm);
-			next if
-		(!length($my_json_ref->[$g]->{'sender'}->{'screen_name'}));
-
+			my $j = $my_json_ref->[$g];
+			next if ($j->{'id'} <= $last_dm);
+			next if (!length($j->{'sender'}->{'screen_name'}));
 			$wrapseq++;
-			$printed += &$dmhandle($my_json_ref->[$g]);
+			$key = substr($alphabet, $dm_counter/10, 1) .
+				$dm_counter % 10;
+			$dm_counter = 
+				($dm_counter == 259) ? 0 :
+				($dm_counter+1);
+			$j->{'menu_select'} = $key;
+			$dm_store_hash{lc($key)} = $j;
+			$printed += &$dmhandle($j);
 		}
 		$max = 0+$my_json_ref->[0]->{'id'};
 	}
@@ -2558,6 +2749,7 @@ sub descape {
 	if ($mode) { # this probably needs to be revised
 		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
 	} else {
+		$x =~ s/\\u2028/\\n/g;
 		if ($seven) {
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
 			$x =~ s/[\x80-\xff]/./g;
@@ -2623,6 +2815,7 @@ sub wwrap {
 		return $buf;
 	}               
 	1 while ($buf =~ s/\n\n\n/\n\n/s); # mostly paranoia
+	$buf =~ s/[ \t]+$//;
 	return $buf;
 }
 
