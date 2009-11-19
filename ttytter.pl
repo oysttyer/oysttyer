@@ -1,4 +1,4 @@
-#!/usr/local/bin/perl -s
+#!/usr/bin/perl -s
 #########################################################################
 #
 # TTYtter v0.9 (c)2007-2009 cameron kaiser (and contributors).
@@ -19,7 +19,7 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 8;
+	$TTYtter_PATCH_VERSION = 9;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -1976,12 +1976,15 @@ EOF
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		$in_reply_to = $tweet->{'id'};
-		$expected_tweet_ref = $tweet;
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
-		$readline_completion{'@'.$target}++ if ($termrl);
 		$_ = '@' . $target . " $_";
-		$_ = "r $_" if ($mode eq 'v');
+		unless ($mode eq 'v') {
+			$in_reply_to = $tweet->{'id'};
+			$expected_tweet_ref = $tweet;
+		} else {
+			$_ = "r $_";
+		}
+		$readline_completion{'@'.$target}++ if ($termrl);
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -2825,7 +2828,7 @@ sub grabjson {
 	# first, generate a syntax tree.
 	$tdata = $data;
 	1 while $tdata =~ s/'[^']+'//;
-	$tdata =~ s/-?[0-9]+//g;
+	$tdata =~ s/-?[0-9]+\.?[0-9]*//g; # have to handle floats
 	$tdata =~ s/(true|false|null)//g;
 	$tdata =~ s/\s//g;
 
@@ -3229,7 +3232,7 @@ sub usplit {
 	# take a string and return up to 140 bytes plus the rest.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
         # we let Perl do the work since it internally knows where they end.
-	my $k = shift;
+	my $orig_k = shift;
 	my $z;
 	my $mode = shift;
 	my @m;
@@ -3237,6 +3240,7 @@ sub usplit {
 	my $r;
 
 	$mode += 0;
+	$k = $orig_k;
 
 	# optimize whitespace
 	$k =~ s/^\s+//;
@@ -3268,12 +3272,16 @@ sub usplit {
 		($q =~ s/([^a-zA-Z0-9]+)$//) && ($m = "$1$m");
 		# optimize again in case we split on whitespace
 		$q =~ s/\s+$//;
+		return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+			# it totally failed. fall back on charsplit.
 		if (&ulength($q) < 140) {
 			$m =~ s/^\s+//;
 			return($q, "$r$m")
 		}
 	}
 	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
+	return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
 }
 
