@@ -1,4 +1,4 @@
-#!/usr/bin/perl -s
+#!/usr/local/bin/perl -s
 #########################################################################
 #
 # TTYtter v0.9 (c)2007-2009 cameron kaiser (and contributors).
@@ -19,7 +19,7 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 7;
+	$TTYtter_PATCH_VERSION = 8;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -294,7 +294,7 @@ EOF
 	}
 	return 1;
 }
-exit if (!&filter_compile);
+exit(1) if (!&filter_compile);
 
 # notifications compiler
 sub notify_compile {
@@ -356,7 +356,9 @@ die("you can't use automatic ratelimits with -noratelimit.\nuse -pause=#sec\n")
 
 # validate notify method
 # we can't do this in BEGIN, because it may not be instantiated yet.
-if (length($notifytype) && $notifytype ne '0' && !$status) {
+
+if (length($notifytype) && $notifytype ne '0' &&
+		$notifytype ne '1' && !$status) {
 	$notifytype="notifier_${notifytype}";
 	eval 'return &$notifytype(undef)' ||
 		die("** invalid notification framework $notifytype: $@\n");
@@ -765,7 +767,7 @@ if ($lynx) {
 		$wend = $curl;
 		print $stdout "cURL forced to $wend\n";
 	} else {
-		$wend = (($curl) ? &wherecheck("trying to find cURL", "curll",
+		$wend = (($curl) ? &wherecheck("trying to find cURL", "curl",
 "specify -lynx to use Lynx instead, or just let TTYtter autodetect stuff.\n")
 			: &wherecheck("trying to find cURL", "curl"));
 		if (!$curl && !length($wend)) {
@@ -923,6 +925,10 @@ print $stdout $vs; # and then again when client starts up
 # initial login tests and command line controls
 
 $phase = 0;
+#TODO
+# rework this for 1.0.0
+$didhold = $hold;
+$hold = -1 if ($hold == 1);
 for(;;) {
 	$rv = 0;
 	die(
@@ -955,14 +961,23 @@ for(;;) {
 		print "\n";
 		print "--- data received ---\n$data\n--- data received ---\n"
 			if ($superverbose);
-		if ($hold) {
+#TODO
+# rework for 1.0:
+# 0.9: for compatibility, 1 = infinite
+# 1.0: cycle count is exact if -script, else 0.9 behaviour?
+		if (--$hold) {
 			print
 			"trying again in 2 minutes, or kill process now.\n\n";
 			sleep 120;
 			next;
 		}
-		print "to automatically wait for a connect, use -hold.\n";
-		exit 1;
+		if ($didhold) {
+			print "giving up after $didhold tries.\n";
+		} else {
+			print
+			"to automatically wait for a connect, use -hold.\n";
+		}
+		exit(1);
 	}
 	if ($status && !$phase) {
 		print "SUCCEEDED!\n";
@@ -978,7 +993,7 @@ for(;;) {
 	last;
 }
 print "SUCCEEDED!\n";
-exit 0 if (length($status));
+exit(0) if (length($status));
 
 # daemon mode
 
@@ -1138,12 +1153,20 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	}
 
 	if (!$slowpost && !$verify && # we assume you know what you're doing!
-		($_ eq 'h' || $_ eq 'help' || $_ eq 'quit' || $_ eq 'q')) {
+		($_ eq 'h' || $_ eq 'help' || $_ eq 'quit' || $_ eq 'q' ||
+			/^TTYtter>/ ||
+			$_ eq 'exit')) {
 		
 		&add_history($_);
-		print $stdout "*** did you mean /$_ ?\n";
-		print $stdout "*** to send this as a command, type /%%\n";
-		print $stdout "*** to tweet it, type %%\n";
+		unless ($_ eq 'exit' || /^TTYtter>/) {
+			print $stdout "*** did you mean /$_ ?\n";
+			print $stdout
+				"*** to send this as a command, type /%%\n";
+		} else {
+			print $stdout
+				"*** did you really mean to tweet \"$_\"?\n";
+		}
+		print $stdout "*** to tweet it anyway, type %%\n";
 		return 0;
 	}
 
@@ -1676,8 +1699,8 @@ $my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
 			my $sturl = undef;
 			my $purl =
 				&descape($my_json_ref->{'profile_image_url'});
-			if ($avatar && length($purl) && $purl ne
-"http://static.twitter.com/images/default_profile_normal.png") {
+			if ($avatar && length($purl) && $purl !~
+m#^http://[^.]+\.(twimg\.com|twitter\.com).+/images/default_profile_\d+_normal.png#) {
 				my $exec = $avatar;
 				my $fext;
 				($purl =~ /\.([a-z0-9A-Z]+)$/) &&
@@ -1880,8 +1903,8 @@ EOF
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		$in_reply_to = $tweet->{'id'};
-		$expected_tweet_ref = $tweet;
+		#$in_reply_to = $tweet->{'id'}; # maybe later.
+		#$expected_tweet_ref = $tweet;
 		$retweet = "RT @" .
 			&descape($tweet->{'user'}->{'screen_name'}) .
 			": " . &descape($tweet->{'text'});
@@ -2454,7 +2477,7 @@ sub update_effpause {
 # requests
 # first, how many requests do we want to make an hour? $dmpause in a sec
 						$effpause =
-				$rate_limit_rate - ($rate_limit_rate * 0.4);
+				$rate_limit_rate - ($rate_limit_rate * 0.5);
 # second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
 						$effpause -=
 				((1/$dmpause) * $effpause) if ($dmpause);
@@ -2697,7 +2720,7 @@ sub grabjson {
 	}
 
 	# old non-JSON based error reporting code still supported
-	if ($data =~ /^\[?\]?<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i) {
+	if ($data =~ /^\[?\]?<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i || $data =~ /^<\??xml\s+/) {
 		print $stdout $data if ($superverbose);
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
@@ -2799,6 +2822,7 @@ sub grabjson {
 	# or bogus JSON, but one day this might talk to something that would.
 	# in particular, need to make sure nothing in this will eval badly or
 	# run arbitrary code. that would really suck!
+	# first, generate a syntax tree.
 	$tdata = $data;
 	1 while $tdata =~ s/'[^']+'//;
 	$tdata =~ s/-?[0-9]+//g;
@@ -2807,7 +2831,7 @@ sub grabjson {
 
 	print $stdout "$tdata\n" if ($superverbose);
 
-	# verify the syntax tree.
+	# now verify the syntax tree.
 	# the remaining stuff should just be enclosed in [ ], and only {}:,
 	# for example, imagine if a bare semicolon were in this ...
 	if ($tdata !~ s/^\[// || $tdata !~ s/\]$// || $tdata =~ /[^{}:,]/) {
@@ -2818,7 +2842,10 @@ sub grabjson {
 			&$exception(10, "*** JSON warning: connection cut\n");
 			return undef;
 		}
-		if ($tdata =~ /\[\]/) { # oddity
+# it seems that :[], or :[]} should be accepted as valid in the syntax tree
+# since identica uses this as possible for null properties
+# ,[], shouldn't be, etc.
+		if ($tdata =~ /(^|[^:])\[\]($|[^},])/) { # oddity
 			&$exception(11, "*** JSON warning: null list\n");
 			return undef;
 		}
@@ -3087,7 +3114,7 @@ sub wherecheck {
 		print $stdout "not found.\n";
 		if ($fatal) {
 			print $stdout $fatal;
-			exit;
+			exit(1);
 		}
 	}
 	return $setv;
