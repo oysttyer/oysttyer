@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v0.9 (c)2007-2009 cameron kaiser (and contributors).
+# TTYtter v0.9 (c)2007-2010 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -19,7 +19,7 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 9;
+	$TTYtter_PATCH_VERSION = 10;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -347,8 +347,9 @@ sub killkid {
 
 # interpret script at this level
 if ($script) {
-	$silent = $noansi = $noprompt = 1;
-	$pause = $vcheck = 0;
+	$noansi = $noprompt = 1;
+	$silent = ($verbose) ? 0 : 1;
+	$pause = $vcheck = $slowpost = $verify = 0;
 }
 
 die("you can't use automatic ratelimits with -noratelimit.\nuse -pause=#sec\n")
@@ -536,7 +537,7 @@ sub defaulthandle {
 	unless (length($class) || !$last_id) { # interactive? first time?
 		$class = &$tweettype($tweet_ref, $sn, $tweet);
 		&$notifytype($class, &standardtweet($tweet_ref, 1), $tweet_ref)
-			if ($notify_list{$class});
+			if ($notify_list{$class} && $notifytype);
 	}
 	return 1;
 }
@@ -1041,7 +1042,7 @@ if ($daemon) {
 print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-         ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2009 cameron kaiser${OFF}                 @             @
+        ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2010 cameron kaiser${OFF}                 @             @
 EOF
 $e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
@@ -1968,7 +1969,7 @@ EOF
 		return 0;
 	}
 
-	if (s#^/(v)?re(ply)? ([a-zA-Z][0-9]) ## && length) {
+	if (s#^/(v)?re(ply)? \@?([a-zA-Z][0-9]) ## && length) {
 		my $mode = $1;
 		my $code = lc($3);
 		my $tweet = &get_tweet($code);
@@ -1982,7 +1983,7 @@ EOF
 			$in_reply_to = $tweet->{'id'};
 			$expected_tweet_ref = $tweet;
 		} else {
-			$_ = "r $_";
+			$_ = ".$_";
 		}
 		$readline_completion{'@'.$target}++ if ($termrl);
 		print $stdout &wwrap("(expanded to \"$_\")");
@@ -2029,11 +2030,11 @@ EOF
 		return 0;
 	}
 
+	# DMs
 	if ($_ eq '/dm' || $_ eq '/dmrefresh' || $_ eq '/dmr') {
 		print C "dmthump------------\n";
 		return 0;
 	}
-
 	if ($_ eq '/dmagain' || $_ eq '/dma') {
 #TODO
 # add count parameter or page number?
@@ -2160,7 +2161,7 @@ sub updatest {
 	}
 	$string = &$prepost($string);
 
-	if ($verify) {
+	if ($verify && !$status) {
 		my $answer;
 
 		warn &wwrap("-- verify you want to post: \"$string\"\n");
@@ -2186,9 +2187,9 @@ sub updatest {
 
 	my $i = "source=TTYtter&status=${urle}${in_reply_to}";
 	$slowpost += 0; if ($slowpost && !$script && !$status && !$silent) {
-		print $stdout &wwrap(
-	"-- waiting $slowpost seconds to post, ^C cancels: \"$string\"\n");
 		if($pid = open(SLOWPOST, '-|')) {
+			print $stdout &wwrap(
+	"-- waiting $slowpost seconds to post, ^C cancels: \"$string\"\n");
 			close(SLOWPOST); # this should wait for us
 			if ($? > 256) {
 				print $stdout "\n-- post cancelled by user\n";
@@ -3125,8 +3126,13 @@ sub wherecheck {
 
 sub screech {
 	print $stdout "\n\n${BEL}${BEL}@_";
-	kill 9, $parent;
-	kill 9, $$;
+	if ($is_background) {
+		kill 9, $parent;
+		kill 9, $$;
+	} elsif ($child) {
+		kill 9, $child;
+		kill 9, $$;
+	}
 	die("death not achieved conventionally");
 }
 
