@@ -19,7 +19,7 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 11;
+	$TTYtter_PATCH_VERSION = 12;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -240,6 +240,15 @@ sub tracktags_makearray {
 	$track = join(' ', @tracktags);
 	&compile_tracktags;
 }
+
+# run when urlifying $track
+sub tracktags_tqueryurlify {
+        my $value = shift;
+        $value =~ s/([^ a-z0-9A-Z_])/"%".unpack("H2",$1)/eg;
+        $value =~ s/\s/+/g;
+        $value = "q=$value" if ($value !~ /^q=/);
+        return $value;
+}
 	
 # run when array is altered (based on @kellyterryjones' code)
 sub compile_tracktags {
@@ -268,7 +277,14 @@ sub compile_tracktags {
 }
 
 # set up track tags
-&tracktags_makearray;
+if (length($tquery) && $tquery ne '0') {
+        my $xtquery = &tracktags_tqueryurlify($tquery);
+        die("** custom tquery is over 140 length: $xtquery\n")
+                if (length($xtquery) > 139);
+        @trackstrings = ($xtquery);
+} else {
+        &tracktags_makearray;
+}
 
 # compile filter
 sub filter_compile {
@@ -1395,8 +1411,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		return 0;
 	}
 	if (s/^\/troff\s+// && s/\s*// && length) {
-	# remove it from array, regenerate $track, call compile_tracktags
-	# (don't need to do &tracktags_makearray) and then sync
+	# remove it from array, regenerate $track, call tracktags_makearray
+	# and then sync
 		my $k;
 		my $l = '';
 		my $q = 0;
@@ -1436,9 +1452,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			return 0;
 		}
 		print $stdout "*** ok, filtered @{[ keys(%w) ]}\n";
-		@tracktags = @ptags;
-		$track = join(' ', @tracktags);
-		&compile_tracktags;
+		$track = join(' ', @ptags);
+		&tracktags_makearray;
 		&synckey('track', $track);
 		return 0;
 	}
@@ -1486,7 +1501,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$value = $3;
 		if ($key eq 'tquery' && $value eq '0') { # undo tqueries
 			$key = 'track';
-			$value = join(' ', @tracktags);
+			$value = $track; # falls thru to sync
+			&tracktags_makearray;
 		}
 		if ($opts_can_set{$key}) {
 			if (length($value) > 1023) {
@@ -1525,9 +1541,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			}
 		# virtual keys
 		} elsif ($key eq 'tquery') {
-			$value =~ s/([^ a-z0-9A-Z_])/"%".unpack("H2",$1)/eg;
-			$value =~ s/\s/+/g;
-			$value = "q=$value" if ($value !~ /^q=/);
+			$value = &tracktags_tqueryurlify($value);
 			if (length($value) > 139) {
 				print $stdout
 			"*** custom query is too long (encoded: $value)\n";
@@ -2174,7 +2188,7 @@ sub updatest {
 		chomp($answer = lc(<$stdin>));
 		if ($answer ne 'y') {
 			warn "-- ok, tweet is NOT posted.\n";
-			return 0;
+			return 97;
 		}
 	}
 
