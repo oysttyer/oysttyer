@@ -19,7 +19,7 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 10;
+	$TTYtter_PATCH_VERSION = 11;
 	$space_pad = " " x 1024;
 
 	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
@@ -363,6 +363,10 @@ if (length($notifytype) && $notifytype ne '0' &&
 	$notifytype="notifier_${notifytype}";
 	eval 'return &$notifytype(undef)' ||
 		die("** invalid notification framework $notifytype: $@\n");
+        # warning if someone didn't tell us what notifies they wanted.
+        warn "-- warning: you specified -notifytype, but no -notifies\n"
+                if (!$silent && !length($notifies));
+
 } else {
 	undef $notifytype;
 }
@@ -2863,7 +2867,7 @@ sub grabjson {
 	# syntax tree passed, so let's turn it into a Perl reference.
 	# have to turn colons into ,s or Perl will gripe. but INTELLIGENTLY!
 	1 while
-	($data =~ s/([^'])':(true|false|null|\'|\{|\[|-?[0-9])/\1\',\2/);
+	($data =~ s/([^'])'\s*:\s*(true|false|null|\'|\{|\[|-?[0-9])/\1\',\2/);
 
 	# finally, single quotes, just before interpretation.
 	$data =~ s/$ssqqmask/\\'/g;
