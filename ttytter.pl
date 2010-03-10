@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.0";
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -275,8 +275,9 @@ if (length($exts) && $exts ne '0') {
 		$EM_SCRIPT_ON = 1;
 		$EM_SCRIPT_OFF = -1;
 		$extension_mode = $EM_DONT_CARE;
+		die("** file not found: $!\n") if (! -r "$file");
 		require $file; # and die if bad
-		die("failed to load $file: $@ $!\n") if ($! || $@);
+		die("** failed to load: $@\n") if ($@);
 
 		# check type of extension (interactive or non-interactive). if
 		# we are in the wrong mode, bail out.
@@ -590,10 +591,10 @@ for(;;) {
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
 	die(
-"sorry, status too long: reduce by @{[ &ulength($status)-140 ]} bytes, ".
+"sorry, status too long: reduce by @{[ length($status)-140 ]} chars, ".
 "or use -autosplit={word,char,cut}.\n")
-		if (&ulength($status) > 140 && !$autosplit);
-	($status, $next) = &usplit($status, ($autosplit eq 'char' ||
+		if (length($status) > 140 && !$autosplit);
+	($status, $next) = &csplit($status, ($autosplit eq 'char' ||
 			$autosplit eq 'cut') ? 1 : 0)
 		if (!length($next));
 	if ($autosplit eq 'cut' && length($next)) {
@@ -747,15 +748,15 @@ sub defaultmain {
 	if ($termrl) {
 		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
 			$rv = &prinput($_);
-			last if ($rv);
-			&sync_console($_);
+			last if ($rv < 0);
+			&sync_console unless (!$rv || !$synch);
 		}
 	} else {
 		&$prompt;
 		while(<>) { #not stdin so we can read from script files
 			$rv = &prinput($_);
-			last if ($rv);
-			&sync_console($_);
+			last if ($rv < 0);
+			&sync_console unless (!$rv || !$synch);
 			&$prompt;
 		}
 		&sync_n_quit if ($script);
@@ -825,7 +826,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	}
 
 	if (/^$/) {
-		return 0;
+		return 1;
 	}
 
 	if (!$slowpost && !$verify && # we assume you know what you're doing!
@@ -1807,7 +1808,7 @@ sub common_split_post {
 	my $dm_lead = (length($dm_user)) ? "/dm $dm_user " : '';
 	my $ol = "$dm_lead$k";
 
-	my (@tweetstack) = &usplit($k, ($autosplit eq 'char' ||
+	my (@tweetstack) = &csplit($k, ($autosplit eq 'char' ||
 		$autosplit eq 'cut') ? 1 : 0);
 	my $m = shift(@tweetstack);
 	if (scalar(@tweetstack)) {
@@ -1816,7 +1817,7 @@ sub common_split_post {
 		if (!$autosplit) {
 			print $stdout &wwrap(
 "*** sorry, too long to send; ".
-"truncated to \"$l\" (@{[ &ulength($m) ]} bytes)\n");
+"truncated to \"$l\" (@{[ length($m) ]} chars)\n");
 	print $stdout "*** use %% for truncated version, or append to %%.\n";
 			return 0;
 		}
@@ -1834,11 +1835,11 @@ sub common_split_post {
 		&add_history($l);
 		print $stdout &wwrap("*** next part is ready: \"$l\"\n");
 		print $stdout "*** (this will also be automatically split)\n"
-			if (&ulength($k) > 140);
+			if (length($k) > 140);
 		print $stdout
 		"*** to send this next portion, use %%.\n";
 	}
-	return 0;
+	return 1;
 }
 
 # helper functions for the command line processor.
@@ -1888,13 +1889,8 @@ sub sub_helper {
 # this is used for synchronicity mode to make sure we receive the
 # GA semaphore from the background before printing another prompt.
 sub sync_console {
-	my $l = shift;
-	if ($synch) {
-		if ($l !~ m#^/#) { # was not a command
-			&thump;
-			&dmthump;
-		}
-	}
+	&thump;
+	&dmthump unless (!$dmpause);
 }
 sub sync_semaphore {
 	if ($synch) {
@@ -2383,7 +2379,7 @@ sub updatest {
 	# escaping the whole thing whether it needs it or not. ugly? well ...
 	$istring = $string;
 	eval 'utf8::encode($istring)' unless ($seven);
-	$istring = unpack("H280", $istring);
+	$istring = unpack("H".(&ulength($istring)*2), $istring);
 	for($i = 0; $i < length($istring); $i+=2) {
 		$urle .= '%' . substr($istring, $i, 2);
 	}
@@ -2461,7 +2457,7 @@ EOF
 	if ($ec = &is_json_error($return)) {
 		print $stdout <<"EOF" if ($interactive);
 ${MAGENTA}*** warning: server error message received
-*** $ec
+*** $ec${OFF}
 EOF
 		return (98, $return);
 	}
@@ -3432,7 +3428,7 @@ sub update_authenticationheaders {
 	} else {
 		$simple_agent = "$baseagent -s -m 13";
 
-		@wend = ('-s', '-m', '13');
+		@wend = ('-s', '-m', '13', '-H', 'Expect:');
 		@weld = @wend;
 		@wend = (@wend, @auth);
 		@wand = (@wend);
@@ -3614,7 +3610,8 @@ sub grabjson {
 	# first, generate a syntax tree.
 	$tdata = $data;
 	1 while $tdata =~ s/'[^']+'//;
-	$tdata =~ s/-?[0-9]+\.?[0-9]*//g; # have to handle floats
+	$tdata =~ s/-?[0-9]+\.?[0-9]*([eE][+-][0-9]+)?//g;
+		# have to handle floats *and* their exponents
 	$tdata =~ s/(true|false|null)//g;
 	$tdata =~ s/\s//g;
 
@@ -3912,13 +3909,19 @@ sub uhex {
 	}
 	return $k;
 }
-sub usplit {
-	# take a string and return up to 140 bytes plus the rest.
+
+# take a string and return up to 140 CHARS plus the rest.
+sub csplit { return &cosplit(@_, sub { return   length(shift); }); }
+# take a string and return up to 140 BYTES plus the rest.
+sub usplit { return &cosplit(@_, sub { return &ulength(shift); }); }
+sub cosplit {
+	# this is the common code for &csplit and &usplit.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
         # we let Perl do the work since it internally knows where they end.
 	my $orig_k = shift;
-	my $z;
 	my $mode = shift;
+	my $lengthsub = shift;
+	my $z;
 	my @m;
 	my $q;
 	my $r;
@@ -3930,7 +3933,7 @@ sub usplit {
 	$k =~ s/^\s+//;
 	$k =~ s/\s+$//;
 	$k =~ s/\s+/ /g;
-	$z = &ulength($k);
+	$z = &$lengthsub($k);
 	return ($k) if ($z <= 140); # also handles the trivial case
 
 	# this needs to be reply-aware, so we put @'s at the beginning of
@@ -3940,7 +3943,7 @@ sub usplit {
 	$k = "$r$k";
 
 	my $i = 140;
-	$i-- while(($z = &ulength($q = substr($k, 0, $i))) > 140);
+	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > 140);
 	$m = substr($k, $i);
 
 	# if we just wanted split-on-byte, return now (mode = 1)
@@ -3956,15 +3959,16 @@ sub usplit {
 		($q =~ s/([^a-zA-Z0-9]+)$//) && ($m = "$1$m");
 		# optimize again in case we split on whitespace
 		$q =~ s/\s+$//;
-		return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+		return (&cosplit($orig_k, 1, $lengthsub))
+			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
-		if (&ulength($q) < 140) {
+		if (&$lengthsub($q) < 140) {
 			$m =~ s/^\s+//;
 			return($q, "$r$m")
 		}
 	}
 	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
-	return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+	return (&cosplit($orig_k, 1, $lengthsub)) if (!length($q) && !$mode);
 		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
 }
