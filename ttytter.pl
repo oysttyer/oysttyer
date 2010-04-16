@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.0";
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -53,6 +53,8 @@ BEGIN {
 		apibase queryurl trendurl idurl delurl dmdelurl favsurl
 		myfavsurl favurl favdelurl rtsofmeurl followurl leaveurl
 		dmupdate
+		#createliurl updateliurl delliurl getliurl getlisurl
+		#statusliurl followliurl leaveliurl
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas
 	); %opts_can_set = map { $_ => 1 } qw(
@@ -64,6 +66,8 @@ BEGIN {
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
 		rtsofmeurl followurl leaveurl dmupdate
+		#createliurl updateliurl delliurl getliurl getlisurl
+		#statusliurl followliurl leaveliurl
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -477,7 +481,7 @@ $myfavsurl ||= "${apibase}/favorites.json";
 $favurl ||= "${apibase}/favorites/create";
 $favdelurl ||= "${apibase}/favorites/destroy";
 
-$queryurl ||= "http://search.twitter.com/search.json";
+$queryurl ||= "http://api.twitter.com/1/search.json";
 $trendurl ||= "http://search.twitter.com/trends/current.json";
 
 # pick ONE!
@@ -955,8 +959,6 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			$sn = $sfv if (!length($sn) && length($sfv));
 		}
 		# geo is special
-		# note that if you are precisely at 0,0 this will not work.
-		# tell me if this EVER becomes a problem. HA.
 		print $stdout "geo->coordinates        (" .
 			join(', ', @{ $tweet->{'geo'}->{'coordinates'} })
 			. ")\n";
@@ -1770,7 +1772,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		return &common_split_post($_, undef, $1);
 	}
 
-	# follow and leave
+	# follow and leave users
 	if (m#^/(follow|leave|unfollow) \@?([^\s]+)$#) {
 		my $m = $1;
 		my $u = lc($2);
@@ -1780,7 +1782,35 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		return 0;
 	}
 
+#TODO
+# 1.2
+# list format: xyz/pdq. if no slash, use this user's.
+# /autolist, /autolistoff (/al, /alo): add lists to timeline
+#	statusliurl
+# /fal, /lalo (follow and leave at the same time as /al, /alo)
+#	followliurl leaveliurl
+# follow and leave lists
+#
+# create list
+#	createliurl
+# update list
+#	updateliurl
+# show all lists (of me or a user)
+#	getlisurl
+# show a list
+#	getliurl
+# delete list (with _delete)
+#	delliurl
+# add users to list NEED URL
+# delete users from list NEED URL
+
 	&sync_n_quit if ($_ eq '/end' || $_ eq '/e');
+
+	#####
+	#
+	# below this point, we are posting
+	#
+	#####
 
 	if (m#^/me\s#) {
 		$slash_first = 0; # kludge!
@@ -2085,7 +2115,7 @@ sub update_effpause {
 						$effpause = 60;
 					} else {
 # other accounts
-# this is computed to give you approximately 40% over the limit for client
+# this is computed to give you approximately 50% over the limit for client
 # requests
 # first, how many requests do we want to make an hour? $dmpause in a sec
 						$effpause =
@@ -2093,6 +2123,11 @@ sub update_effpause {
 # second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
 						$effpause -=
 				((1/$dmpause) * $effpause) if ($dmpause);
+#TODO
+# take 1 request away for replies (i.e., cut effpause in half)
+# take 1 request away for each /autolist subscription (i.e., each one,
+# cut effpause in half)
+
 # finally determine how many seconds should elapse
 						print $stdout
 		"-- that's funny: effpause is zero, using fallback 180sec\n"
@@ -2152,7 +2187,7 @@ sub refresh {
 	# of the main timeline.
 	if (!$notrack && scalar(@trackstrings)) {
 		foreach $k (@trackstrings) {
-			my $r = &grabjson("$queryurl?${k}&rpp=20",
+		my $r = &grabjson("$queryurl?${k}&rpp=20&result_type=recent",
 				0, 1); # $last_id, 1);
 			push(@streams, $r)
 				if (defined($r) &&
@@ -2161,7 +2196,11 @@ sub refresh {
 		}
 	}
 
-	# replies ... maybe later
+	# add stream for replies ... maybe later
+
+	# add stream for lists we have on with /autolist
+#TODO
+# autolist
 
 	# now, streamix all the streams into my_json_ref, discarding duplicates
 	# a simple hash lookup is no good; it has to be iterative. because of
@@ -2423,7 +2462,7 @@ EOF
 	if ($ec = &is_json_error($return)) {
 		print $stdout <<"EOF" if ($interactive);
 ${MAGENTA}*** warning: server error message received
-*** $ec
+*** "$ec"${OFF}
 EOF
 		return 98;
 	}
@@ -2457,7 +2496,7 @@ EOF
 	if ($ec = &is_json_error($return)) {
 		print $stdout <<"EOF" if ($interactive);
 ${MAGENTA}*** warning: server error message received
-*** $ec${OFF}
+*** "$ec"${OFF}
 EOF
 		return (98, $return);
 	}
