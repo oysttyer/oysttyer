@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.0";
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -41,7 +41,7 @@ BEGIN {
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts
-		synch
+		synch exception_is_maskable
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline
@@ -482,7 +482,7 @@ $favurl ||= "${apibase}/favorites/create";
 $favdelurl ||= "${apibase}/favorites/destroy";
 
 $queryurl ||= "http://api.twitter.com/1/search.json";
-$trendurl ||= "http://search.twitter.com/trends/current.json";
+$trendurl ||= "http://api.twitter.com/1/trends/current.json";
 
 # pick ONE!
 #$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
@@ -1430,6 +1430,8 @@ EOF
 			if (length($my_json_ref->{'url'})) {
 				$sturl = 
 				$urlshort = &descape($my_json_ref->{'url'});
+				$urlshort =~ s/^\s+//;
+				$urlshort =~ s/\s+$//;
 				print $stdout "${EM}URL:${OFF}\t\t$urlshort\n";
 			}
 			print $stdout
@@ -2774,7 +2776,21 @@ sub multidmhandle {
 	}, @_);
 }
 sub multiexception {
-	&multi_module_dispatch(\&defaultexception, \@m_exception, 0, @_);
+	# this is a secret option for people who want to suppress errors.
+	if ($exception_is_maskable) {
+		&multi_module_dispatch(\&defaultexception, \@m_exception, sub {
+			my $rv = shift;
+
+			# same logic as handle/dmhandle, except return -1-
+			# to mask from subsequent extensions.
+			return 0 if ($this_call_default);
+			return 5 if ($rv);
+			return 0;
+		}, @_);
+	} else {
+		&multi_module_dispatch(
+			\&defaultexception, \@m_exception, 0, @_);
+	}
 }
 sub multihandle {
 	&multi_module_dispatch(\&defaulthandle, \@m_handle, sub {
@@ -2860,7 +2876,7 @@ sub defaulttweettype {
 		if ($sn eq $whoami) {
 			# if it's me speaking, colour the line yellow
 			return 'me';
-		} elsif ($tweet =~ /\@$whoami/i) {
+		} elsif ($tweet =~ /\@$whoami(\b|$)/i) {
 			# if I'm in the tweet, colour red
 			return 'reply';
 		} 
@@ -3412,7 +3428,7 @@ sub killkid {
 		kill 9, $child;
 	}
 	#print $stdout "done.\n";
-	exit;
+	#exit;
 }
 
 sub generate_ansi {
