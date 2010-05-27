@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.0";
-	$TTYtter_PATCH_VERSION = 3;
+	$TTYtter_PATCH_VERSION = 4;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -481,7 +481,7 @@ $myfavsurl ||= "${apibase}/favorites.json";
 $favurl ||= "${apibase}/favorites/create";
 $favdelurl ||= "${apibase}/favorites/destroy";
 
-$queryurl ||= "http://api.twitter.com/1/search.json";
+$queryurl ||= "http://search.twitter.com/search.json";
 $trendurl ||= "http://api.twitter.com/1/trends/current.json";
 
 # pick ONE!
@@ -1363,7 +1363,7 @@ EOF
 		print $stdout "-- synchronous /again command for $uname\n"
 			if ($verbose);
 		my $my_json_ref =
-		&grabjson("${uurl}?screen_name=${uname}", 0);
+		&grabjson("${uurl}?screen_name=${uname}&include_rts=true", 0);
 
 		if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY'
@@ -1468,6 +1468,26 @@ EOF
 		&sync_semaphore;
 		return 0;
 	}
+
+        if (m#^/(df|doesfollow)\s+\@?([^\s]+)$#) {
+                if ($anonymous) {
+                        print $stdout "-- who follows anonymous anyway?\n";
+                        return 0;
+                }
+                $_ = "/doesfollow $2 $whoami";
+                print $stdout "*** assuming you meant: $_\n";
+                # fall through to ...
+        }
+        if (m#^/(df|doesfollow)\s+\@?([^\s]+)\s+\@?([^\s]+)$#) {
+                my $user_a = $2;
+                my $user_b = $3;
+                my $g = &grabjson(
+                        "${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
+                print $stdout
+                "--- does $user_a follow ${user_b}? => $g->{'literal'}\n"
+                        if ($g->{'ok'});
+                return 0;
+        }
 
 	if (m#^/th(read)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
@@ -1747,7 +1767,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			# updated and may not act as we expect.
 			print $stdout "-- synchronous /replies command\n"
 				if ($verbose);
-			my $my_json_ref = &grabjson($rurl, 0);
+			my $my_json_ref =
+				&grabjson("${rurl}?include_rts=true", 0);
 			if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY'
 					&& scalar(@{ $my_json_ref })) {
@@ -3878,6 +3899,11 @@ sub descape {
 	} else {
 		$x =~ s/\\u2028/\\n/g;
 		if ($seven) {
+                        # known UTF-8 entities (char for char only)
+                        $x =~ s/\\u2019/\'/g;
+                        $x =~ s/\\u201[cd]/\"/g;
+
+                        # dot out the rest
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
 			$x =~ s/[\x80-\xff]/./g;
 		} else {
