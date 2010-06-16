@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v1.0 (c)2007-2010 cameron kaiser (and contributors).
+# TTYtter v1.1 (c)2007-2010 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -22,8 +22,8 @@ BEGIN {
 #	@INC = (); # wreck intentionally for testing
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
-	$TTYtter_VERSION = "1.0";
-	$TTYtter_PATCH_VERSION = 4;
+	$TTYtter_VERSION = "1.1";
+	$TTYtter_PATCH_VERSION = 0;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -37,11 +37,13 @@ BEGIN {
 
 	$padded_patch_version = substr($TTYtter_PATCH_VERSION . " ", 0, 2);
 
+		#createliurl updateliurl delliurl getliurl getlisurl
+		#statusliurl followliurl leaveliurl
 	%opts_boolean = map { $_ => 1 } qw(
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts
-		synch exception_is_maskable
+		synch exception_is_maskable mentions
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline
@@ -52,9 +54,7 @@ BEGIN {
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 		apibase queryurl trendurl idurl delurl dmdelurl favsurl
 		myfavsurl favurl favdelurl rtsofmeurl followurl leaveurl
-		dmupdate
-		#createliurl updateliurl delliurl getliurl getlisurl
-		#statusliurl followliurl leaveliurl
+		dmupdate xauthurl credurl
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas
 	); %opts_can_set = map { $_ => 1 } qw(
@@ -65,14 +65,13 @@ BEGIN {
 		colourdm colourreply colourwarn coloursearch idurl
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
-		rtsofmeurl followurl leaveurl dmupdate
-		#createliurl updateliurl delliurl getliurl getlisurl
-		#statusliurl followliurl leaveliurl
+		rtsofmeurl followurl leaveurl dmupdate mentions
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
 		leader ssl rc norc vcheck apibase notifytype olib exts
-		nonewrts synch runcommand
+		nonewrts synch runcommand authtype oauthkey oauthsecret
+		tokenkey tokensecret xauthurl credurl keyf
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	$supreturnto = $verbose + 0;
@@ -113,6 +112,49 @@ BEGIN {
 	$last_dm = 0;
 	$print_max = 100; # shiver
 
+	# try to find an OAuth keyfile if we haven't specified key+secret
+	# no worries if this fails; we could be Basic Auth, after all
+	if (!length($oauthkey) && !length($oauthsecret)
+			&& !length($tokenkey)
+			&& !length($tokensecret)) {
+		my $keybuf = '';
+		my $whine = (length($keyf)) ? 1 : 0;
+		$keyf ||= "$ENV{'HOME'}/.ttytterkey";
+		$keyf = "$ENV{'HOME'}/.ttytterkey${keyf}"
+			if ($keyf !~ m#/#);
+		if(open(W, $keyf)) {
+			while(<W>) {
+				chomp;
+				s/\s+//g;
+				$keybuf .= $_;
+			}
+			close(W);
+			my (@pairs) = split(/\&/, $keybuf);
+			foreach(@pairs) {
+				my (@pair) = split(/\=/, $_, 2);
+				$oauthkey = $pair[1]
+					if ($pair[0] eq 'ck');
+				$oauthsecret = $pair[1]
+					if ($pair[0] eq 'cs');
+				$tokenkey = $pair[1]
+					if ($pair[0] eq 'at');
+				$tokensecret = $pair[1]
+					if ($pair[0] eq 'ats');
+			}
+			die("** tried to load OAuth tokens from $keyf\n".
+	"  but it seems corrupt or incomplete. please see the documentation,\n".
+	"  or delete the file so that we can try making your keyfile again.\n")
+				if ((!length($oauthkey) ||
+					!length($oauthsecret) ||
+					!length($tokenkey) ||
+					!length($tokensecret)));
+		} else {
+			die("** couldn't open keyfile $keyf: $!\n")
+				if ($whine);
+			$keyf = ''; # i.e., we loaded nothing from a key file
+		}
+	}
+
 	# try to init Term::ReadLine if it was requested
 	# (shakes fist at @br3nda, it's all her fault)
 	%readline_completion = ();
@@ -124,6 +166,8 @@ BEGIN {
 'use Term::ReadLine; $termrl = new Term::ReadLine ("TTYtter", \*STDIN, \*STDOUT)'
 		|| die(
 	"$@\nthis perl doesn't have ReadLine. don't use -readline.\n");
+#TODO
+# readline repaint
 		$stdout = $termrl->OUT || \*STDOUT;
 		$stdin = $termrl->IN || \*STDIN;
 		$readline = '' if ($readline eq '1');
@@ -139,26 +183,19 @@ BEGIN {
 
 	print $stdout "$leader\n" if (length($leader));
 
+	# state information
+	$lasttwit = '';
+	$lastpostid = 0;
+
 	# stub namespace for multimodules and (eventually) state saving
 	undef %store;
 	$store = \%store;
 
 	die(
-"** you may not use -olib or -lib with -exts.\n" .
-"** -olib and -lib are now deprecated in favour of multi-module extensions.\n".
+"** -olib and -lib are now deleted in favour of multi-module extensions.\n".
 "** if your extension is multi-module aware, add it to -exts instead.\n")
-		if (length($exts) && $exts ne '0' &&
-			(length($olib) || length($lib)));
-	if (length($olib)) {
-		warn "** executing olib: $olib\n";
-		warn "** WARNING: old-style extensions are now deprecated!\n";
-		eval($olib);
-	}
-	if (length($lib)) {
-		warn "** attempting to load old-style extension: $lib\n";
-		warn "** WARNING: old-style extensions are now deprecated!\n";
-		require $lib;
-	}
+		if ((length($olib) || length($lib)));
+
 	unless ($seven) {
 		eval
 'use utf8;binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
@@ -248,6 +285,7 @@ if ($script) {
 	$pause = $vcheck = $slowpost = $verify = 0;
 }
 
+
 ### now instantiate the TTYtter dynamic API ###
 ### based off the defaults later in script. ####
 
@@ -302,7 +340,8 @@ if (length($exts) && $exts ne '0') {
 		# these methods are multi-module safe
 		foreach $arry (qw(
 			handle exception tweettype conclude dmhandle dmconclude
-			heartbeat precommand prepost postpost addaction)) {
+			heartbeat precommand prepost postpost addaction
+			shutdown)) {
 			if (defined($$arry)) {
 				$aarry = "m_$arry";
 				push(@$aarry, [ $file, $$arry ]);
@@ -313,7 +352,7 @@ if (length($exts) && $exts ne '0') {
 		# if a extension already hooked one of
 		# these and another extension tries to hook it, fatal error.
 		foreach $arry (qw(
-			authenticate prompt main autocompletion)) {
+			getpassword prompt main autocompletion)) {
 			if (defined($$arry)) {
 				$sarry = "l_$arry";
 				if (defined($$sarry)) {
@@ -326,7 +365,7 @@ if (length($exts) && $exts ne '0') {
 			}
 		}
 		# these methods are deprecated
-		foreach $arry (qw(console choosecolour)) {
+		foreach $arry (qw(console choosecolour authenticate)) {
 			if (defined($$arry)) {
 				die(
 "** method \"$arry\" is no longer supported in this version. you must\n".
@@ -349,6 +388,7 @@ if (length($exts) && $exts ne '0') {
 	$prepost ||= \&multiprepost;
 	$postpost ||= \&multipostpost;
 	$addaction ||= \&multiaddaction;
+	$shutdown ||= \&multishutdown;
 } else {
 	# the old API single-end-point system
 
@@ -365,12 +405,13 @@ if (length($exts) && $exts ne '0') {
 	$prepost ||= \&defaultprepost;
 	$postpost ||= \&defaultpostpost;
 	$addaction ||= \&defaultaddaction;
+	$shutdown ||= \&defaultshutdown;
 }
 
 # unsafe methods use the single-end-point
-$authenticate ||= $l_authenticate || \&defaultauthenticate;
 $prompt ||= $l_prompt || \&defaultprompt;
 $main ||= $l_main || \&defaultmain;
+$getpassword ||= $l_getpassword || \&defaultgetpassword;
 
 # $autocompletion is special:
 if ($termrl) {
@@ -413,6 +454,18 @@ exit(1) if (!&filter_compile);
 # an extension can look at it if it wants to.
 &notify_compile;
 
+# check that we are using a sensible authtype, based on our guessed user agent
+$authtype ||= "oauth";
+die("** supported authtypes are basic, oauth and xauth only.\n")
+if ($authtype ne 'basic' && $authtype ne 'xauth' && $authtype ne 'oauth');
+if ($authtype eq 'xauth' && !$anonymous) {
+	if (!$ssl && $apibase !~ /^https/i) {
+		print $stdout
+"** xAuth requires -ssl. specifying this for you, or use -authtype=basic.\n";
+		$ssl = 1;
+	}
+}
+
 if ($termrl) {
 	$streamout = $stdout; # this is just simpler instead of dupping
         warn(<<"EOF") if ($] < 5.006);
@@ -432,7 +485,7 @@ if ($silent) {
 	open($stdout, ">>/dev/null"); # KLUUUUUUUDGE
 }
 
-# after this point, die() will cause problems
+# after this point, die() may cause problems
 
 # initialize our route back out so background can talk to foreground
 pipe(W, P) || die("pipe() error [or your Perl doesn't support it]: $!\n");
@@ -444,9 +497,7 @@ binmode(W, ":utf8") unless ($seven);
 
 $anonymous ||= 0;
 undef $user if ($anonymous);
-if ($ssl) {
-	print $stdout "-- using SSL for default URLs.\n";
-}
+print $stdout "-- using SSL for default URLs.\n" if ($ssl);
 $http_proto = ($ssl) ? 'https' : 'http';
 
 $apibase ||= "${http_proto}://api.twitter.com/1";
@@ -456,6 +507,8 @@ $url ||= ($anonymous)
 	: ($nonewrts)
 	?  "${apibase}/statuses/friends_timeline.json"
 	: "${apibase}/statuses/home_timeline.json";
+$xauthurl ||= "${http_proto}://api.twitter.com/oauth/access_token";
+$credurl ||= "${apibase}/account/verify_credentials.json";
 $update ||= "${apibase}/statuses/update.json";
 $rurl ||= "${apibase}/statuses/mentions.json";
 $uurl ||= "${apibase}/statuses/user_timeline.json";
@@ -511,7 +564,6 @@ $dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
-$whoami = (split(/\:/, $user, 2))[0] unless ($anonymous);
 
 # synch overrides these options.
 if ($synch) {
@@ -573,7 +625,96 @@ if ($lynx) {
 	}
 }
 $baseagent = $wend;
-&update_authenticationheaders;
+
+# whoops, no Lynx here if we are not using Basic Auth
+	die(
+"sorry, OAuth and xAuth are not currently supported with Lynx.\n".
+"you must use SSL cURL, or specify -authtype=basic.\n")
+		if ($lynx && $authtype ne 'basic' && !$anonymous);
+
+# create and cache the logic for our selected user agent
+if ($lynx) {
+	$simple_agent = "$baseagent -nostatus -source";
+
+	@wend = ('-nostatus');
+	@wind = (@wend, '-source'); # GET agent
+	@wend = (@wend, '-post_data'); # POST agent
+	# we don't need to have the request signed by Lynx right now;
+	# it doesn't know how to pass custom headers. so this is simpler.
+	$stringify_args = sub {
+		my $basecom = shift;
+		my $resource = shift;
+		my $data = shift;
+		my $dont_do_auth = shift;
+		my $k = join("\n", @_);
+
+		# if resource is an arrayref, then it's a GET with URL
+		# and args (mostly generated by &grabjson)
+		$resource = join('?', @{ $resource })
+			if (ref($resource) eq 'ARRAY');
+		die("wow, we have a bug: Lynx only works with Basic Auth\n")
+			if ($authtype ne 'basic' && !$dont_do_auth);
+		$k = "-auth=".$mytoken.':'.$mytokensecret."\n".$k
+			unless ($dont_do_auth);
+		$k .= "\n";
+		$basecom = "$basecom \"$resource\" -";
+		return ($basecom, $k, $data);
+	};
+} else {
+	$simple_agent = "$baseagent -s -m 13";
+
+	@wend = ('-s', '-m', '13', '-H', 'Expect:');
+	@wind = @wend;
+	$stringify_args = sub {
+		my $basecom = shift;
+		my $resource = shift;
+		my $data = shift;
+		my $dont_do_auth = shift;
+		my $p;
+		my $l = '';
+
+		foreach $p (@_) {
+			if ($p =~ /^-/) {
+				$l .= "\n" if (length($l));
+				$l .= "$p ";
+				next;
+			}
+			$l .= $p;
+		}
+		$l .= "\n";
+
+		# sign our request (Basic Auth or oAuth)
+		unless ($dont_do_auth) {
+			if ($authtype eq 'basic') {
+				$l .= "-u ".$mytoken.":".$mytokensecret."\n";
+			} else {
+				my $nonce;
+				my $timestamp;
+				my $sig;
+				my $header;
+				my $ttoken = (length($mytoken) ?
+					(' oauth_token=\\"'.$mytoken.'\\",') :
+						'');
+
+				($timestamp, $nonce, $sig) = &signrequest(
+					$resource, $data);
+				$header = <<"EOF";
+-H "Authorization: OAuth oauth_nonce=\\"$nonce\\", oauth_signature_method=\\"HMAC-SHA1\\", oauth_timestamp=\\"$timestamp\\", oauth_consumer_key=\\"$oauthkey\\", oauth_signature=\\"$sig\\",$ttoken oauth_version=\\"1.0\\""
+EOF
+				print $stdout $header if ($superverbose);
+				$l .= $header;
+			}
+		}
+
+		# if resource is an arrayref, then it's a GET with URL
+		# and args (mostly generated by &grabjson)
+		$resource = join('?', @{ $resource })
+			if (ref($resource) eq 'ARRAY');
+		$l .= "url = \"$resource\"\n";
+		$l .= "data = \"$data\"\n" if length($data);
+		return ("$basecom -K -", $l, undef);
+	};
+}
 
 # update check
 if ($vcheck && !length($status)) {
@@ -585,10 +726,128 @@ if ($vcheck && !length($status)) {
 }
 print $stdout $vs; # and then again when client starts up
 
+## make sure we have all the authentication pieces we need for the
+## chosen method (authtoken handles this for Basic Auth and xAuth;
+## this is where we validate OAuth)
+
+# if we use OAuth, then don't use any Basic Auth credentials we gave
+# unless we specifically say -authtype=basic or xauth
+if ($authtype eq 'oauth' && length($user)) {
+	print "** warning: -user is ignored when -authtype=oauth (default)\n";
+	$user = undef;
+}
+$whoami = (split(/\:/, $user, 2))[0] unless ($anonymous || !length($user));
+
+unless ($anonymous) {
+# if we are using Basic Auth or xAuth, ignore any user token we may have in
+# our keyfile
+if ($authtype eq 'basic' || $authtype eq 'xauth') {
+	$tokenkey = undef;
+	$tokensecret = undef;
+}
+# but if we are using OAuth, and we have no tokens or app key/secret, stop now
+elsif ($authtype eq 'oauth' && !length($keyf)) { # bad keyfiles caught early
+	if (!length($oauthkey) &&
+			!length($oauthsecret) &&
+			!length($tokenkey) &&
+			!length($tokensecret)) {
+		if ($script) {
+			print $streamout <<"EOF";
+AUTHENTICATION FAILURE
+YOU NEED TO GET AN OAuth KEY, or use -authtype=basic
+(run TTYtter without -script or -runcommand for help)
+EOF
+			exit;
+		}
+		# friendly installer
+		print $stdout <<'EOF';
+
+++-------------------------------------------------------------------++
+||  WELCOME TO TTYtter: let's get you set up with an OAuth keyfile!  ||
+++-------------------------------------------------------------------++
+Twitter now requires all applications authenticating to it use OAuth, a
+more complex authentication system that uses tokens and keys instead of
+screen names and passwords. To use TTYtter with this Twitter account, 
+you will need your own app key and access token. This requires a browser.
+
+The app key/secret and user access token/secret go into a keyfile and
+act as your credentials; instead of using -user, you use -keyf. THIS
+KEYFILE NEVER EXPIRES. YOU ONLY NEED TO DO THIS ONCE FOR EACH ACCOUNT.
+
+If you DON'T want to use OAuth with TTYtter, PRESS CTRL-C now. Restart
+TTYtter with -authtype=basic to use a username and password. THIS IS
+WHAT YOU WANT FOR STATUSNET, BUT WON'T WORK WITH TWITTER AFTER 30 JUNE 2010.
+If you need help with this, talk to @ttytter or E-mail ckaiser@floodgap.com.
+
+Otherwise, press RETURN/ENTER now to start the process.
+EOF
+		$j = <STDIN>;
+		print $stdout <<"EOF";
+
+Start your browser.
+1. Log in to https://twitter.com/ with your desired account.
+2. Go to this URL (all one line). You must be logged into Twitter FIRST!
+
+http://dev.twitter.com/apps/key_exchange?oauth_consumer_key=XtbRXaQpPdfssFwdUmeYw
+
+3. Twitter will confirm. Click Authorize, and accept the terms of service.
+EOF
+		$keyf = "$ENV{'HOME'}/.ttytterkey";
+		if (-e $keyf || !open(W, ">$keyf")) {
+			print $stdout <<"EOF";
+4. Copy the entire string you get back into a file (by default ~/.ttytterkey).
+   (For multiple key files for multiple accounts, use a different filename
+    and tell TTYtter where the key is using -keyf=... .)
+
+Then restart TTYtter with your changes.
+EOF
+			exit;
+		}
+		print $stdout <<"EOF";
+4. Copy the entire string you get back.
+-- Paste it into this terminal, then hit ENTER and CTRL-D to write it ---------
+EOF
+		while(<STDIN>) {
+			print W $_;
+		}
+		close(W);
+		print $stdout <<"EOF";
+-- EOF ------------------------------------------------------------------------
+Written new key file $keyf
+Now, restart TTYtter to use this keyfile -- it will use this one by default.
+(For multiple key files with multiple accounts, write them to separate
+ filenames, and tell TTYtter where the key is using -keyf=... .)
+
+EOF
+		exit;
+	} 
+	my $error = undef;
+	my $k;
+	foreach $k (qw(oauthkey oauthsecret tokenkey tokensecret)) {
+		$error .= "** you need to specify -$k\n"
+			if (!length($$k));
+	}
+	if (length($error)) {
+		print $stdout <<"EOF";
+
+you are missing portions of the OAuth sequence. either create a keyfile
+and point to it with -keyf=... or add these missing pieces:
+$error
+then restart TTYtter, or use -authtype=basic, or =xauth for supported keys.
+EOF
+		exit;
+	}
+}
+
+# now, get a token (either from Basic Auth, the keyfile, or xAuth)
+($mytoken, $mytokensecret) = &authtoken;
+} # unless anonymous
+
 # initial login tests and command line controls
 $phase = 0;
 $didhold = $hold;
 $hold = -1 if ($hold == 1 && !$script);
+$credentials = '';
 for(;;) {
 	$rv = 0;
 	die(
@@ -605,13 +864,24 @@ for(;;) {
 		print "-- warning: input autotrimmed to 140 bytes\n";
 		$next = "";
 	}
-	if (length($status) && $phase) {
+	if (!$anonymous && !length($whoami) && !length($status)) {
+		# we must be using OAuth tokens without xAuth. we'll need
+		# to get our screen name from Twitter. we DON'T need this
+		# if we're just posting with -status.
+		print "(checking credentials) "; $data =
+		$credentials = &backticks($baseagent, '/dev/null', undef,
+			$credurl, undef, $anonymous, @wind);
+		$rv = $? || &is_fail_whale($data) || &is_json_error($data);
+	}
+	if (!$rv && length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
-		print "test-login "; 
-		$data = &backticks($baseagent, '/dev/null', undef,
-					$url, undef, @wind);
-		$rv = $?;
+		unless ($rv) {
+			print "test-login "; 
+			$data = &backticks($baseagent, '/dev/null', undef,
+					$url, undef, $anonymous, @wind);
+			$rv = $?;
+		}
 	}
 	if ($rv || &is_fail_whale($data) || &is_json_error($data)) {
 		if (&is_fail_whale($data)) {
@@ -631,8 +901,8 @@ for(;;) {
 			if ($superverbose);
 		if (--$hold) {
 			print
-			"trying again in 2 minutes, or kill process now.\n\n";
-			sleep 120;
+			"trying again in 1 minute, or kill process now.\n\n";
+			sleep 60;
 			next;
 		}
 		if ($didhold) {
@@ -658,6 +928,17 @@ for(;;) {
 }
 print "SUCCEEDED!\n";
 exit(0) if (length($status));
+if (length($credentials)) {
+	print "-- processing credentials: ";
+	$my_json_ref = &parsejson($credentials);
+	$whoami = $my_json_ref->{'screen_name'};
+	if (!length($whoami)) {
+		print "FAILED!\nis your account suspended, or wrong token?\n";
+		exit;
+	}
+	print "logged in as $whoami\n";
+	$credlog = "-- you are logged in as $whoami\n";
+}
 
 #### BOT/DAEMON MODE STARTUP ####
 
@@ -969,7 +1250,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 					" " . &descape($tweet->{$k}) . "\n";
 		}
 		# include a URL to the tweet per @augmentedfourth
-		$urlshort = "http://twitter.com/$sn/statuses/$tweet->{'id'}";
+		$urlshort =
+		"${http_proto}://twitter.com/$sn/statuses/$tweet->{'id'}";
 		print $stdout
 			"-- %URL% is now $urlshort (/short to shorten)\n";
 		return 0;
@@ -1005,25 +1287,29 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$_ = '/print rate_limit_rate';
 		# and fall through to ...
 	}
+
 	if (/^\/p(rint)? ?([^ ]*)/) {
-		$key = $2;
+		my $key = $2;
 		if (!length($key)) {
 			foreach $key (sort keys %opts_can_set) {
 				print $stdout "*** $key => $$key\n"
 					if (!$opts_secret{$key});
 			}
-		} elsif ($valid{$key}) {
+			return 0;
+		}
+		if ($valid{$key} ||
+				$key eq 'effpause' ||
+				$key eq 'rate_limit_rate' ||
+				$key eq 'rate_limit_left') {
+			my $value = &getvariable($key);
 			print $stdout "*** ";
 			print $stdout "(read-only value) "
 				if (!$opts_can_set{$key});
-			print $stdout "$key => $$key\n";
-		} elsif ($key eq 'effpause' ||
-				$key eq 'rate_limit_rate' ||
-				$key eq 'rate_limit_left') {
-			print $stdout "*** (requesting read-only value)\n";
-			print C (substr("?$key                    ", 0, 19)
-					. "\n");
-			sleep 1;
+			print $stdout "$key => $value\n";
+
+		# I don't see a need for these in &getvariable, so they are
+		# not currently supported. whine if you disagree.
+
 		} elsif ($key eq 'tabcomp') {
 			if ($termrl) {
 				&generate_otabcomp;
@@ -1178,62 +1464,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	if (/^\/s(et)? ([^ ]+) (.+)\s*$/) {
 		$key = $2;
 		$value = $3;
-		if ($key eq 'tquery' && $value eq '0') { # undo tqueries
-			$key = 'track';
-			$value = $track; # falls thru to sync
-			&tracktags_makearray;
-		}
-		if ($opts_can_set{$key}) {
-			if (length($value) > 1023) {
-				# can't transmit this in a packet
-				print $stdout "*** value too long\n";
-			} elsif ($opts_boolean{$key} && $value ne '0' &&
-					$value ne '1') {
-				print $stdout "*** 0|1 only (boolean): $key\n";
-			} elsif ($opts_urls{$key} &&
-		$value !~ m#^(http|https|gopher)://#) {
-				print $stdout "*** must be valid URL: $key\n";
-			} else {
-				KEYAGAIN: $$key = $value;
-				print $stdout "*** changed: $key => $$key\n";
-
-				# handle special values
-				&generate_ansi if ($key eq 'ansi' ||
-					$key =~ /^colour/);
-				&generate_shortdomain if ($key eq 'shorturl');
-				&tracktags_makearray if ($key eq 'track');
-				&filter_compile if ($key eq 'filter');
-				&notify_compile if ($key eq 'notifies');
-
-				# transmit to background process sync-ed values
-				if ($opts_sync{$key}) {
-					&synckey($key, $value);
-				}
-				if ($key eq 'superverbose') {
-					if ($value eq '0') {
-						$key = 'verbose';
-						$value = $supreturnto;
-						goto KEYAGAIN;
-					}
-					$supreturnto = $verbose;
-				}
-			}
-		# virtual keys
-		} elsif ($key eq 'tquery') {
-			$value = &tracktags_tqueryurlify($value);
-			if (length($value) > 139) {
-				print $stdout
-			"*** custom query is too long (encoded: $value)\n";
-			} else {
-				&synckey($key, $value);
-			}
-		} elsif ($valid{$key}) {
-			print $stdout
-			"*** read-only, must change on command line: $key\n";
-		} else {
-			print $stdout
-			"*** not a valid option or setting: $key\n";
-		}
+		&setvariable($key, $value, 1);
 		return 0;
 	}
 
@@ -1469,25 +1700,25 @@ EOF
 		return 0;
 	}
 
-        if (m#^/(df|doesfollow)\s+\@?([^\s]+)$#) {
-                if ($anonymous) {
-                        print $stdout "-- who follows anonymous anyway?\n";
-                        return 0;
-                }
-                $_ = "/doesfollow $2 $whoami";
-                print $stdout "*** assuming you meant: $_\n";
-                # fall through to ...
-        }
-        if (m#^/(df|doesfollow)\s+\@?([^\s]+)\s+\@?([^\s]+)$#) {
-                my $user_a = $2;
-                my $user_b = $3;
-                my $g = &grabjson(
-                        "${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
-                print $stdout
-                "--- does $user_a follow ${user_b}? => $g->{'literal'}\n"
-                        if ($g->{'ok'});
-                return 0;
-        }
+	if (m#^/(df|doesfollow)\s+\@?([^\s]+)$#) {
+		if ($anonymous) {
+			print $stdout "-- who follows anonymous anyway?\n";
+			return 0;
+		}
+		$_ = "/doesfollow $2 $whoami";
+		print $stdout "*** assuming you meant: $_\n";
+		# fall through to ...
+	}
+	if (m#^/(df|doesfollow)\s+\@?([^\s]+)\s+\@?([^\s]+)$#) {
+		my $user_a = $2;
+		my $user_b = $3;
+		my $g = &grabjson(
+			"${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
+		print $stdout
+		"--- does $user_a follow ${user_b}? => $g->{'literal'}\n"
+			if ($g->{'ok'});
+		return 0;
+	}
 
 	if (m#^/th(read)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
@@ -1688,9 +1919,10 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 "\n-- sure you want to delete? (only y or Y is affirmative): ";
 		chomp($answer = lc(<$stdin>));
 		if ($answer ne 'y') {
-			warn "-- ok, tweet is NOT deleted.\n";
+			print $stdout "-- ok, tweet is NOT deleted.\n";
 			return 0;
 		}
+		$lastpostid = -1 if ($tweet->{'id'} == $lastpostid);
 		&deletest($tweet->{'id'}, 1);
 		return 0;
 	}
@@ -1710,10 +1942,33 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 "\n-- sure you want to delete? (only y or Y is affirmative): ";
 		chomp($answer = lc(<$stdin>));
 		if ($answer ne 'y') {
-			warn "-- ok, DM is NOT deleted.\n";
+			print $stdout "-- ok, DM is NOT deleted.\n";
 			return 0;
 		}
 		&deletedm($dm->{'id'}, 1);
+		return 0;
+	}
+	# /deletelast
+	if (m#^/de?l?e?t?e?last$#) {
+		if (!$lastpostid) {
+			print $stdout "-- you haven't posted yet this time!\n";
+			return 0;
+		}
+		if ($lastpostid == -1) {
+			print $stdout "-- you already deleted it!\n";
+			return 0;
+		}
+		print $stdout &wwrap(
+"-- verify you want to delete: \"$lasttwit\"");
+		print $stdout
+"\n-- sure you want to delete? (only y or Y is affirmative): ";
+		chomp($answer = lc(<$stdin>));
+		if ($answer ne 'y') {
+			print $stdout "-- ok, tweet is NOT deleted.\n";
+			return 0;
+		}
+		&deletest($lastpostid, 1);
+		$lastpostid = -1;
 		return 0;
 	}
 
@@ -1767,8 +2022,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			# updated and may not act as we expect.
 			print $stdout "-- synchronous /replies command\n"
 				if ($verbose);
-			my $my_json_ref =
-				&grabjson("${rurl}?include_rts=true", 0);
+			my $my_json_ref = &grabjson($rurl, 0);
 			if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY'
 					&& scalar(@{ $my_json_ref })) {
@@ -1999,8 +2253,9 @@ for(;;) {
 		$notify_rate = "";
 		print $stdout $vs;
 		$vs = "";
+		print $stdout $credlog;
+		$credlog = "";
 	}
-#	else { print $stdout "$synch $synchronous_mode $dm_first_time\n"; }
 	print P "0" if ($synchronous_mode && $interactive);
 	$interactive = 0;
 	$timeleft = ($effpause) ? $effpause : 60;
@@ -2043,17 +2298,19 @@ for(;;) {
 			$first_synch = $synchronous_mode = 1;
 			print $stdout "-- background is now synchronous\n"
 				if ($verbose);
-		} elsif ($rout =~ /([\=\?])([^ ]+)/) {
+		} elsif ($rout =~ /([\=\?\+])([^ ]+)/) {
 			$comm = $1;
 			$key =$2;
 			if ($comm eq '?') {
-				print $stdout "*** $key => $$key\n";
+				print P substr("${$key}$space_pad", 0, 1024);
 			} else {
 				sysread(STDIN, $value, 1024);
 				$value =~ s/\s+$//;
+				$interactive = ($comm eq '+') ? 0 : 1;
 				if ($key eq 'tquery') {
 					print $stdout
-					"*** custom query installed\n";
+					"*** custom query installed\n"
+						if ($interactive || $verbose);
 					print $stdout
 					"$value" if ($verbose);
 					@trackstrings = ();
@@ -2062,7 +2319,8 @@ for(;;) {
 				} else {
 					$$key = $value;
 					print $stdout
-					"*** changed: $key => $$key\n";
+					"*** changed: $key => $$key\n"
+						if ($interactive || $verbose);
 
 					&generate_ansi if ($key eq 'ansi' ||
 						$key =~ /^colour/);
@@ -2119,10 +2377,10 @@ sub update_effpause {
 		if (defined $rate_limit_ref &&
 				ref($rate_limit_ref) eq 'HASH') {
 			$rate_limit_left =
-				$rate_limit_ref->{'remaining_hits'};
+				$rate_limit_ref->{'remaining_hits'}+0;
 			$rate_limit_rate =
-				$rate_limit_ref->{'hourly_limit'};
-			if ($rate_limit_left < 10) {
+				$rate_limit_ref->{'hourly_limit'}+0;
+			if ($rate_limit_left < 10 && $rate_limit_rate) {
 				$estring = 
 "*** warning: $rate_limit_left API requests remain";
 				if ($pause eq 'auto') {
@@ -2133,8 +2391,8 @@ sub update_effpause {
 				&$exception(5, "$estring\n");
 			} else {
 				if ($pause eq 'auto') {
-					if ($rate_limit_rate > 3000) {
-# whitelisted accounts: can't go lower than once a minnit
+					if ($rate_limit_rate >= 350) {
+# we won't go lower than 60 per sec.
 						$effpause = 60;
 					} else {
 # other accounts
@@ -2146,8 +2404,10 @@ sub update_effpause {
 # second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
 						$effpause -=
 				((1/$dmpause) * $effpause) if ($dmpause);
+# third, divide by two (1:1) if replies "mention" streamix is on
+						$effpause = int($effpause/2)
+							if ($mentions);
 #TODO
-# take 1 request away for replies (i.e., cut effpause in half)
 # take 1 request away for each /autolist subscription (i.e., each one,
 # cut effpause in half)
 
@@ -2157,6 +2417,9 @@ sub update_effpause {
 						if (!$effpause && $verbose);
 						$effpause =
 				($effpause) ? int(3600/$effpause) : 180;
+# we don't go under sixty.
+						$effpause = 60
+							if ($effpause < 60);
 					}
 				} else {
 					$effpause = 0+$pause;
@@ -2199,7 +2462,8 @@ sub refresh {
 
 	# first, get my own timeline
 	unless ($notimeline) {
-		$my_json_ref = &grabjson($url, $last_id, 0, 30);
+		$my_json_ref = &grabjson($url, $last_id, 0,
+			($last_id) ? 100 : 30);
 		# if I can't get my own timeline, ABORT! highest priority!
 		return if (!defined($my_json_ref) ||
 			ref($my_json_ref) ne 'ARRAY');
@@ -2209,8 +2473,9 @@ sub refresh {
 	# failure here does not abort, because search may be down independently
 	# of the main timeline.
 	if (!$notrack && scalar(@trackstrings)) {
+		my $l = ($last_id) ? "100" : "20";
 		foreach $k (@trackstrings) {
-		my $r = &grabjson("$queryurl?${k}&rpp=20&result_type=recent",
+		my $r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
 				0, 1); # $last_id, 1);
 			push(@streams, $r)
 				if (defined($r) &&
@@ -2219,7 +2484,14 @@ sub refresh {
 		}
 	}
 
-	# add stream for replies ... maybe later
+	# add stream for replies, if requested
+	if ($mentions) {
+		my $r = &grabjson($rurl, $last_id, 0, ($last_id) ? 100 : 30);
+		push(@streams, $r)
+			if (defined($r) &&
+				ref($r) eq 'ARRAY' &&
+				scalar(@{ $r }));
+	}
 
 	# add stream for lists we have on with /autolist
 #TODO
@@ -2228,6 +2500,7 @@ sub refresh {
 	# now, streamix all the streams into my_json_ref, discarding duplicates
 	# a simple hash lookup is no good; it has to be iterative. because of
 	# that, we might as well just splice it in here and save a sort later.
+	# the streammix logic is unnecessarily complex, probably.
 	# remember, the most recent tweets are FIRST.
 	if (scalar(@streams)) {
 		my $j;
@@ -2285,6 +2558,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $mini_id = shift;
 	my $printed = 0;
 	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
+	my $save_counter = -1;
 	my $i;
 	my $j;
 
@@ -2294,14 +2568,15 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 #TODO
 # generalize this at some point instead of hardcoded menu codes
 # maybe an ma0-mz9?
+				$save_counter = $tweet_counter;
 				$tweet_counter = $mini_split;
 				for(0..9) {
 					undef $store_hash{"zz$_"};
 				}
-			} else {
-				$tweet_counter = $back_split;
-				%store_hash = ();
-			}
+			}# else {
+			#	$tweet_counter = $back_split;
+			#	%store_hash = ();
+			#}
 		}
 		for($i = $disp_max; $i > 0; $i--) {
 			my $g = ($i-1);
@@ -2330,6 +2605,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 				undef))));
 		}
 	}
+	$tweet_counter = $save_counter if ($save_counter > -1);
 	print $stdout "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
 	return (&max(0+$my_json_ref->[0]->{'id'}, $last_id), $j);
@@ -2431,24 +2707,24 @@ sub updatest {
 		}
 	}
 
-	$in_reply_to = ($in_reply_to > 0) ?
-		"&in_reply_to_status_id=$in_reply_to" : '';
+	$urle = '';
+	foreach $i (unpack("C*", $string)) {
+		my $k = chr($i);
+		if ($k =~ /[-._~a-zA-Z0-9]/) {
+			$urle .= $k;
+		} else {
+			$k = sprintf("%02X", $i);
+			$urle .= "%$k";
+		}
+	}
+
 	$user_name_dm = (length($user_name_dm)) ?
 		"&user=$user_name_dm" : '';
 
-	# to avoid unpleasantness with UTF-8 interactions, this will simply
-	# turn the whole thing into a hex string and insert %, thus URL
-	# escaping the whole thing whether it needs it or not. ugly? well ...
-	$istring = $string;
-	eval 'utf8::encode($istring)' unless ($seven);
-	$istring = unpack("H".(&ulength($istring)*2), $istring);
-	for($i = 0; $i < length($istring); $i+=2) {
-		$urle .= '%' . substr($istring, $i, 2);
-	}
-	#&update_authenticationheaders;
-
-	my $i =
-	"source=TTYtter&${payload}=${urle}${in_reply_to}${user_name_dm}";
+	my $i = '';
+	$i .= "source=TTYtter&" if ($authtype eq 'basic');
+	$i .= "in_reply_to_status_id=${in_reply_to}&" if ($in_reply_to > 0);
+	$i .= "${payload}=${urle}${user_name_dm}";
 	$slowpost += 0; if ($slowpost && !$script && !$status && !$silent) {
 		if($pid = open(SLOWPOST, '-|')) {
 			print $stdout &wwrap(
@@ -2470,7 +2746,7 @@ sub updatest {
 		}
 	}
 	my $return = &backticks($baseagent, '/dev/null', undef,
-		(length($user_name_dm)) ? $dmupdate : $update, $i, @wend);
+		(length($user_name_dm)) ? $dmupdate : $update, $i, 0, @wend);
 	print $stdout "-- return --\n$return\n-- return --\n"
 		if ($superverbose);
 	if ($? > 0) {
@@ -2489,7 +2765,17 @@ ${MAGENTA}*** warning: server error message received
 EOF
 		return 98;
 	}
-
+	if ($ec = &is_fail_whale($return) ||
+			$return =~ /^\[?\]?<!DOCTYPE\s+html/i ||
+			$return =~ /^(Status:\s*)?50[0-9]\s/ ||
+			$return =~ /^<html>/i ||
+			$return =~ /^<\??xml\s+/) {
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: Twitter Fail Whale${OFF}
+EOF
+		return 98;
+	}
+	$lastpostid = 0+&parsejson($return)->{'id'};
 	unless ($user_name_dm) {
 		$lasttwit = $string;
 		&$postpost($string);
@@ -2502,9 +2788,8 @@ EOF
 # this is a modified, abridged version of &updatest.
 sub central_cd_dispatch {
 	my ($payload, $interactive, $update) = (@_);
-	#&update_authenticationheaders;
 	my $return = &backticks($baseagent, '/dev/null', undef,
-		$update, $payload, @wend);
+		$update, $payload, 0, @wend);
 	print $stdout "-- return --\n$return\n-- return --\n"
 		if ($superverbose);
 	if ($? > 0) {
@@ -2535,9 +2820,6 @@ sub deletest {
 	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
 	print $stdout "-- tweet id #${id} has been removed\n"
 		if ($interactive && !$en);
-#TODO
-# getting this even with success
-# looks like this is a Twitter bug
 	print $stdout "*** (was the tweet already deleted?)\n"
 		if ($interactive && $en);
 	return 0;
@@ -2581,7 +2863,7 @@ sub foruuser {
 	my $basef = shift;
 	my $verb = shift;
 
-	my $update = "${basef}/${uname}.json?screen_name=${uname}";
+	my $update = "${basef}/${uname}.json";
 	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
 		$interactive, $update);
 	print $stdout "-- ok, you have $verb following user $uname.\n"
@@ -2591,6 +2873,16 @@ sub foruuser {
 
 #### TTYtter internal API utility functions ####
 # ... which your API can call
+
+# gets and returns the contents of a URL (optionally pass a POST body)
+sub graburl {
+	my $resource = shift;
+	my $data = shift;
+	
+	return &backticks($baseagent,
+		'/dev/null', undef, $resource, $data,
+		1, @wind);
+}
 
 # use time locale information if available
 sub wraptime {
@@ -2813,6 +3105,11 @@ sub multiexception {
 			\&defaultexception, \@m_exception, 0, @_);
 	}
 }
+sub multishutdown {
+	return if ($shutdown_already_called++);
+	&multi_module_dispatch(\&defaultshutdown, \@m_shutdown, 0, @_);
+}
+
 sub multihandle {
 	&multi_module_dispatch(\&defaulthandle, \@m_handle, sub {
 		my $rv = shift;
@@ -2863,6 +3160,9 @@ sub defaultexception {
 	shift;
 	print $stdout "${MAGENTA}@_${OFF}";
 	$laststatus = 1;
+}
+sub defaultshutdown { 
+	(&flag_default_call, return) if ($multi_module_context);
 }
 sub defaulthandle {
 	(&flag_default_call, return) if ($multi_module_context);
@@ -3000,40 +3300,6 @@ sub defaultautocompletion {
 }
 # this is where OAuth will live when that support is completed.
 sub defaultauthenticate {
-	my @foo;
-	my $pass;
-
-	return undef if ($anonymous);
-	@foo = split(/:/, $user, 2);
-	$whoami = $foo[0];
-	die("choose -user=username[:password], or -anonymous.\n")
-		if (!length($whoami) || $whoami eq '1');
-	$pass = $foo[1];
-	if (!length($pass)) {
-		# original idea by @jcscoobyrs, heavily modified
-		my $k;
-		my $l;
-
-		$l = "no termios; password WILL";
-		if ($termios) {
-			$termios->getattr(fileno($stdin));
-			$k = $termios->getlflag;
-			$termios->setlflag($k ^ &POSIX::ECHO);
-			$termios->setattr(fileno($stdin));
-			$l = "password WILL NOT";
-		}
-		print $stdout "enter password for $whoami ($l be echoed): ";
-		chomp($pass = <$stdin>);
-		if ($termios) {
-			print $stdout "\n";
-			$termios->setlflag($k);
-			$termios->setattr(fileno($stdin));
-		}
-	}
-	die("a password must be specified.\n") if (!length($pass));
-	return ($lynx) ? ("-auth=$whoami:$pass") :
-		($curl) ? ("-u", "$whoami:$pass") : # no --basic now (ktj)
-		die("authenticating for an unknown browser: wtf\n");
 }
 
 #### built-in notification routines ####
@@ -3140,7 +3406,6 @@ sub get_tweet {
 	return $w;
 }
 
-
 # this is the analogous function for a rolling DM code. it is somewhat
 # simpler as DM codes are always rolling and have no foreground store
 # currently, so it always executes a background request.
@@ -3184,13 +3449,117 @@ sub sync_n_quit {
 	exit;
 }
 
+# setter for internal variables, with all the needed side effects for those
+# variables that are programmed to trigger internal actions when changed.
+sub setvariable {
+	my $key = shift;
+	my $value = shift;
+	my $interactive = 0+shift;
+
+	if ($key eq 'script') { # this can never be changed by this routine
+		print $stdout "*** script may only be changed on init\n";
+		return 1;
+	}
+	if ($key eq 'tquery' && $value eq '0') { # undo tqueries
+		$tquery = undef;
+		$key = 'track';
+		$value = $track; # falls thru to sync
+		&tracktags_makearray;
+	}
+	if ($opts_can_set{$key} ||
+			# we CAN set read-only variables during initialization
+			($multi_module_mode == -1 && $valid{$key})) {
+		if (length($value) > 1023) {
+			# can't transmit this in a packet
+			print $stdout "*** value too long\n";
+			return 1;
+		} elsif ($opts_boolean{$key} && $value ne '0' &&
+				$value ne '1') {
+			print $stdout "*** 0|1 only (boolean): $key\n";
+			return 1;
+		} elsif ($opts_urls{$key} &&
+	$value !~ m#^(http|https|gopher)://#) {
+			print $stdout "*** must be valid URL: $key\n";
+			return 1;
+		} else {
+			KEYAGAIN: $$key = $value;
+			print $stdout "*** changed: $key => $$key\n"
+				if ($interactive || $verbose);
+
+			# handle special values
+			&generate_ansi if ($key eq 'ansi' ||
+				$key =~ /^colour/);
+			&generate_shortdomain if ($key eq 'shorturl');
+			&tracktags_makearray if ($key eq 'track');
+			&filter_compile if ($key eq 'filter');
+			&notify_compile if ($key eq 'notifies');
+
+			# transmit to background process sync-ed values
+			if ($opts_sync{$key}) {
+				&synckey($key, $value, $interactive);
+			}
+			if ($key eq 'superverbose') {
+				if ($value eq '0') {
+					$key = 'verbose';
+					$value = $supreturnto;
+					goto KEYAGAIN;
+				}
+				$supreturnto = $verbose;
+			}
+		}
+	# virtual keys
+	} elsif ($key eq 'tquery') {
+		my $ivalue = &tracktags_tqueryurlify($value);
+		if (length($ivalue) > 139) {
+			print $stdout
+		"*** custom query is too long (encoded: $ivalue)\n";
+			return 1;
+		} else {
+			$tquery = $value;
+			&synckey($key, $ivalue, $interactive);
+		}
+	} elsif ($valid{$key}) {
+		print $stdout
+		"*** read-only, must change on command line: $key\n";
+		return 1;
+	} else {
+		print $stdout
+		"*** not a valid option or setting: $key\n";
+		return 1;
+	}
+	return 0;
+}
 sub synckey {
 	my $key = shift;
 	my $value = shift;
-	print $stdout "*** (transmitting to background)\n";
-	print C (substr("=$key                           ", 0, 19) . "\n");
+	my $interactive = 0+shift;
+	my $commchar = ($interactive) ? '=' : '+';
+	print $stdout "*** (transmitting to background)\n"
+		if ($interactive || $verbose);
+	return if (!$child); 
+	print C
+	(substr("${commchar}$key                           ", 0, 19) . "\n");
 	print C (substr(($value . $space_pad), 0, 1024));
 	sleep 1;
+}
+
+# getter for internal variables. right now this just returns the variable by
+# name and a couple virtuals, but in the future this might be expanded.
+sub getvariable {
+	my $key = shift;
+	if ($valid{$key}) {
+		return $$key;
+	}
+	if ($key eq 'effpause' ||
+			$key eq 'rate_limit_rate' ||
+			$key eq 'rate_limit_left') {
+		my $value;
+		print C (substr("?$key                    ", 0, 19) . "\n");
+		sysread(W, $value, 1024);
+		$value =~ s/\s+$//;
+		return $value;
+	}
+	return undef;
 }
 
 #### url management (/url, /short) ####
@@ -3419,7 +3788,6 @@ sub updatecheck {
 	return $vs;
 }
 
-sub end_me { exit; } # which falls through to ...
 sub generate_otabcomp {
 	if (scalar(@j = keys(%readline_completion))) {
 		# print optimized readline. include all that we
@@ -3438,6 +3806,7 @@ sub generate_otabcomp {
 		print $stdout "-readline=\"@keys\"\n";
 	}
 }
+sub end_me { exit; } # which falls through to, via END, ...
 sub killkid {
 	if ($child) {
 		print $stdout "\n\ncleaning up.\n";
@@ -3447,6 +3816,7 @@ sub killkid {
 		}
 		&generate_otabcomp;
 		kill 9, $child;
+		&$shutdown; # safer here
 	}
 	#print $stdout "done.\n";
 	#exit;
@@ -3478,87 +3848,33 @@ sub generate_ansi {
 }
 
 
-# authenticate sets $whoami, sphincter says $what
-sub update_authenticationheaders {
-#TODO
-# needs to stop asking for password all the damn time when not given
-	(@auth) = ($anonymous) ? "" : &$authenticate;
-	if ($lynx) {
-		$simple_agent = "$baseagent -nostatus -source";
-
-		@wend = ('-nostatus');
-		@weld = (@wend, '-source');
-		@wend = (@wend, @auth);
-		@wand = (@wend, '-source');
-		@wind = (@wand);
-		@wend = (@wend, '-post_data');
-		$stringify_args = sub {
-			my $basecom = shift;
-			my $resource = shift;
-			my $data = shift;
-			my @k = join("\n", @_);
-
-			$basecom = "$basecom \"$resource\" -";
-			return ($basecom, "@k", $data);
-		};
-	} else {
-		$simple_agent = "$baseagent -s -m 13";
-
-		@wend = ('-s', '-m', '13', '-H', 'Expect:');
-		@weld = @wend;
-		@wend = (@wend, @auth);
-		@wand = (@wend);
-		@wind = @wend;
-		$stringify_args = sub {
-			my $basecom = shift;
-			my $resource = shift;
-			my $data = shift;
-			my $p;
-			my $l = '';
-
-			foreach $p (@_) {
-				if ($p =~ /^-/) {
-					$l .= "\n" if (length($l));
-					$l .= "$p ";
-					next;
-				}
-				$l .= $p;
-			}
-			$l .= "\nurl = \"$resource\"\n";
-			$l .= "data = \"$data\"\n" if length($data);
-			return ("$basecom -K -", $l, undef);
-		};
-	}
-}
-
-
 sub grabjson {
 	my $data;
 	my $url = shift;
 	my $last_id = shift;
-	my @agent = (shift) ? @weld : @wand;
+	my $is_anon = shift;
 	my $count = shift;
+	my $xurl;
+	my $kludge_search_api_adjust = 0;
+	my $my_json_ref = undef; # durrr hat go on foot
+	my $i;
 	my $tdata;
 	my $seed;
-	my $xurl;
-	my $my_json_ref = undef; # durrr hat go on foot
-	my $kludge_search_api_adjust = 0;
-	my $i;
 
 	#undef $/; $data = <STDIN>;
 
 	# count needs to be removed for the default case due to show, etc.
-	$xurl = ($last_id) ? 
-		((($url =~ /\?/) ? '&' : '?')."since_id=$last_id")
-			: "";
-	$xurl .= ((length($xurl)) ? "&count=$count" :
-		((($url =~ /\?/) ? '&' : '?')."count=$count"))
-			if ($count);
+	$xurl = ($count) ? "count=$count" : '';
+	# timeline control. this speeds up parsing since there's less data.
+	if ($last_id) {
+		$xurl .= "&" if length($xurl);
+		$xurl .= "since_id=${last_id}"; # can't use skip_user: no SN
+	}
+	my $resource = (length($xurl)) ? [ $url, $xurl ] : $url;
 
-	#&update_authenticationheaders;
-	my @cargs = ($baseagent,
-			'/dev/null', undef, "$url$xurl", undef, @agent);
-	chomp($data = &backticks(@cargs));
+	chomp($data = &backticks($baseagent,
+			'/dev/null', undef, $resource, undef,
+			$is_anon + $anonymous, @wind));
 	my $k = $? >> 8;
 
 	$data =~ s/[\r\l\n\s]*$//s;
@@ -3613,10 +3929,6 @@ sub grabjson {
 		return undef;
 	}
 
-# process the JSON data ... simplemindedly, because I just write utter crap,
-# am not a professional programmer, and don't give a flying fig whether
-# kludges suck or no.
-
 	# test for error/warning conditions with trivial case
 	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s
 		|| $data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
@@ -3625,13 +3937,6 @@ sub grabjson {
 			"*** \"$3\"\n");
 		return undef;
 	}
-
-	# test for single logicals
-	return {
-		'ok' => 1,
-		'result' => (($1 eq 'true') ? 1 : 0),
-		'literal' => $1,
-			} if ($data =~ /^['"]?(true|false)['"]?$/);
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #26
 	# http://code.google.com/p/twitter-api/issues/detail?id=26
@@ -3645,6 +3950,78 @@ sub grabjson {
         if ($data =~ s/^\{['"]results['"]:(\[.*\]).*$/$1/isg) {
 		$kludge_search_api_adjust = 1;
 	}
+
+	$my_json_ref = &parsejson($data);
+
+	# normalize the data into a standard form. what this currently does
+	# is the following gyrations:
+	# - if the source of this JSON data source is the Search API, translate
+	#   its fields into the standard API.
+	# - if the tweet is an newRT, unwrap it so that the full tweet text is
+	#   revealed (unless -nonewrts).
+	# - if this appears to be a tweet, put in a stub geo hash if one does
+	#   not yet exist.
+	# one day I would like this code to go the hell away.
+	if (defined($my_json_ref) && ref($my_json_ref) eq 'ARRAY') {
+		my $i;
+		my $rt;
+
+		foreach $i (@{ $my_json_ref }) {
+			# normalize geo. if this has a source and it has a
+			# favorited, then it is probably a tweet and we will
+			# add a stub geo hash if one doesn't exist yet.
+			if ($kludge_search_api_adjust || 
+					($i->{'favorited'} && $i->{'source'})){
+				$i = &fix_geo_api_data($i);
+			}
+
+			# normalize Search
+			if ($kludge_search_api_adjust) {
+				# hopefully this hack can die with API v2.
+				$i->{'class'} = "search";
+				$i->{'user'}->{'screen_name'} =
+					$i->{'from_user'};
+				# translate time stamps
+				# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
+				# Fri, 20 Mar 2009 16:35:56 +0000 (search)
+				$i->{'created_at'} =~
+	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
+			}
+
+			# normalize newRTs
+			# if we get newRTs with -nonewrts, oh well
+			if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
+				# reconstruct the RT in a "canonical" format
+				# without truncation
+				$i->{'text'} =
+		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
+			}
+		}
+	}
+
+	$laststatus = 0;
+	return $my_json_ref;
+}
+
+# process the JSON data ... simplemindedly, because I just write utter crap,
+# am not a professional programmer, and don't give a flying fig whether
+# kludges suck or no. this used to be part of grabjson, but I split it out.
+sub parsejson {
+	my $data = shift;
+	my $my_json_ref = undef; # durrr hat go on foot
+	my $i;
+	my $tdata;
+	my $seed;
+	my $bbqqmask;
+	my $ddqqmask;
+	my $ssqqmask;
+
+	# test for single logicals
+	return {
+		'ok' => 1,
+		'result' => (($1 eq 'true') ? 1 : 0),
+		'literal' => $1,
+			} if ($data =~ /^['"]?(true|false)['"]?$/);
 
 	# first isolate escaped backslashes with a unique sequence.
 	$bbqqmask = "BBQQ";
@@ -3734,54 +4111,6 @@ sub grabjson {
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
 		if (!defined($my_json_ref));
 
-
-	# normalize the data into a standard form. what this currently does
-	# is the following gyrations:
-	# - if the source of this JSON data source is the Search API, translate
-	#   its fields into the standard API.
-	# - if the tweet is an newRT, unwrap it so that the full tweet text is
-	#   revealed (unless -nonewrts).
-	# - if this appears to be a tweet, put in a stub geo hash if one does
-	#   not yet exist.
-	# one day I would like this code to go the hell away.
-	if (defined($my_json_ref) && ref($my_json_ref) eq 'ARRAY') {
-		my $i;
-		my $rt;
-
-		foreach $i (@{ $my_json_ref }) {
-			# normalize geo. if this has a source and it has a
-			# favorited, then it is probably a tweet and we will
-			# add a stub geo hash if one doesn't exist yet.
-			if ($kludge_search_api_adjust || 
-					($i->{'favorited'} && $i->{'source'})){
-				$i = &fix_geo_api_data($i);
-			}
-
-			# normalize Search
-			if ($kludge_search_api_adjust) {
-				# hopefully this hack can die with API v2.
-				$i->{'class'} = "search";
-				$i->{'user'}->{'screen_name'} =
-					$i->{'from_user'};
-				# translate time stamps
-				# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
-				# Fri, 20 Mar 2009 16:35:56 +0000 (search)
-				$i->{'created_at'} =~
-	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
-			}
-
-			# normalize newRTs
-			# if we get newRTs with -nonewrts, oh well
-			if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
-				# reconstruct the RT in a "canonical" format
-				# without truncation
-				$i->{'text'} =
-		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
-			}
-		}
-	}
-
-	$laststatus = 0;
 	return $my_json_ref;
 }
 
@@ -3813,11 +4142,13 @@ sub backticks {
 	my $rout = shift;
 	my $resource = shift;
 	my $data = shift;
+	my $dont_do_auth = shift;
 	my $buf = '';
 	my $undersave = $_;
 	my $pid;
 
-	($comm, $args, $data) = &$stringify_args($comm, $resource, $data, @_);
+	($comm, $args, $data) = &$stringify_args($comm, $resource,
+		$data, $dont_do_auth, @_);
 	print $stdout "$comm\n$args\n$data\n" if ($superverbose);
 	if(open(BACTIX, '-|')) {
 		while(<BACTIX>) {
@@ -3899,11 +4230,11 @@ sub descape {
 	} else {
 		$x =~ s/\\u2028/\\n/g;
 		if ($seven) {
-                        # known UTF-8 entities (char for char only)
-                        $x =~ s/\\u2019/\'/g;
-                        $x =~ s/\\u201[cd]/\"/g;
+			# known UTF-8 entities (char for char only)
+			$x =~ s/\\u2019/\'/g;
+			$x =~ s/\\u201[cd]/\"/g;
 
-                        # dot out the rest
+			# dot out the rest
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
 			$x =~ s/[\x80-\xff]/./g;
 		} else {
@@ -3974,6 +4305,17 @@ sub wwrap {
 
 # these subs look weird, but they're encoding-independent and run anywhere
 sub ulength { my @k; return (scalar(@k = unpack("C*", shift))); }
+sub usubstr {
+	my @k = unpack("C*", shift);
+	return '' if (!scalar(@k));
+	my $p = 0+shift;
+	my $l = 0+shift;
+
+	return pack("C*", @k[$p..$#k]) if (!$l);
+	$l = $p+$l-1;
+	$l = $#k if ($l > $#k);
+	return pack("C*", @k[$p..$l]);
+}
 sub uhex {
 	# URL-encode an arbitrary string, even UTF-8
 	# more versatile than the miniature one in &updatest
@@ -4052,5 +4394,340 @@ sub cosplit {
 	return (&cosplit($orig_k, 1, $lengthsub)) if (!length($q) && !$mode);
 		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
+}
+
+### OAuth and xAuth methods, including our own homegrown SHA-1 and HMAC ###
+### no Digest:* required! ###
+### these routines are not byte-safe and need a use bytes; before you call ###
+
+# this is a modified, deciphered and deobfuscated version of the famous Perl
+# one-liner SHA-1 written by John Allen. hope he doesn't mind.
+sub sha1 {
+	my $string = shift;
+	print $stdout "string length: @{[ length($string) ]}\n"
+		if ($showwork);
+
+	my $constant = "D9T4C`>_-JXF8NMS^\$#)4=L/2X?!:\@GF9;MGKH8\\;O-S*8L'6";
+	my @A = unpack('N*', unpack('u', $constant));
+	my @K = splice(@A, 5, 4);
+	my $M  = sub { # 64-bit warning
+		my $x;
+		my $m;
+		($x = pop @_) - ($m=4294967296) * int($x / $m);
+	};
+	my $L = sub { # 64-bit warning
+		my $n = pop @_;
+		my $x;
+		((($x = pop @_) << $n) | ((2 ** $n - 1) & ($x >> 32 - $n))) &
+			4294967295;
+	};
+	my $l = '';
+	my $r;
+	my $a;
+	my $b;
+	my $c;
+	my $d;
+	my $e;
+	my $us;
+	my @nuA;
+	my $p = 0;
+
+	do {
+		my $i;
+		$us = &usubstr($string, 0, 64);
+		$string = &usubstr($string, 64);
+		$l += $r = &ulength($us);
+		print $stdout "pad length: $r\n" if ($showwork);
+		($r++, $us .= "\x80") if ($r < 64 && !$p++);
+		my @W = unpack('N16', $us . "\000" x 7);
+		$W[15] = $l * 8 if ($r < 57);
+		foreach $i (16 .. 79) {
+		    push(@W,
+		&$L($W[$i - 3] ^ $W[$i - 8] ^ $W[$i - 14] ^ $W[$i - 16], 1));
+		}
+		($a, $b, $c, $d, $e) = @A;
+		foreach $i (0 .. 79) {
+		   my $qq = ($i < 20) ? ($b & ($c ^ $d) ^ $d) :
+				($i < 40) ? ($b ^ $c ^ $d) :
+				($i < 60) ? (($b | $c) & $d | $b & $c) :
+				($b ^ $c ^ $d);
+		    $t = &$M($qq + $e + $W[$i] + $K[$i / 20] + &$L($a, 5));
+		    $e = $d;
+		    $d = $c;
+		    $c = &$L($b, 30);
+		    $b = $a;
+		    $a = $t;
+		}
+		@nuA = ($a, $b, $c, $d, $e);
+		print $stdout "$a $b $c $d $e\n" if ($showwork);
+		$i = 0;
+		@A = map({ &$M($_ + $nuA[$i++]); } @A);
+	} while ($r > 56);
+	my $x = sprintf('%.8x' x 5, @A);
+	@A = unpack("C*", pack("H*", $x));
+	return($x, @A);
+}
+
+# heavily modified from MIME::Base64
+sub simple_encode_base64 {
+	my $result = '';
+	my $input = shift;
+
+	pos($input) = 0;
+	while($input =~ /(.{1,45})/gs) {
+		$result .= substr(pack("u", $1), 1);
+		chop($result);
+	}
+	$result =~ tr|` -_|AA-Za-z0-9+/|;
+	my $padding = (3 - length($input) % 3) % 3;
+	$result =~ s/.{$padding}$/("=" x $padding)/e if ($padding);
+
+	return $result;
+}
+
+sub simple_decode_base64 {
+	my $input = shift;
+	my $result = '';
+	my @k = ();
+
+	$input =~ tr|A-Za-z0-9+=/||cd;
+	$input =~ s/=+$//;
+	$input =~ tr|A-Za-z0-9+/| -_|;
+	while ($input =~ /(.{1,60})/gs) {
+		my $len = chr(32 + length($1)*3/4);
+		$result .= unpack("u", $len . $1);
+	}
+
+	@k = map { unpack("C",$_) } split(//, $result);
+	return ($result, @k);
+}
+
+# from RFC 2104/RFC 2202
+
+sub hmac_sha1 {
+	my $message = shift;
+	my @key = (@_);
+	my $opad;
+	my $ipad;
+	my $i;
+	my @j;
+	
+	# sha1 blocksize is 512, so key should be 64 bytes
+
+print $stdout " KEY HASH \n" if ($showwork);
+	($i, @key) = &sha1(pack("C*", @key)) while (scalar(@key) > 64);
+	push(@key, 0) while(scalar(@key) < 64);
+	$opad = pack("C*", map { ($_ ^ 92) } @key);
+	$ipad = pack("C*", map { ($_ ^ 54) } @key);
+
+print $stdout " MESSAGE HASH \n" if ($showwork);
+	($i, @j) = &sha1($ipad . $message);
+print $stdout " FINAL HASH \n" if ($showwork);
+	$i = pack("C*", @j); # output hash is 160 bits
+	($i, @j) = &sha1($opad . $i);
+	$i = &simple_encode_base64(pack("C20", @j));
+
+	return $i;
+}
+
+# simple encoder for OAuth modified URL encoding
+# this is NOT UTF-8 safe
+sub url_oauth_sub {
+	my $x = shift;
+	$x =~ s/([^-0-9a-zA-Z._~])/"%".uc(unpack("H2",$1))/eg; return $x;
+}
+
+# default method of getting password: ask for it. only relevant for xAuth
+# and Basic Auth, neither of which is our default.
+sub defaultgetpassword {
+	# original idea by @jcscoobyrs, heavily modified
+	my $k;
+	my $l;
+	my $pass;
+
+	$l = "no termios; password WILL";
+	if ($termios) {
+		$termios->getattr(fileno($stdin));
+		$k = $termios->getlflag;
+		$termios->setlflag($k ^ &POSIX::ECHO);
+		$termios->setattr(fileno($stdin));
+		$l = "password WILL NOT";
+	}
+	print $stdout "enter password for $whoami ($l be echoed): ";
+	chomp($pass = <$stdin>);
+	if ($termios) {
+		print $stdout "\n";
+		$termios->setlflag($k);
+		$termios->setattr(fileno($stdin));
+	}
+	return $pass;
+}
+
+# this returns an immutable token corresponding to the current authenticated
+# session. in the case of Basic Auth, it is simply the user:password pair.
+# in the case of xAuth, it executes a fetch for the token and token secret.
+# the function then returns (token,secret) which for Basic Auth is token,undef.
+#
+# most of the time we will be using tokens in a keyfile, however, so this
+# function runs in that case as a stub.
+sub authtoken {
+	my @foo;
+	my $pass;
+	my $sig;
+	my $return;
+	my $tries = ($hold > 3) ? $hold : 3;
+		# give up on token if we don't get one
+
+	return (undef,undef) if ($anonymous);
+	return ($tokenkey,$tokensecret)
+		if (length($tokenkey) && length($tokensecret));
+	@foo = split(/:/, $user, 2);
+	$whoami = $foo[0];
+	die("choose -user=username[:password], or -anonymous.\n")
+		if (!length($whoami) || $whoami eq '1');
+	$pass = length($foo[1]) ? $foo[1] : &$getpassword;
+	die("a password must be specified.\n") if (!length($pass));
+	return ($whoami, $pass) if ($authtype eq 'basic');
+
+	print $stdout "negotiating xAuth token ...";
+
+	my $rawtoken;
+	while($tries) {
+		$rawtoken = &backticks($baseagent,
+			'/dev/null',
+			undef,
+			$xauthurl,
+			("x_auth_mode=client_auth&" .
+			 "x_auth_password=" . &url_oauth_sub($pass) . "&".
+			 "x_auth_username=" . &url_oauth_sub($whoami)),
+			0, @wend);
+		my $i;
+		print $stdout ("token = $rawtoken\n") if ($superverbose);
+		my (@keyarr) = split(/\&/, $rawtoken);
+		my $got_token = '';
+		my $got_secret = '';
+		foreach $i (@keyarr) {
+			my $key;
+			my $value;
+
+			($key, $value) = split(/\=/, $i);
+			$got_token = $value if ($key eq 'oauth_token');
+			$got_secret = $value if ($key eq 'oauth_token_secret');
+			if (length($got_token) && length($got_secret)) {
+				print $stdout " SUCCEEDED!\n";
+				return ($got_token, $got_secret);
+			}
+		}
+		print $stdout ".";
+		$tries--;
+	}
+	print $stdout " FAILED!: \"$rawtoken\"\n";
+die("unable to fetch xAuth token. other possible reasons:\n".
+    " - root certificates are not updated (see documentation)\n".
+    " - your password is wrong\n".
+    " - your computer's clock is not set correctly\n" .
+    " - Twitter farted\n" .
+    "fix these possible problems, or try again later.\n");
+}
+
+# this is a sucky nonce generator. I was looking for an awesome nonce
+# generator, and then I realized it would only be used once, so who cares?
+# *rimshot*
+sub generate_nonce {
+	unpack("H9000", pack("u", rand(256), rand(256), rand(256), time()));
+}
+
+# this signs a request with the token and token secret. the result is undef if
+# Basic Auth. payload should already be URL encoded and *sorted*.
+# this is typically called by stringify_args to get authentication information.
+sub signrequest {
+
+	# this horrible kludge is needed to account for both 5.005, or for
+	# 5.6+ installs with no stdlibs and just a bare Perl, both of which
+	# we support. I hope Larry Wall will forgive me for messing with
+	# compiler internals next time I see him at church.
+	BEGIN { $^H |= 0x00000008 unless ($] < 5.006); }
+
+	my $resource = shift;
+	my $payload = shift;
+
+	# when we sign the initial request for an xAuth token, we obviously
+	# don't have one yet, so mytoken/mytokensecret can be null.
+
+	my $nonce = &generate_nonce;
+	my @keybytes;
+	my $sig_base;
+	my $timestamp = time();
+	return undef if ($authtype eq 'basic');
+
+	# stub for oAuth 2.0
+	return undef if (!length($oauthkey) || !length($oauthsecret));
+
+	(@keybytes) = map { ord($_) }
+		split(//, $oauthsecret.'&'.$mytokensecret);
+	if (ref($resource) eq 'ARRAY' || length($payload)) {
+		# split into _a and _b payloads lexically
+		my $payload_a = '';
+		my $payload_b = '';
+		my $w;
+		my $aorb = 0;
+		my $method = "GET";
+		my $url;
+	
+		if (length($payload)) {
+			$method = "POST";
+			# this is a bit problematic since it won't be
+			# sorted. we'll deal with this as we need to.
+			if (ref($resource) eq 'ARRAY') {
+				$url = &url_oauth_sub($resource->[0]);
+				$payload .= "&" . $resource->[1];
+			} else {
+				$url = &url_oauth_sub($resource);
+			}
+		} elsif (ref($resource) eq 'ARRAY') {
+			$url = &url_oauth_sub($resource->[0]);
+			$payload = $resource->[1];
+		} else {
+			$url = &url_oauth_sub($resource);
+		}
+
+		# this is pretty simplistic but it's really all we need.
+		foreach $w (split(/\&/, $payload)) {
+			$aorb = 1 if ($w =~ /^[p-z]/ || $w =~ /^o[b-z]/);
+			$w = &url_oauth_sub("${w}&");
+			if ($aorb) {
+				$payload_b .= $w;
+			} else {
+				$payload_a .= $w;
+			}
+		}
+		$payload_b =~ s/%26$//;
+		$sig_base = $method . "&" .
+			$url . "&" .
+			(length($payload_a) ? $payload_a : '').
+			"oauth_consumer_key%3D" . $oauthkey . "%26" .
+			"oauth_nonce%3D" . $nonce . "%26" .
+			"oauth_signature_method%3DHMAC-SHA1%26" .
+			"oauth_timestamp%3D" . $timestamp . "%26" .
+			(length($mytoken) ? 
+				("oauth_token%3D" . $mytoken . "%26") : '') .
+			"oauth_version%3D1.0" .
+			(length($payload_b) ? ("%26" . $payload_b) : '');
+	} else {
+		$sig_base = "GET&" .
+			&url_oauth_sub($resource) . "&" .
+			"oauth_consumer_key%3D" . $oauthkey . "%26" .
+			"oauth_nonce%3D" . $nonce . "%26" .
+			"oauth_signature_method%3DHMAC-SHA1%26" .
+			"oauth_timestamp%3D" . $timestamp . "%26" .
+			(length($mytoken) ? 
+				("oauth_token%3D" . $mytoken . "%26") : '') .
+			"oauth_version%3D1.0" ;
+	}
+	print $stdout
+"token-secret: $mytokensecret\nconsumer-secret: $oauthsecret\nsig-base: $sig_base\n"
+		if ($superverbose);
+	return ($timestamp, $nonce,
+		&url_oauth_sub(&hmac_sha1($sig_base, @keybytes)));
 }
 
