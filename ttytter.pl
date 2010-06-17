@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
@@ -196,6 +196,7 @@ BEGIN {
 "** if your extension is multi-module aware, add it to -exts instead.\n")
 		if ((length($olib) || length($lib)));
 
+	$pack_magic = ($] < 5.006) ? '' : "U0";
 	unless ($seven) {
 		eval
 'use utf8;binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
@@ -760,6 +761,13 @@ EOF
 			exit;
 		}
 		# friendly installer
+		if (!length($ENV{'HOME'})) {
+			print $streamout <<"EOF";
+Can't run the OAuth keyfile assistant without the HOME environment variable!
+(is this a cron job gone bad? if so, try using -keyf=...)
+EOF
+			exit;
+		}
 		print $stdout <<'EOF';
 
 ++-------------------------------------------------------------------++
@@ -2708,7 +2716,7 @@ sub updatest {
 	}
 
 	$urle = '';
-	foreach $i (unpack("C*", $string)) {
+	foreach $i (unpack("${pack_magic}C*", $string)) {
 		my $k = chr($i);
 		if ($k =~ /[-._~a-zA-Z0-9]/) {
 			$urle .= $k;
@@ -4184,7 +4192,7 @@ sub wherecheck {
 	my (@paths) = split(/\:/, $ENV{'PATH'});
 	my $setv = '';
 
-	unshift(@paths, '/usr/bin'); # the usual place
+	push(@paths, '/usr/bin'); # the usual place
 	@paths = ('') if ($filename =~ m#^/#); # for absolute paths
 
 	print $stdout "$prompt ... " unless ($silent);
@@ -4304,18 +4312,7 @@ sub wwrap {
 }
 
 # these subs look weird, but they're encoding-independent and run anywhere
-sub ulength { my @k; return (scalar(@k = unpack("C*", shift))); }
-sub usubstr {
-	my @k = unpack("C*", shift);
-	return '' if (!scalar(@k));
-	my $p = 0+shift;
-	my $l = 0+shift;
-
-	return pack("C*", @k[$p..$#k]) if (!$l);
-	$l = $p+$l-1;
-	$l = $#k if ($l > $#k);
-	return pack("C*", @k[$p..$l]);
-}
+sub ulength { my @k; return (scalar(@k = unpack("${pack_magic}C*", shift))); }
 sub uhex {
 	# URL-encode an arbitrary string, even UTF-8
 	# more versatile than the miniature one in &updatest
@@ -4431,15 +4428,16 @@ sub sha1 {
 	my $us;
 	my @nuA;
 	my $p = 0;
+	$string = unpack("H*", $string);
 
 	do {
 		my $i;
-		$us = &usubstr($string, 0, 64);
-		$string = &usubstr($string, 64);
-		$l += $r = &ulength($us);
+		$us = substr($string, 0, 128);
+		$string = substr($string, 128);
+		$l += $r = (length($us) / 2);
 		print $stdout "pad length: $r\n" if ($showwork);
-		($r++, $us .= "\x80") if ($r < 64 && !$p++);
-		my @W = unpack('N16', $us . "\000" x 7);
+		($r++, $us .= "80") if ($r < 64 && !$p++);
+		my @W = unpack('N16', pack("H*", $us) . "\000" x 7);
 		$W[15] = $l * 8 if ($r < 57);
 		foreach $i (16 .. 79) {
 		    push(@W,
@@ -4483,23 +4481,6 @@ sub simple_encode_base64 {
 	$result =~ s/.{$padding}$/("=" x $padding)/e if ($padding);
 
 	return $result;
-}
-
-sub simple_decode_base64 {
-	my $input = shift;
-	my $result = '';
-	my @k = ();
-
-	$input =~ tr|A-Za-z0-9+=/||cd;
-	$input =~ s/=+$//;
-	$input =~ tr|A-Za-z0-9+/| -_|;
-	while ($input =~ /(.{1,60})/gs) {
-		my $len = chr(32 + length($1)*3/4);
-		$result .= unpack("u", $len . $1);
-	}
-
-	@k = map { unpack("C",$_) } split(//, $result);
-	return ($result, @k);
 }
 
 # from RFC 2104/RFC 2202
@@ -4633,9 +4614,7 @@ die("unable to fetch xAuth token. other possible reasons:\n".
 # this is a sucky nonce generator. I was looking for an awesome nonce
 # generator, and then I realized it would only be used once, so who cares?
 # *rimshot*
-sub generate_nonce {
-	unpack("H9000", pack("u", rand(256), rand(256), rand(256), time()));
-}
+sub generate_nonce { unpack("H9000", pack("u", rand($$).$$.time())); }
 
 # this signs a request with the token and token secret. the result is undef if
 # Basic Auth. payload should already be URL encoded and *sorted*.
