@@ -23,8 +23,11 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
+	# this is kludgy, yes.
+	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
+			$ENV{'ALL'};
 	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
 
@@ -856,6 +859,8 @@ $phase = 0;
 $didhold = $hold;
 $hold = -1 if ($hold == 1 && !$script);
 $credentials = '';
+$status = pack("U0C*", unpack("C*", $status))
+	unless ($seven || !length($status) || $LANG =~ /8859/); # kludgy also
 for(;;) {
 	$rv = 0;
 	die(
@@ -3824,10 +3829,8 @@ sub killkid {
 		}
 		&generate_otabcomp;
 		kill 9, $child;
-		&$shutdown; # safer here
 	}
-	#print $stdout "done.\n";
-	#exit;
+	&$shutdown;
 }
 
 sub generate_ansi {
