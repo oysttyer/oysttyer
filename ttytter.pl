@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -787,7 +787,7 @@ KEYFILE NEVER EXPIRES. YOU ONLY NEED TO DO THIS ONCE FOR EACH ACCOUNT.
 
 If you DON'T want to use OAuth with TTYtter, PRESS CTRL-C now. Restart
 TTYtter with -authtype=basic to use a username and password. THIS IS
-WHAT YOU WANT FOR STATUSNET, BUT WON'T WORK WITH TWITTER AFTER 30 JUNE 2010.
+WHAT YOU WANT FOR STATUSNET, BUT WON'T WORK WITH TWITTER AFTER AUGUST 2010.
 If you need help with this, talk to @ttytter or E-mail ckaiser@floodgap.com.
 
 Otherwise, press RETURN/ENTER now to start the process.
@@ -1008,7 +1008,7 @@ $e = <<'EOF';
   freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
         http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-         ${EM}tweet me: http://twitter.com/ttytter${OFF}                   #;;${YELLOW}ooo${OFF};;
+         ${EM}tweet me: http://twitter.com/ttytter${OFF}                      #;;${YELLOW}ooo${OFF};;
             ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
 ######################################################           ,$B.${RED}*o***${OFF} O$,
 #                                                                a=o${RED}$*O*O*$${OFF}o=a
@@ -1590,6 +1590,14 @@ EOF
 ${prolen}         1         2         3         4         5         6         7         8         9         0         1         2         3        XX
 ${prompt}1...5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5....0....5...XX
 EOF
+		return 0;
+	}
+	if ($_ eq '/cls' || $_ eq '/clear') {
+		if ($ansi) {
+			print $stdout "${ESC}[H${ESC}[2J\n";
+		} else {
+			print $stdout ("\n" x ($ENV{'ROWS'} || 50));
+		}
 		return 0;
 	}
 	if ($_ eq '/refresh' || $_ eq '/thump' || $_ eq '/r') {
@@ -2482,6 +2490,15 @@ sub refresh {
 			ref($my_json_ref) ne 'ARRAY');
 	}
 
+	# add stream for replies, if requested
+	if ($mentions) {
+		my $r = &grabjson($rurl, $last_id, 0, ($last_id) ? 100 : 30);
+		push(@streams, $r)
+			if (defined($r) &&
+				ref($r) eq 'ARRAY' &&
+				scalar(@{ $r }));
+	}
+
 	# next handle hashtags and tracktags
 	# failure here does not abort, because search may be down independently
 	# of the main timeline.
@@ -2495,15 +2512,6 @@ sub refresh {
 					ref($r) eq 'ARRAY' &&
 					scalar(@{ $r }));
 		}
-	}
-
-	# add stream for replies, if requested
-	if ($mentions) {
-		my $r = &grabjson($rurl, $last_id, 0, ($last_id) ? 100 : 30);
-		push(@streams, $r)
-			if (defined($r) &&
-				ref($r) eq 'ARRAY' &&
-				scalar(@{ $r }));
 	}
 
 	# add stream for lists we have on with /autolist
@@ -3171,7 +3179,14 @@ sub flag_default_call { $this_call_default++; $did_call_default++; }
 sub defaultexception {
 	(&flag_default_call, return) if ($multi_module_context);
 	shift;
-	print $stdout "${MAGENTA}@_${OFF}";
+	my $message = "@_";
+	$message =~ s/\n*$//sg;
+	if ($timestamp) {
+		my ($time, $ts) = &wraptime(scalar(localtime));
+		$message = "[$ts] $message";
+		$message =~ s/\n/\n[$ts] /sg;
+	}
+	print $stdout "${MAGENTA}${message}${OFF}\n";
 	$laststatus = 1;
 }
 sub defaultshutdown { 
@@ -3830,7 +3845,7 @@ sub killkid {
 		&generate_otabcomp;
 		kill 9, $child;
 	}
-	&$shutdown;
+	&$shutdown unless (!$shutdown);
 }
 
 sub generate_ansi {
@@ -4073,7 +4088,7 @@ sub parsejson {
 	# run arbitrary code. that would really suck!
 	# first, generate a syntax tree.
 	$tdata = $data;
-	1 while $tdata =~ s/'[^']+'//;
+	1 while $tdata =~ s/'[^']*'//; # empty strings are valid too ...
 	$tdata =~ s/-?[0-9]+\.?[0-9]*([eE][+-][0-9]+)?//g;
 		# have to handle floats *and* their exponents
 	$tdata =~ s/(true|false|null)//g;
