@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 3;
+	$TTYtter_PATCH_VERSION = 4;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -52,7 +52,7 @@ BEGIN {
 		url rlurl dmurl newline wrap notimeline
 		queryurl trendurl track colourprompt colourme notrack
 		colourdm colourreply colourwarn coloursearch idurl
-		notifies filter colourdefault
+		notifies filter colourdefault backload
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 		apibase queryurl trendurl idurl delurl dmdelurl favsurl
@@ -68,7 +68,7 @@ BEGIN {
 		colourdm colourreply colourwarn coloursearch idurl
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
-		rtsofmeurl followurl leaveurl dmupdate mentions
+		rtsofmeurl followurl leaveurl dmupdate mentions backload
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -113,7 +113,7 @@ BEGIN {
 	# defaults that our lib can override
 	$last_id = 0;
 	$last_dm = 0;
-	$print_max = 100; # shiver
+	$print_max ||= 250; # shiver
 
 	# try to find an OAuth keyfile if we haven't specified key+secret
 	# no worries if this fails; we could be Basic Auth, after all
@@ -389,56 +389,61 @@ if (length($exts) && $exts ne '0') {
 	$dmconclude = \&multidmconclude;
 	$heartbeat = \&multiheartbeat;
 	$precommand = \&multiprecommand;
-	$prepost ||= \&multiprepost;
-	$postpost ||= \&multipostpost;
-	$addaction ||= \&multiaddaction;
-	$shutdown ||= \&multishutdown;
+	$prepost = \&multiprepost;
+	$postpost = \&multipostpost;
+	$addaction = \&multiaddaction;
+	$shutdown = \&multishutdown;
 } else {
 	# the old API single-end-point system
 
 	$multi_module_mode = 0; # not executing multi module endpoints
 
-	$handle ||= \&defaulthandle;
-	$exception ||= \&defaultexception;
-	$tweettype ||= \&defaulttweettype;
-	$conclude ||= \&defaultconclude;
-	$dmhandle ||= \&defaultdmhandle;
-	$dmconclude ||= \&defaultdmconclude;
-	$heartbeat ||= \&defaultheartbeat;
-	$precommand ||= \&defaultprecommand;
-	$prepost ||= \&defaultprepost;
-	$postpost ||= \&defaultpostpost;
-	$addaction ||= \&defaultaddaction;
-	$shutdown ||= \&defaultshutdown;
+	$handle = \&defaulthandle;
+	$exception = \&defaultexception;
+	$tweettype = \&defaulttweettype;
+	$conclude = \&defaultconclude;
+	$dmhandle = \&defaultdmhandle;
+	$dmconclude = \&defaultdmconclude;
+	$heartbeat = \&defaultheartbeat;
+	$precommand = \&defaultprecommand;
+	$prepost = \&defaultprepost;
+	$postpost = \&defaultpostpost;
+	$addaction = \&defaultaddaction;
+	$shutdown = \&defaultshutdown;
 }
 
 # unsafe methods use the single-end-point
-$prompt ||= $l_prompt || \&defaultprompt;
-$main ||= $l_main || \&defaultmain;
-$getpassword ||= $l_getpassword || \&defaultgetpassword;
+$prompt = $l_prompt || \&defaultprompt;
+$main = $l_main || \&defaultmain;
+$getpassword = $l_getpassword || \&defaultgetpassword;
 
 # $autocompletion is special:
 if ($termrl) {
 	$termrl->Attribs()->{'completion_function'} =
-		$autocompletion || $l_autocompletion ||
-			\&defaultautocompletion;
+		$l_autocompletion || \&defaultautocompletion;
 }
 
 # validate the notify method the user chose, if any.
 # we can't do this in BEGIN, because it may not be instantiated yet,
 # and we have to do it after loading modules because it might be in one.
+@notifytypes = ();
 if (length($notifytype) && $notifytype ne '0' &&
 		$notifytype ne '1' && !$status) {
-		# NOT $script! scripts have a use case for notifiers!
-	$notifytype="notifier_${notifytype}";
-	eval 'return &$notifytype(undef)' ||
-		die("** invalid notification framework $notifytype: $@\n");
+	# NOT $script! scripts have a use case for notifiers!
+
+	%dupenet = ();
+	foreach $nt (split(/,/, $notifytype)) {
+		$fnt="notifier_${nt}";
+		(warn("** duplicate notification $nt was ignored\n"), next)
+			if ($dupenet{$fnt});
+		eval 'return &$fnt(undef)' ||
+			die("** invalid notification framework $nt: $@\n");
+		$dupenet{$fnt}=1;
+	}
+	@notifytypes = keys %dupenet;
 	# warning if someone didn't tell us what notifies they wanted.
 	warn "-- warning: you specified -notifytype, but no -notifies\n"
 		if (!$silent && !length($notifies));
-
-} else {
-	undef $notifytype;
 }
 
 # set up track tags
@@ -506,6 +511,7 @@ $http_proto = ($ssl) ? 'https' : 'http';
 
 $apibase ||= "${http_proto}://api.twitter.com/1";
 $nonewrts ||= 0;
+$backload ||= 30;
 $url ||= ($anonymous)
 	? "${apibase}/statuses/public_timeline.json"
 	: ($nonewrts)
@@ -665,9 +671,9 @@ if ($lynx) {
 		return ($basecom, $k, $data);
 	};
 } else {
-	$simple_agent = "$baseagent -s -m 13";
+	$simple_agent = "$baseagent -s -m 20";
 
-	@wend = ('-s', '-m', '13', '-H', 'Expect:');
+	@wend = ('-s', '-m', '20', '-H', 'Expect:');
 	@wind = @wend;
 	$stringify_args = sub {
 		my $basecom = shift;
@@ -771,6 +777,7 @@ Can't run the OAuth keyfile assistant without the HOME environment variable!
 EOF
 			exit;
 		}
+		$keyf = "$ENV{'HOME'}/.ttytterkey";
 		print $stdout <<'EOF';
 
 ++-------------------------------------------------------------------++
@@ -787,10 +794,14 @@ KEYFILE NEVER EXPIRES. YOU ONLY NEED TO DO THIS ONCE FOR EACH ACCOUNT.
 
 If you DON'T want to use OAuth with TTYtter, PRESS CTRL-C now. Restart
 TTYtter with -authtype=basic to use a username and password. THIS IS
-WHAT YOU WANT FOR STATUSNET, BUT WON'T WORK WITH TWITTER AFTER AUGUST 2010.
+WHAT YOU WANT FOR STATUSNET, BUT WILL NOT WORK WITH TWITTER!
 If you need help with this, talk to @ttytter or E-mail ckaiser@floodgap.com.
+EOF
 
-Otherwise, press RETURN/ENTER now to start the process.
+print <<"EOF";
+
+Otherwise, this wizard will create a keyfile $keyf
+for you. Press ENTER/RETURN to begin the process.
 EOF
 		$j = <STDIN>;
 		print $stdout <<"EOF";
@@ -803,7 +814,6 @@ http://dev.twitter.com/apps/key_exchange?oauth_consumer_key=XtbRXaQpPdfssFwdUmeY
 
 3. Twitter will confirm. Click Authorize, and accept the terms of service.
 EOF
-		$keyf = "$ENV{'HOME'}/.ttytterkey";
 		if (-e $keyf || !open(W, ">$keyf")) {
 			print $stdout <<"EOF";
 4. Copy the entire string you get back into a file (by default ~/.ttytterkey).
@@ -826,10 +836,14 @@ EOF
 -- EOF ------------------------------------------------------------------------
 Written new key file $keyf
 Now, restart TTYtter to use this keyfile -- it will use this one by default.
-(For multiple key files with multiple accounts, write them to separate
- filenames, and tell TTYtter where the key is using -keyf=... .)
+(For multiple key files with multiple accounts, manually write them to other
+ filenames, and tell TTYtter where the key is using -keyf=... . You can just
+ use a text editor for that.)
 
 EOF
+		chmod(0600, $keyf) ||
+			print $stdout
+"Warning: could not change permissions on $keyf : $@\n";
 		exit;
 	} 
 	my $error = undef;
@@ -1071,6 +1085,7 @@ if ($child = open(C, "|-")) {
 	goto MONITOR;
 }
 $SIG{'PIPE'} = $SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
+
 select(C); $|++; select($stdout);
 
 # handshake for synchronicity mode, if we want it.
@@ -1289,9 +1304,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		print $stdout "*** assuming you meant %URL%: $_\n";
 		# and fall through to ...
 	}
-	if (m#^/sh(ort)? (https?://[^ ]+)#) {
+	if (m#^/sh(ort)? (https?|gopher)(://[^ ]+)#) {
+		my $url = $2 . $3;
 		print $stdout
-"*** shortened to: @{[ (&urlshorten($2) || 'FAILED -- %% to retry') ]}\n";
+"*** shortened to: @{[ (&urlshorten($url) || 'FAILED -- %% to retry') ]}\n";
 		return 0;
 	}
 
@@ -2247,6 +2263,12 @@ unless ($seven) {
 $interactive = $timeleft = $previous_last_id = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
 $SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
+# debugging for broken systems
+$SIG{'ALRM'} = sub {
+	warn("** your system's select() call is ignoring timeouts **\n" .
+	"** report your operating system to ckaiser\@floodgap.com **\n")
+		unless ($silent);
+};
 
 # loop until we are killed or told to stop.
 # we receive instructions on stdin, and send data back on our pipe().
@@ -2280,9 +2302,11 @@ for(;;) {
 	print P "0" if ($synchronous_mode && $interactive);
 	$interactive = 0;
 	$timeleft = ($effpause) ? $effpause : 60;
+	alarm ($effpause + $effpause); # security blanket warning
 	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
 		sysread(STDIN, $rout, 20);
 		next if (!length($rout));
+		alarm 0;
 		# background communications central command code
 		# we received a command from the console, so let's look at it.
 		if ($rout =~ /^pipet (..)/) {
@@ -2484,7 +2508,7 @@ sub refresh {
 	# first, get my own timeline
 	unless ($notimeline) {
 		$my_json_ref = &grabjson($url, $last_id, 0,
-			($last_id) ? 100 : 30);
+			($last_id) ? 250 : $backload);
 		# if I can't get my own timeline, ABORT! highest priority!
 		return if (!defined($my_json_ref) ||
 			ref($my_json_ref) ne 'ARRAY');
@@ -2492,7 +2516,8 @@ sub refresh {
 
 	# add stream for replies, if requested
 	if ($mentions) {
-		my $r = &grabjson($rurl, $last_id, 0, ($last_id) ? 100 : 30);
+		my $r = &grabjson($rurl, $last_id, 0, ($last_id) ? 250
+			: $backload);
 		push(@streams, $r)
 			if (defined($r) &&
 				ref($r) eq 'ARRAY' &&
@@ -2503,7 +2528,8 @@ sub refresh {
 	# failure here does not abort, because search may be down independently
 	# of the main timeline.
 	if (!$notrack && scalar(@trackstrings)) {
-		my $l = ($last_id) ? "100" : "20";
+		#my $l = ($last_id) ? "100" : "$backload";
+		my $l = "20"; # Search API doesn't support this yet.
 		foreach $k (@trackstrings) {
 		my $r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
 				0, 1); # $last_id, 1);
@@ -2627,6 +2653,8 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		}
 	}
 	$tweet_counter = $save_counter if ($save_counter > -1);
+	&$exception(6,"*** warning: more tweets than menu codes; truncated\n")
+		if (scalar(@{ $my_json_ref }) > $print_max);
 	print $stdout "-- sorry, nothing to display.\n"
 		if (($interactive || $verbose) && !$printed);
 	return (&max(0+$my_json_ref->[0]->{'id'}, $last_id), $j);
@@ -3208,8 +3236,9 @@ sub defaulthandle {
 	print $streamout $menu_select . $dclass . $stweet;
 	unless (length($class) || !$last_id) { # interactive? first time?
 		$class = scalar(&$tweettype($tweet_ref, $sn, $tweet));
-		&$notifytype($class, &standardtweet($tweet_ref, 1), $tweet_ref)
-			if ($notify_list{$class} && $notifytype);
+		&notifytype_dispatch($class,
+				&standardtweet($tweet_ref, 1), $tweet_ref)
+			if ($notify_list{$class});
 	}
 	return 1;
 }
@@ -3249,8 +3278,8 @@ sub defaultdmhandle {
 	(&flag_default_call, return) if ($multi_module_context);
 	my $dm_ref = shift;
 	print $streamout &standarddm($dm_ref);
-	&$notifytype('DM', &standarddm($dm_ref, 1), $dm_ref)
-		if ($notify_list{'dm'} && $last_dm && $notifytype);
+	&notifytype_dispatch('DM', &standarddm($dm_ref, 1), $dm_ref)
+		if ($notify_list{'dm'} && $last_dm);
 	return 1;
 }
 
@@ -3614,6 +3643,8 @@ sub generate_shortdomain {
 sub openurl {
 	my $comm = $urlopen;
 	my $url = shift;
+	$url = "http://gopher.floodgap.com/gopher/gw?$url"
+		if ($url =~ m#^gopher://# && $comm !~ /^[^\s]*lynx/);
 	$urlshort = $url;
 	$comm =~ s/\%U/'$url'/g;
 	print $stdout "($comm)\n";
@@ -3625,6 +3656,8 @@ sub urlshorten {
 	my $rc;
 	my $cl;
 
+	$url = "http://gopher.floodgap.com/gopher/gw?$url"
+		if ($url =~ m#^gopher://#);
 	return $url if ($url =~ /^$shorturldomain/i); # stop loops
 	$cl = "$simple_agent \"${shorturl}$url\"";
 	print $stdout "$cl\n" if ($superverbose);
@@ -3711,6 +3744,12 @@ sub tracktags_compile {
 		$l = (length($l)) ? "${l}+OR+${k}" : "q=${k}";
 	}
 	push(@trackstrings, $l) if (length($l));
+}
+
+# notification multidispatch
+sub notifytype_dispatch {
+	return if (!scalar(@notifytypes));
+	my $nt; foreach $nt (@notifytypes) { &$nt(@_); }
 }
 
 # notifications compiler
@@ -4149,7 +4188,8 @@ sub fix_geo_api_data {
 sub is_fail_whale {
 	# is this actually the dump from a fail whale?
 	my $data = shift;
-	return ($data =~ m#<title>Twitter.+Over.+capacity.*</title>#i);
+	return ($data =~ m#<title>Twitter.+Over.+capacity.*</title>#i ||
+		$data =~ m#[\r\l\n\s]*DB_DataObject Error: Connect failed#s);
 }
 
 sub is_json_error {
@@ -4184,6 +4224,11 @@ sub backticks {
 		return $buf; # and $? is still in $?
 	} else {
 		$in_backticks = 1;
+		$SIG{'ALRM'} = sub {
+			die(
+		"** user agent not honouring timeout (caught by sigalarm)\n");
+		};
+		alarm 120; # this should be sufficient
 		if (length($rerr)) {
 			close(STDERR); 
 			open(STDERR, ">$rerr");
@@ -4254,10 +4299,13 @@ sub descape {
 	if ($mode) { # this probably needs to be revised
 		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
 	} else {
+		# intermediate form if HTML entities get in
+		$x =~ s/\&\#([0-9]+);/'\u' . sprintf("%04x", $1)/eg;
+
 		$x =~ s/\\u2028/\\n/g;
 		if ($seven) {
 			# known UTF-8 entities (char for char only)
-			$x =~ s/\\u2019/\'/g;
+			$x =~ s/\\u201[89]/\'/g;
 			$x =~ s/\\u201[cd]/\"/g;
 
 			# dot out the rest
