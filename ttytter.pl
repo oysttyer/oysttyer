@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 4;
+	$TTYtter_PATCH_VERSION = 5;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -46,7 +46,7 @@ BEGIN {
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts
-		synch exception_is_maskable mentions
+		synch exception_is_maskable mentions simplestart freezebug
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline
@@ -1010,12 +1010,13 @@ if ($daemon) {
 
 #### INTERACTIVE MODE and CONSOLE STARTUP ####
 
-print <<"EOF";
+unless ($simplestart) {
+	print <<"EOF";
 
 ######################################################        +oo=========oo+ 
          ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2010 cameron kaiser${OFF}                @             @
 EOF
-$e = <<'EOF';
+	$e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
        ${EM}http://www.floodgap.com/software/ttytter/${OFF}            ${GREEN}a==:${OFF}  ooo
                                                             ${GREEN}.++o++.${OFF} ${GREEN}..o**O${OFF}
@@ -1031,7 +1032,19 @@ $e = <<'EOF';
 # starting background monitoring process.                           @=@ @=@
 #
 EOF
-$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
+	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
+} else {
+	print <<"EOF";
+TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2010 cameron kaiser
+all rights reserved. freeware under the floodgap free software license.
+http://www.floodgap.com/software/ffsl/
+
+tweet me: http://twitter.com/ttytter * tell me: ckaiser\@floodgap.com
+type /help for commands or /quit to quit.
+starting background monitoring process.
+
+EOF
+}
 if ($superverbose) {
 	print $stdout "-- OMGSUPERVERBOSITYSPAM enabled.\n\n";
 } else {
@@ -1144,7 +1157,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	if (!$slowpost && !$verify && # we assume you know what you're doing!
 		($_ eq 'h' || $_ eq 'help' || $_ eq 'quit' || $_ eq 'q' ||
-			/^TTYtter>/ ||
+			/^TTYtter>/ || $_ eq 'ls' ||
 			$_ eq 'exit')) {
 		
 		&add_history($_);
@@ -2267,7 +2280,7 @@ $SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
 $SIG{'ALRM'} = sub {
 	warn("** your system's select() call is ignoring timeouts **\n" .
 	"** report your operating system to ckaiser\@floodgap.com **\n")
-		unless ($silent);
+		if ($freezebug);
 };
 
 # loop until we are killed or told to stop.
@@ -2302,11 +2315,11 @@ for(;;) {
 	print P "0" if ($synchronous_mode && $interactive);
 	$interactive = 0;
 	$timeleft = ($effpause) ? $effpause : 60;
-	alarm ($effpause + $effpause); # security blanket warning
+	alarm ($effpause + $effpause + $effpause); # security blanket warning
 	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
+		alarm 0;
 		sysread(STDIN, $rout, 20);
 		next if (!length($rout));
-		alarm 0;
 		# background communications central command code
 		# we received a command from the console, so let's look at it.
 		if ($rout =~ /^pipet (..)/) {
