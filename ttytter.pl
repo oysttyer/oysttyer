@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 6;
+	$TTYtter_PATCH_VERSION = 7;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -47,7 +47,7 @@ BEGIN {
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts
 		synch exception_is_maskable mentions simplestart freezebug
-		location oldstatus readlinerepaint
+		location oldstatus readlinerepaint nocounter
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline
@@ -73,6 +73,7 @@ BEGIN {
 		favurl favdelurl slowpost notifies filter colourdefault
 		rtsofmeurl followurl leaveurl dmupdate mentions backload
 		lat long location searchhits blockurl blockdelurl
+		nocounter
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -1037,7 +1038,7 @@ if ($daemon) {
 					$dmcount = $dmpause;
 				}
 			}
-			sleep ($effpause || $pause || 60);
+			sleep ($effpause || 0+$pause || 60);
 		 }
 	}
 	die("uncaught fork() exception\n");
@@ -1106,6 +1107,8 @@ sub defaultmain {
 	}
 	@history = ();
 	print C "rsga---------------\n";
+	$dont_use_counter = $nocounter;
+	eval '$termrl->hook_no_counter';
 	if ($termrl) {
 		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
 			kill 30, $child; # suppress output
@@ -1113,6 +1116,11 @@ sub defaultmain {
 			kill 31, $child; # resume output
 			last if ($rv < 0);
 			&sync_console unless (!$rv || !$synch);
+			if ($dont_use_counter ne $nocounter) {
+				# only if we have to -- this is expensive
+				$dont_use_counter = $nocounter;
+				eval '$termrl->hook_no_counter'
+			}
 		}
 	} else {
 		&$prompt;
@@ -1135,6 +1143,7 @@ sub send_repaint {
 		return;
 	}
 	$wrapseq = 0;
+	return if ($daemon);
 	if ($child) {
 		# we are the parent, call our repaint
 		&repaint;
@@ -1152,6 +1161,7 @@ sub repaint {
 	$repaintcache = sub { ; }; # no-op
 	return unless ($termrl &&
 		($termrl->Features()->{'canRepaint'} || $readlinerepaint));
+	return if ($daemon);
 	$termrl->redisplay; $repaintcache = sub { $termrl->redisplay; };
 }
 sub send_removereadline {
@@ -1160,6 +1170,7 @@ sub send_removereadline {
 
 	$removereadlinecache = sub { ; };
 	return unless ($termrl && $termrl->Features()->{'canRemoveReadline'});
+	return if ($daemon);
 	$termrl->removereadline;
 	$removereadlinecache = sub { $termrl->removereadline; };
 }
@@ -1486,8 +1497,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	if ($_ eq '/notrack') { # special case
 		print $stdout "*** all tracking keywords cancelled\n";
 		$track = '';
-		&tracktags_makearray;
-		&synckey('track', '');
+		&setvariable('track', $track, 1);
 		return 0;
 	}
 	if (s/^\/troff\s+// && s/\s*// && length) {
@@ -1533,8 +1543,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		}
 		print $stdout "*** ok, filtered @{[ keys(%w) ]}\n";
 		$track = join(' ', @ptags);
-		&tracktags_makearray;
-		&synckey('track', $track);
+		&setvariable('track', $track, 1);
 		return 0;
 	}
 	if ($_ eq '/tre' || $_ eq '/trends') {
@@ -1584,7 +1593,13 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		# fall through to three argument version
 	}
 	if (/^\/uns(et)? ([^ ]+)\s*$/) {
-		$_ = "/set $2 0";
+		$key = $2;
+		if ($opts_can_set{$key} && $opts_boolean{$key}) {
+			&setvariable($key, 0, 1);
+			return 0;
+		}
+		&setvariable($key, undef, 1);
+		return 0;
 	}
 	# stubs out to set variable
 	if (/^\/s(et)? ([^ ]+) (.+)\s*$/) {
@@ -2358,12 +2373,19 @@ sub sync_semaphore {
 # wrapper function to get a line from the terminal.
 sub linein {
 	my $prompt = shift;
-	$prompt .= " ";
-
-	return $termrl->readline($prompt) if ($termrl);
 	my $return;
-	print $stdout $prompt;
-	chomp($return = lc(<$stdin>));
+
+	$prompt .= " ";
+	if ($termrl) {
+		$dont_use_counter = 1;
+		eval '$termrl->hook_no_counter';
+		$return = $termrl->readline($prompt);
+		$dont_use_counter = $nocounter;
+		eval '$termrl->hook_no_counter';
+	} else {
+		print $stdout $prompt;
+		chomp($return = lc(<$stdin>));
+	}
 	return $return;
 }
 
@@ -3882,6 +3904,9 @@ sub getvariable {
 	return undef;
 }
 
+# compatibility stub for extensions calling the old wraptime
+sub wraptime { return &$wraptime(@_); }
+
 #### url management (/url, /short) ####
 
 sub generate_shortdomain {
@@ -4202,6 +4227,8 @@ sub generate_ansi {
 			eval("\$CC$k = \$".${"colour$k"});
 		}
 	}
+
+	eval '$termrl->hook_use_ansi' if ($termrl);
 }
 
 
@@ -4494,7 +4521,12 @@ sub is_json_error {
 	# is this actually a JSON error message? if so, extract it
 	my $data = shift;
 	if ($data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
-		return $3;
+		my $probe = $3;
+		if ($data =~ /^\s*\{/s) { # JSON object?
+			my $dref = &parsejson($data);
+			return $dref->{'error'} if (length($dref->{'error'}));
+		}
+		return $probe;
 	}
 	return undef;
 }
