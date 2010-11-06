@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 7;
+	$TTYtter_PATCH_VERSION = 8;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -1298,7 +1298,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	if ($i) {
 		print $stdout "(expanded to \"$_\")\n" ;
-		$in_reply_to = $expected_tweet_ref->{'id'} || 0
+		$in_reply_to = $expected_tweet_ref->{'id_str'} || 0
 			if (defined $expected_tweet_ref &&
 				ref($expected_tweet_ref) eq 'HASH');
 	} else {
@@ -1376,7 +1376,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		}
 		# include a URL to the tweet per @augmentedfourth
 		$urlshort =
-		"${http_proto}://twitter.com/$sn/statuses/$tweet->{'id'}";
+		"${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
 		print $stdout
 			"-- %URL% is now $urlshort (/short to shorten)\n";
 		return 0;
@@ -1866,7 +1866,7 @@ EOF
 			return 0;
 		}
 		my $limit = 9;
-		my $id = $tweet->{'in_reply_to_status_id'};
+		my $id = $tweet->{'in_reply_to_status_id_str'};
 		my $thread_ref = [ $tweet ];
 		while ($id && $limit) {
 			print $stdout "-- thread: fetching $id\n"
@@ -1877,7 +1877,7 @@ EOF
 			if (defined($next) && ref($next) eq 'HASH') {
 				push(@{ $thread_ref },
 					&fix_geo_api_data($next));
-				$id = $next->{'in_reply_to_status_id'} || 0;
+				$id = $next->{'in_reply_to_status_id_str'} || 0;
 			}
 		}
 		&tdisplay($thread_ref, 'thread', 0, 1); # use the mini-menu
@@ -1980,7 +1980,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		&cordfav($tweet->{'id'}, 1,
+		&cordfav($tweet->{'id_str'}, 1,
 			(($mode eq 'un') ? $favdelurl : $favurl),
 			  &descape($tweet->{'text'}),
 			(($mode eq 'un') ? 'removed' : 'created'));
@@ -2004,7 +2004,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		#$in_reply_to = $tweet->{'id'}; # maybe later.
+		#$in_reply_to = $tweet->{'id_str'}; # maybe later.
 		#$expected_tweet_ref = $tweet;
 		$retweet = "RT @" .
 			&descape($tweet->{'user'}->{'screen_name'}) .
@@ -2060,8 +2060,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			print $stdout "-- ok, tweet is NOT deleted.\n";
 			return 0;
 		}
-		$lastpostid = -1 if ($tweet->{'id'} == $lastpostid);
-		&deletest($tweet->{'id'}, 1);
+		$lastpostid = -1 if ($tweet->{'id_str'} == $lastpostid);
+		&deletest($tweet->{'id_str'}, 1);
 		return 0;
 	}
 	# DM delete version
@@ -2083,7 +2083,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			print $stdout "-- ok, DM is NOT deleted.\n";
 			return 0;
 		}
-		&deletedm($dm->{'id'}, 1);
+		&deletedm($dm->{'id_str'}, 1);
 		return 0;
 	}
 	# /deletelast
@@ -2121,7 +2121,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
 		$_ = '@' . $target . " $_";
 		unless ($mode eq 'v') {
-			$in_reply_to = $tweet->{'id'};
+			$in_reply_to = $tweet->{'id_str'};
 			$expected_tweet_ref = $tweet;
 		} else {
 			$_ = ".$_";
@@ -2493,9 +2493,9 @@ RESTART_SELECT:
 			$ds =~ s/\s/_/g;
 			my $src = $key->{'source'} || 'unknown';
 			$src =~ s/\|//g; # shouldn't be any anyway.
-			$key = substr(( "$ms ".(0+$key->{'id'})." ".
-		(0+$key->{'in_reply_to_status_id'})." ".
-		(0+$key->{'retweeted_status'}->{'id'})." ".
+			$key = substr(( "$ms ".($key->{'id_str'})." ".
+		($key->{'in_reply_to_status_id_str'})." ".
+		($key->{'retweeted_status'}->{'id_str'})." ".
 		($key->{'user'}->{'geo_enabled'} || "false") . " ".
 		($key->{'geo'}->{'coordinates'}->[0]). " ".
 		($key->{'geo'}->{'coordinates'}->[1]). " ".
@@ -2509,7 +2509,7 @@ RESTART_SELECT:
 			my $ms = $key->{'menu_select'} || 'XX';
 			my $ds = $key->{'created_at'} || 'argh, no created_at';
 			$ds =~ s/\s/_/g;
-			$key = substr(( "$ms ".(0+$key->{'id'})." ".
+			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		$key->{'sender'}->{'screen_name'}." $ds ".
 			unpack("${pack_magic}H*", $key->{'text'}).
 			$space_pad), 0, 1024);
@@ -2718,8 +2718,7 @@ sub refresh {
 	# failure here does not abort, because search may be down independently
 	# of the main timeline.
 	if (!$notrack && scalar(@trackstrings)) {
-		#my $l = ($last_id) ? "100" : "$backload";
-		my $l = $searchhits; # Search API doesn't support this yet.
+		my $l = &max((($last_id) ? 100 : $backload), $searchhits);
 		foreach $k (@trackstrings) {
 		my $r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
 				0, 1); # $last_id, 1);
@@ -2753,15 +2752,15 @@ sub refresh {
 					$l++;
 					next SMIX0;
 				}
-				my $id = $j->{'id'}; # anticipating many comps
+				my $id = $j->{'id_str'}; # anticipating many comps
 
 				# find the same ID, or one just before,
 				# and splice in
 				$m = -1;
 				SMIX1: for($i=0; $i<$l; $i++) {
 					next SMIX0 # it's a duplicate
-					if($my_json_ref->[$i]->{'id'} == $id);
-					if($my_json_ref->[$i]->{'id'} < $id) {
+					if($my_json_ref->[$i]->{'id_str'} == $id);
+					if($my_json_ref->[$i]->{'id_str'} < $id) {
 						$m = $i;
 						last SMIX1; # got it
 					}
@@ -2822,7 +2821,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		for($i = $disp_max; $i > 0; $i--) {
 			my $g = ($i-1);
 			$j = $my_json_ref->[$g];
-			my $id = $j->{'id'};
+			my $id = $j->{'id_str'};
 
 			next if ($id <= $last_id);
 			next if (!length($j->{'user'}->{'screen_name'}));
@@ -2859,7 +2858,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		print $stdout "-- sorry, nothing to display.\n";
 		$wrapseq = 1;
 	}
-	return (&max(0+$my_json_ref->[0]->{'id'}, $last_id), $j);
+	return (&max($my_json_ref->[0]->{'id_str'}, $last_id), $j);
 }
 
 # thump for DMs
@@ -2899,7 +2898,7 @@ sub dmrefresh {
 		for($i = $disp_max; $i > 0; $i--) {
 			$g = ($i-1);
 			my $j = $my_json_ref->[$g];
-			next if ($j->{'id'} <= $last_dm);
+			next if ($j->{'id_str'} <= $last_dm);
 			next if (!length($j->{'sender'}->{'screen_name'}));
 
 			$key = substr($alphabet, $dm_counter/10, 1) .
@@ -2916,7 +2915,7 @@ sub dmrefresh {
 
 			$printed += scalar(&$dmhandle($j));
 		}
-		$max = 0+$my_json_ref->[0]->{'id'};
+		$max = $my_json_ref->[0]->{'id_str'};
 	}
 	sleep 5 while ($suspend_output > 0);
 	if (($interactive || $verbose) && !$printed && !$dm_first_time) {
@@ -3044,7 +3043,7 @@ ${MAGENTA}*** warning: Twitter Fail Whale${OFF}
 EOF
 		return 98;
 	}
-	$lastpostid = 0+&parsejson($return)->{'id'};
+	$lastpostid = &parsejson($return)->{'id_str'};
 	unless ($user_name_dm) {
 		$lasttwit = $string;
 		&$postpost($string);
@@ -3188,7 +3187,7 @@ sub standardtweet {
 	$colour = $OFF . $colour
 		unless ($nocolour);
 
-	$sn = "\@$sn" if ($ref->{'in_reply_to_status_id'} > 0);
+	$sn = "\@$sn" if ($ref->{'in_reply_to_status_id_str'} > 0);
 	$sn = "+$sn" if ($ref->{'user'}->{'geo_enabled'} eq 'true' &&
 		$ref->{'geo'}->{'coordinates'}->[0] ne 'undef' &&
 		$ref->{'geo'}->{'coordinates'}->[1] ne 'undef');
@@ -3458,7 +3457,7 @@ sub defaulthandle {
 	(&flag_default_call, return) if ($multi_module_context);
 	my $tweet_ref = shift;
 	my $class = shift;
-	my $dclass = ($verbose) ? "{$class,$tweet_ref->{'id'}} " :  '';
+	my $dclass = ($verbose) ? "{$class,$tweet_ref->{'id_str'}} " :  '';
 	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
 	my $tweet = &descape($tweet_ref->{'text'});
 	my $stweet = &standardtweet($tweet_ref);
@@ -3730,8 +3729,8 @@ sub get_tweet {
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
-	($w->{'menu_select'}, $w->{'id'}, $w->{'in_reply_to_status_id'},
-		$w->{'retweeted_status'}->{'id'},
+	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
+		$w->{'retweeted_status'}->{'id_str'},
 		$w->{'user'}->{'geo_enabled'},
 		$w->{'geo'}->{'coordinates'}->[0],
 		$w->{'geo'}->{'coordinates'}->[1],
@@ -3764,7 +3763,7 @@ sub get_dm {
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
-	($w->{'menu_select'}, $w->{'id'},
+	($w->{'menu_select'}, $w->{'id_str'},
 		$w->{'sender'}->{'screen_name'}, $w->{'created_at'},
 			$l) = split(/\s/, $k, 5);
 	$w->{'text'} = pack("H*", $l);
