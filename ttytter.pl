@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 8;
+	$TTYtter_PATCH_VERSION = 9;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -47,7 +47,7 @@ BEGIN {
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts
 		synch exception_is_maskable mentions simplestart freezebug
-		location oldstatus readlinerepaint nocounter
+		location oldstatus readlinerepaint nocounter notifyquiet
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline
@@ -73,7 +73,7 @@ BEGIN {
 		favurl favdelurl slowpost notifies filter colourdefault
 		rtsofmeurl followurl leaveurl dmupdate mentions backload
 		lat long location searchhits blockurl blockdelurl
-		nocounter
+		nocounter linelength
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi lib hold status
 		daemon timestamp twarg user anonymous script readline
@@ -121,7 +121,9 @@ BEGIN {
 	# defaults that our lib can override
 	$last_id = 0;
 	$last_dm = 0;
-	$print_max ||= 250; # shiver
+	# a correct fix for -daemon would make this unlimited, but this
+	# is good enough for now.
+	$print_max ||= ($daemon) ? 999999 : 250; # shiver
 
 	$suspend_output = -1;
 
@@ -540,6 +542,7 @@ $http_proto = ($ssl) ? 'https' : 'http';
 $lat ||= undef;
 $long ||= undef;
 $location ||= 0;
+$linelength ||= 140;
 $apibase ||= "${http_proto}://api.twitter.com/1";
 $nonewrts ||= 0;
 $backload ||= 30;
@@ -916,14 +919,14 @@ for(;;) {
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
 	die(
-"sorry, status too long: reduce by @{[ length($status)-140 ]} chars, ".
+"sorry, status too long: reduce by @{[ length($status)-$linelength ]} chars, ".
 "or use -autosplit={word,char,cut}.\n")
-		if (length($status) > 140 && !$autosplit);
+		if (length($status) > $linelength && !$autosplit);
 	($status, $next) = &csplit($status, ($autosplit eq 'char' ||
 			$autosplit eq 'cut') ? 1 : 0)
 		if (!length($next));
 	if ($autosplit eq 'cut' && length($next)) {
-		print "-- warning: input autotrimmed to 140 bytes\n";
+		print "-- warning: input autotrimmed to $linelength bytes\n";
 		$next = "";
 	}
 	if (!$anonymous && !length($whoami) && !length($status)) {
@@ -1137,7 +1140,7 @@ sub defaultmain {
 }
 
 $SIG{'PIPE'} = $SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
-$SIG{'USR1'} = $SIG{'PWR'} = \&repaint; # freaking Linux, POSIX my butt
+$SIG{'USR1'} = $SIG{'PWR'} = $SIG{'XCPU'} = \&repaint;
 sub send_repaint {
 	unless ($wrapseq){
 		return;
@@ -1343,7 +1346,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		my $id;
 		my @superfields = (
 			[ "user", "screen_name" ], # must always be first
-			[ "retweeted_status", "id" ],
+			[ "retweeted_status", "id_str" ],
 			[ "user", "geo_enabled" ],
 		);
 		my $superfield;
@@ -1360,18 +1363,18 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			my $sfv;
 			eval "\$sfv = &descape(\$tweet->$sfk);";
 			print $stdout
-				substr("$sfn                        ", 0, 23) .
+				substr("$sfn                          ", 0, 25).
 				" $sfv\n";
 			$sn = $sfv if (!length($sn) && length($sfv));
 		}
 		# geo is special
-		print $stdout "geo->coordinates        (" .
+		print $stdout "geo->coordinates          (" .
 			join(', ', @{ $tweet->{'geo'}->{'coordinates'} })
 			. ")\n";
 		foreach $k (sort keys %{ $tweet }) {
 			next if (ref($tweet->{$k}));
 			print $stdout
-				substr("$k                        ", 0, 23) .
+				substr("$k                          ", 0, 25) .
 					" " . &descape($tweet->{$k}) . "\n";
 		}
 		# include a URL to the tweet per @augmentedfourth
@@ -2284,7 +2287,7 @@ sub common_split_post {
 			return 0;
 		}
 		print $stdout &wwrap(
-			"*** over 140; autosplitting to \"$l\"\n");
+			"*** over $linelength; autosplitting to \"$l\"\n");
 	}
 	# there was an error; stop autosplit, restore original command
 	if (&updatest($m, 1, $in_reply_to, $dm_user)) {
@@ -2297,7 +2300,7 @@ sub common_split_post {
 		&add_history($l);
 		print $stdout &wwrap("*** next part is ready: \"$l\"\n");
 		print $stdout "*** (this will also be automatically split)\n"
-			if (length($k) > 140);
+			if (length($k) > $linelength);
 		print $stdout
 		"*** to send this next portion, use %%.\n";
 	}
@@ -2409,6 +2412,7 @@ $dm_first_time = ($dmpause) ? 1 : 0;
 $SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
 # debugging for broken systems
 $SIG{'ALRM'} = sub {
+# remove this in TTYtter 1.2 if no other problems reported
 	warn("** your system's select() call is ignoring timeouts **\n" .
 	"** report your operating system to ckaiser\@floodgap.com **\n")
 		if ($freezebug);
@@ -2416,11 +2420,12 @@ $SIG{'ALRM'} = sub {
 };
 # allow foreground process to squelch us
 # freaking Linux signals encore. SIGSYS? really? wtf, Linus!
-$SIG{'USR1'} = $SIG{'PWR'} = sub {
+# well, never mind. Solaris makes us use SIGXCPU/SIGXFSZ
+$SIG{'USR1'} = $SIG{'PWR'} = $SIG{'XCPU'} = sub {
 	$suspend_output ^= 1 if ($suspend_output != -1);
 	$we_got_signal = 1;
 };
-$SIG{'USR2'} = $SIG{'SYS'} = $SIG{'UNUSED'} = sub {
+$SIG{'USR2'} = $SIG{'SYS'} = $SIG{'UNUSED'} = $SIG{'XFSZ'} = sub {
 	$suspend_output = -1; $we_got_signal = 1;
 };
 
@@ -3627,7 +3632,7 @@ sub notifier_growl {
 "growlnotify must be installed to use growl notifications. check your\n" .
 			"documentation for how to do this.\n");
 		if (!defined($class)) {
-			return 1 if ($script);
+			return 1 if ($script || $notifyquiet);
 			$class = 'Growl support activated';
 			$text = 
 'You can configure notifications for TTYtter in the Growl preference pane.';
@@ -3666,7 +3671,7 @@ sub notifier_growl {
 
 # libnotify for {Linux,whatevs}
 # this is EXPERIMENTAL, and requires this patch to notify-send:
-# http://trac.galago-project.org/ticket/147
+# http://www.floodgap.com/software/ttytter/libnotifypatch.txt
 # why it has not already been applied is fricking beyond me, it makes
 # sense. would YOU want arbitrary characters on the command line
 # separated only from overwriting your home directory by a quoting routine?
@@ -3682,7 +3687,7 @@ sub notifier_libnotify {
 "notify-send must be installed to use libnotify, and it must be modified\n".
 "for standard input. see the documentation for how to do this.\n");
 		if (!defined($class)) {
-			return 1 if ($script);
+			return 1 if ($script || $notifyquiet);
 			$class = 'libnotify support activated';
 			$text =
 'Congratulations, your notify-send is correctly configured for TTYtter.';
@@ -4342,54 +4347,106 @@ sub grabjson {
 
 	$my_json_ref = &parsejson($data);
 
-	# normalize the data into a standard form. what this currently does
-	# is the following gyrations:
-	# - if the source of this JSON data source is the Search API, translate
-	#   its fields into the standard API.
-	# - if the tweet is an newRT, unwrap it so that the full tweet text is
-	#   revealed (unless -nonewrts).
-	# - if this appears to be a tweet, put in a stub geo hash if one does
-	#   not yet exist.
-	# one day I would like this code to go the hell away.
+	# normalize the data into a standard form.
+	# single tweets such as from statuses/show aren't arrays, so
+	# we special-case for them.
+	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
+		$my_json_ref->{'favorited'} &&
+		$my_json_ref->{'source'} &&
+		((0+$my_json_ref->{'id'}) ||
+			length($my_json_ref->{'id_str'}))) {
+		$my_json_ref = &normalizejson($my_json_ref);
+	}
 	if (defined($my_json_ref) && ref($my_json_ref) eq 'ARRAY') {
-		my $i;
-		my $rt;
-
 		foreach $i (@{ $my_json_ref }) {
-			# normalize geo. if this has a source and it has a
-			# favorited, then it is probably a tweet and we will
-			# add a stub geo hash if one doesn't exist yet.
-			if ($kludge_search_api_adjust || 
-					($i->{'favorited'} && $i->{'source'})){
-				$i = &fix_geo_api_data($i);
-			}
-
-			# normalize Search
-			if ($kludge_search_api_adjust) {
-				# hopefully this hack can die with API v2.
-				$i->{'class'} = "search";
-				$i->{'user'}->{'screen_name'} =
-					$i->{'from_user'};
-				# translate time stamps
-				# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
-				# Fri, 20 Mar 2009 16:35:56 +0000 (search)
-				$i->{'created_at'} =~
-	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
-			}
-
-			# normalize newRTs
-			# if we get newRTs with -nonewrts, oh well
-			if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
-				# reconstruct the RT in a "canonical" format
-				# without truncation
-				$i->{'text'} =
-		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
-			}
+			$i = &normalizejson($i, $kludge_search_api_adjust);
 		}
 	}
 
 	$laststatus = 0;
 	return $my_json_ref;
+}
+
+# takes a tweet structure and normalizes it according to settings.
+# what this currently does is the following gyrations:
+# - if there is no id_str, see if we can convert id into one. if
+#   there is loss of precision, warn the user. same for
+#   in_reply_to_status_id_str.
+# - if the source of this JSON data source is the Search API, translate
+#   its fields into the standard API.
+# - if the tweet is an newRT, unwrap it so that the full tweet text is
+#   revealed (unless -nonewrts).
+# - if this appears to be a tweet, put in a stub geo hash if one does
+#   not yet exist.
+# one day I would like this code to go the hell away.
+sub normalizejson {
+	my $i = shift;
+	my $kludge_search_api_adjust = shift;
+	my $rt;
+
+	# id -> id_str if needed
+	if (!length($i->{'id_str'})) {
+		my $k = "" + (0 + $i->{'id'});
+		if ($k !~ /[eE][+-]/) {
+			$i->{'id_str'} = $k;
+		} else {
+			# desperately try to convert
+			$k =~ s/[eE][+-]\d+$//;
+			$k =~ s/\.//g;
+			# this is a hack, so we warn.
+			&$exception(13,
+"*** impending doom: ID overflows Perl precision; stubbed to $k\n");
+			$i->{'id_str'} = $k;
+		}
+	}
+	# irtsid -> irtsid_str (if there is one)
+	if (!length($i->{'in_reply_to_status_id_str'}) &&
+			$i->{'in_reply_to_status_id'}) {
+		my $k = "" + (0+$i->{'in_reply_to_status_id'});
+		if ($k !~ /[eE][+-]/) {
+			$i->{'in_reply_to_status_id_str'} = $k;
+		} else {
+			# desperately try to convert
+			$k =~ s/[eE][+-]\d+$//;
+			$k =~ s/\.//g;
+			# this is a hack, so we warn.
+			&$exception(13,
+"*** impending doom: IRT-ID overflows Perl precision; stubbed to $k\n");
+			$i->{'in_reply_to_status_id_str'} = $k;
+		}
+	}
+
+	# normalize geo. if this has a source and it has a
+	# favorited, then it is probably a tweet and we will
+	# add a stub geo hash if one doesn't exist yet.
+	if ($kludge_search_api_adjust || 
+			($i->{'favorited'} && $i->{'source'})){
+		$i = &fix_geo_api_data($i);
+	}
+
+	# normalize Search
+	if ($kludge_search_api_adjust) {
+		# hopefully this hack can die with API v2.
+		$i->{'class'} = "search";
+		$i->{'user'}->{'screen_name'} =
+			$i->{'from_user'};
+		# translate time stamps
+		# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
+		# Fri, 20 Mar 2009 16:35:56 +0000 (search)
+		$i->{'created_at'} =~
+	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
+	}
+
+	# normalize newRTs
+	# if we get newRTs with -nonewrts, oh well
+	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
+		# reconstruct the RT in a "canonical" format
+		# without truncation
+		$i->{'text'} =
+		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
+	}
+
+	return $i;
 }
 
 # process the JSON data ... simplemindedly, because I just write utter crap,
@@ -4635,7 +4692,10 @@ sub descape {
 		if ($seven) {
 			# known UTF-8 entities (char for char only)
 			$x =~ s/\\u201[89]/\'/g;
-			$x =~ s/\\u201[cd]/\"/g;
+			$x =~ s/\\u201[cCdD]/\"/g;
+
+			# 7-bit entities (32-126) also ok
+	$x =~ s/\\u00([2-7][0-9a-fA-F])/chr(((hex($1)==127)?46:hex($1)))/eg;
 
 			# dot out the rest
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
@@ -4731,9 +4791,9 @@ sub uhex {
 	return $k;
 }
 
-# take a string and return up to 140 CHARS plus the rest.
+# take a string and return up to $linelength CHARS plus the rest.
 sub csplit { return &cosplit(@_, sub { return   length(shift); }); }
-# take a string and return up to 140 BYTES plus the rest.
+# take a string and return up to $linelength BYTES plus the rest.
 sub usplit { return &cosplit(@_, sub { return &ulength(shift); }); }
 sub cosplit {
 	# this is the common code for &csplit and &usplit.
@@ -4755,7 +4815,7 @@ sub cosplit {
 	$k =~ s/\s+$//;
 	$k =~ s/\s+/ /g;
 	$z = &$lengthsub($k);
-	return ($k) if ($z <= 140); # also handles the trivial case
+	return ($k) if ($z <= $linelength); # also handles the trivial case
 
 	# this needs to be reply-aware, so we put @'s at the beginning of
 	# the second half too (and also Ds for DMs)
@@ -4763,8 +4823,8 @@ sub cosplit {
 			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # not while -- just one
 	$k = "$r$k";
 
-	my $i = 140;
-	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > 140);
+	my $i = $linelength;
+	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > $linelength);
 	$m = substr($k, $i);
 
 	# if we just wanted split-on-byte, return now (mode = 1)
@@ -4783,7 +4843,7 @@ sub cosplit {
 		return (&cosplit($orig_k, 1, $lengthsub))
 			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
-		if (&$lengthsub($q) < 140) {
+		if (&$lengthsub($q) < $linelength) {
 			$m =~ s/^\s+//;
 			return($q, "$r$m")
 		}
