@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v1.1 (c)2007-2010 cameron kaiser (and contributors).
+# TTYtter v1.1 (c)2007-2011 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 9;
+	$TTYtter_PATCH_VERSION = 10;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -1053,7 +1053,7 @@ unless ($simplestart) {
 	print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2010 cameron kaiser${OFF}                @             @
+         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2011 cameron kaiser${OFF}                @             @
 EOF
 	$e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
@@ -1074,7 +1074,7 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2010 cameron kaiser
+TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2011 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
 
@@ -1129,7 +1129,7 @@ sub defaultmain {
 		&$prompt;
 		while(<>) { #not stdin so we can read from script files
 			kill 30, $child; # suppress output
-			$rv = &prinput($_);
+			$rv = &prinput(&uforcemulti($_));
 			kill 31, $child; # resume output
 			last if ($rv < 0);
 			&sync_console unless (!$rv || !$synch);
@@ -1563,8 +1563,11 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			foreach $i (keys %{ $t }) {
 				foreach $j (@{ $t->{$i} }) {		
 					my $k = &descape($j->{'query'});
-					print $stdout "/search $k\n";
+					my $l = ($k =~ /\sOR\s/) ? $k :
+						('"' . $k . '"');
+					print $stdout "/search $l\n";
 					$k =~ s/\sOR\s/ /g;
+					$k = '"' . $k . '"' if ($k =~ /\s/);
 					print $stdout "/tron $k\n";
 				}
 			}
@@ -1689,7 +1692,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: http://www.floodgap.com/software/ttytter/
 
- TTYtter $TTYtter_VERSION is (c)2010 cameron kaiser + contributors.
+ TTYtter $TTYtter_VERSION is (c)2011 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
 
@@ -1728,7 +1731,7 @@ EOF
 #TODO
 # add +count parameter or page number?
 		my $mode = $1;
-		my $uname = $3;
+		my $uname = lc($3);
 		
 		$uname =~ s/^\@//;
 		$readline_completion{'@'.$uname}++ if ($termrl);
@@ -1757,7 +1760,7 @@ $my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
 		} # else fallthrough
 	}
 	if ($_ =~ m#^/w(hois|a|again)?\s+\@?([^\s]+)#) {
-		my $uname = $2;
+		my $uname = lc($2);
 #TODO
 # last status/created at if not part of again
 # and also if user is protected
@@ -2011,7 +2014,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		#$expected_tweet_ref = $tweet;
 		$retweet = "RT @" .
 			&descape($tweet->{'user'}->{'screen_name'}) .
-			": " . &uforcemulti(&descape($tweet->{'text'}));
+			": " . &descape($tweet->{'text'});
 		if ($mode eq 'e') {
 			&add_history($retweet);
 			print $stdout &wwrap(
@@ -2129,7 +2132,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		} else {
 			$_ = ".$_";
 		}
-		$readline_completion{'@'.$target}++ if ($termrl);
+		$readline_completion{'@'.lc($target)}++ if ($termrl);
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -2144,7 +2147,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		}
 		# in the future, add DM in_reply_to here
 		my $target = &descape($dm->{'sender'}->{'screen_name'});
-		$readline_completion{'@'.$target}++ if ($termrl);
+		$readline_completion{'@'.lc($target)}++ if ($termrl);
 		$_ = "/dm $target $_";
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
@@ -2964,11 +2967,12 @@ sub updatest {
 	if ($verify && !$status) {
 		my $answer;
 
-		warn &wwrap("-- verify you want to $verb: \"$string\"\n");
+		print $stdout
+			&wwrap("-- verify you want to $verb: \"$string\"\n");
 		$answer = &linein(
 			"-- send to server? (only y or Y is affirmative):");
 		if ($answer ne 'y') {
-			warn "-- ok, NOT sent to server.\n";
+			print $stdout "-- ok, NOT sent to server.\n";
 			return 97;
 		}
 	}
@@ -3556,21 +3560,22 @@ sub defaultpostpost {
 
 	# populate %readline_completion if readline is on
 	while($line =~ s/^\@(\w+)\s+//) {
-		$readline_completion{'@'.$1}++;
+		$readline_completion{'@'.lc($1)}++;
 	}
 	if ($line =~ /^[dD]\s+(\w+)\s+/) {
-		$readline_completion{'@'.$1}++;
+		$readline_completion{'@'.lc($1)}++;
 	}
 }
 
 sub defaultautocompletion {
 	my ($text, $line, $start) = (@_);
+	my $qmtext = quotemeta($text);
 	my @proband;
 	my @rlkeys;
 
 	# handle / completion
 	if ($start == 0 && $text =~ m#^/#) {
-		return sort grep(/^$text/i, '/history',
+		return sort grep(/^$qmtext/i, '/history',
 			'/print', '/quit', '/bye', '/again',
 			'/wagain', '/whois', '/thump', '/dm',
 			'/refresh', '/dmagain', '/set', '/help',
@@ -3593,14 +3598,14 @@ sub defaultautocompletion {
 		($start == 1 && substr($line, 0, 1) eq '@') ||
 		# this code is needed to prevent inline @ from flipping out
 		($start >= 1 && substr($line, ($start-2), 2) eq ' @')) {
-		@proband = grep(/^\@$text/i, @rlkeys);
+		@proband = grep(/^\@$qmtext/i, @rlkeys);
 		if (scalar(@proband)) {
 			@proband = map { s/^\@//;$_ } @proband;
 			return @proband;
 		}
 	}
 	# definites that are left over, including @ if it were included
-	if(scalar(@proband = grep(/^$text/i, @rlkeys))) {
+	if(scalar(@proband = grep(/^$qmtext/i, @rlkeys))) {
 		return @proband;
 	}
 
@@ -3612,9 +3617,6 @@ sub defaultautocompletion {
 
 	# "I got nothing."
 	return ();
-}
-# this is where OAuth will live when that support is completed.
-sub defaultauthenticate {
 }
 
 #### built-in notification routines ####
@@ -3951,6 +3953,7 @@ sub urlshorten {
 	$url = "http://gopher.floodgap.com/gopher/gw?$url"
 		if ($url =~ m#^gopher://#);
 	return $url if ($url =~ /^$shorturldomain/i); # stop loops
+	$url = &url_oauth_sub($url);
 	$cl = "$simple_agent \"${shorturl}$url\"";
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
@@ -4704,6 +4707,7 @@ sub descape {
 			# try to promote to UTF-8
 			&$utf8_decode($x);
 			$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
+			$x = &uforcemulti($x);
 		}
 		$x =~ s/\&quot;/"/g;
 		$x =~ s/\&apos;/'/g;
