@@ -23,7 +23,7 @@ BEGIN {
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 10;
+	$TTYtter_PATCH_VERSION = 11;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -45,7 +45,7 @@ BEGIN {
 	%opts_boolean = map { $_ => 1 } qw(
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
-		newline vcheck verify noratelimit notrack nonewrts
+		newline vcheck verify noratelimit notrack nonewrts notimeline
 		synch exception_is_maskable mentions simplestart freezebug
 		location oldstatus readlinerepaint nocounter notifyquiet
 	); %opts_sync = map { $_ => 1 } qw(
@@ -994,6 +994,7 @@ for(;;) {
 }
 print "SUCCEEDED!\n";
 exit(0) if (length($status));
+$SIG{'USR1'} = sub { ; }; # stub
 if (length($credentials)) {
 	print "-- processing credentials: ";
 	$my_json_ref = &parsejson($credentials);
@@ -1417,15 +1418,15 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		# and fall through to ...
 	}
 
-	if (/^\/p(rint)? ?([^ ]*)/) {
-		my $key = $2;
-		if (!length($key)) {
-			foreach $key (sort keys %opts_can_set) {
-				print $stdout "*** $key => $$key\n"
-					if (!$opts_secret{$key});
-			}
-			return 0;
+	if ($_ eq '/p' || $_ eq '/print') {
+		foreach $key (sort keys %opts_can_set) {
+			print $stdout "*** $key => $$key\n"
+				if (!$opts_secret{$key});
 		}
+		return 0;
+	}
+	if (/^\/p(rint)?\s+([^ ]+)/) {
+		my $key = $2;
 		if ($valid{$key} ||
 				$key eq 'effpause' ||
 				$key eq 'rate_limit_rate' ||
@@ -3937,7 +3938,7 @@ sub generate_shortdomain {
 sub openurl {
 	my $comm = $urlopen;
 	my $url = shift;
-	$url = "http://gopher.floodgap.com/gopher/gw?$url"
+	$url = "http://gopher.floodgap.com/gopher/gw?".&url_oauth_sub($url)
 		if ($url =~ m#^gopher://# && $comm !~ /^[^\s]*lynx/);
 	$urlshort = $url;
 	$comm =~ s/\%U/'$url'/g;
@@ -3950,7 +3951,7 @@ sub urlshorten {
 	my $rc;
 	my $cl;
 
-	$url = "http://gopher.floodgap.com/gopher/gw?$url"
+	$url = "http://gopher.floodgap.com/gopher/gw?".&url_oauth_sub($url)
 		if ($url =~ m#^gopher://#);
 	return $url if ($url =~ /^$shorturldomain/i); # stop loops
 	$url = &url_oauth_sub($url);
