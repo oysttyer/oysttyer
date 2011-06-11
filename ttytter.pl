@@ -20,10 +20,24 @@ BEGIN {
 	# THIS FUNCTION HAS GOTTEN TOO DAMN CLUTTERED!
 
 #	@INC = (); # wreck intentionally for testing
+        # this doesn't work for 5.14.0 (see Perl bug 92246)
+        if ($ENV{'PERL_SIGNALS'} ne 'unsafe' && $] >= 5.014) {
+                print STDOUT <<"EOF";
+TTYtter requires 'unsafe' Perl signals (which are of course for its
+purposes perfectly safe). unfortunately, due to Perl bug 92246 5.14+ cannot
+set this feature itself. set in your environment either of
+
+export PERL_SIGNALS=unsafe # sh, bash, ksh, etc.
+setenv PERL_SIGNALS unsafe # csh, tcsh, etc.
+
+and restart TTYtter, or use Perl 5.12 or earlier.
+EOF
+                exit;
+        }
 	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.1";
-	$TTYtter_PATCH_VERSION = 11;
+	$TTYtter_PATCH_VERSION = 12;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -824,6 +838,7 @@ Twitter now requires all applications authenticating to it use OAuth, a
 more complex authentication system that uses tokens and keys instead of
 screen names and passwords. To use TTYtter with this Twitter account, 
 you will need your own app key and access token. This requires a browser.
+<< This system will be phased out by August 2011 for standard OAuth. >>
 
 The app key/secret and user access token/secret go into a keyfile and
 act as your credentials; instead of using -user, you use -keyf. THIS
@@ -899,6 +914,163 @@ then restart TTYtter, or use -authtype=basic, or =xauth for supported keys.
 EOF
 		exit;
 	}
+} elsif ($retoke) {
+	# start the "re-toke" wizard to convert DM-less cloned app keys.
+        # dup STDIN for systems that can only "close" it once
+        open(STDIN2, "<&STDIN") || die("couldn't dup STDIN: $!\n");
+	print $stdout <<"EOF";
+
++-------------------------------------------------------------------------+
+|| The Re-Toke Wizard: Generate a new TTYtter keyfile for your app/token ||
++-------------------------------------------------------------------------+
+Twitter is requiring tokens to now have specific permissions to READ
+direct messages. This will be enforced by 1 July 2011. If you find you are
+unable to READ direct messages, you will need this wizard.
+
+This wizard will create a new keyfile for you from your app/user keys/tokens.
+You do NOT need this wizard if you are using TTYtter for a purpose that does
+not require direct message access. For example, if TTYtter is acting as
+your command line posting agent, or you are only using it to read your
+timeline, you do NOT need a new token. You also do not need a new token to
+SEND a direct message, only to READ ones this account has received.
+
+You SHOULD NOT need this wizard if your app key was cloned after 1 June 2011.
+However, you can still use it if you experience this specific issue with DMs,
+or need to rebuild your keyfile for any other reason.
+
+** This wizard will overwrite the key at $keyf
+** To change this, restart TTYtter with -retoke -keyf=/path/to/keyfile
+Press RETURN/ENTER to continue, or CTRL-C NOW! to abort.
+EOF
+
+	$j = <STDIN>;
+	print $stdout <<"EOF";
+
+First: let's get your API key, consumer key and consumer secret.
+Start your browser.
+1. Log into https://twitter.com/ with your desired account.
+2. Go to this URL. You must be logged into Twitter FIRST!
+
+https://dev.twitter.com/apps
+
+3. Click the TTYtter cloned app key you need to regenerate or upgrade.
+4. Click Edit Application Settings.
+5. Make sure Read, Write & Private Message is selected, and click the
+   "Save application" button.
+6. Select All (CTRL/Command-A) on the next screen, copy (CTRL/Command-C) it,
+   and paste (CTRL/Command-V) it into this window. (You can also cut and
+   paste a smaller section if I can't understand your browser's layout.)
+7. Press ENTER/RETURN and CTRL-D when you have pasted the window contents.
+EOF
+
+	PASTE1LOOP: for(;;) {
+		print $stdout <<"EOF";
+
+-- Press ENTER and CTRL-D AFTER you have pasted the window contents! ---------
+Go ahead:
+EOF
+		undef $/;
+		$j = <STDIN>;
+		print $stdout <<"EOF";
+
+-- EOF -----------------------------------------------------------------------
+Processing ...
+
+EOF
+		$j =~ s/[\r\n]/ /sg;
+
+		# process this. as a checksum, API key should == consumer key.
+		$ak = '';
+		$ck = '';
+		$cs = '';
+		($j =~ /API key\s+([-a-zA-Z0-9_]{10,})\s+/) && ($ak = $1);
+		($j =~ /Consumer key\s+([-a-zA-Z0-9_]{10,})\s+/) && ($ck = $1);
+		($j =~ /Consumer secret\s+([-a-zA-Z0-9_]{10,})\s+/) &&
+			($cs = $1);
+
+		if (!length($ak) || !length($ck) || !length($cs)) {
+			# escape hatch
+			print $stdout <<"EOF";
+Something's wrong: I could not find your API key, consumer key or consumer
+secret in that text. If this was a misfired paste, please restart the wizard.
+Otherwise, bug me at \@ttytter or ckaiser\@floodgap.com. Please don't send
+keys or secrets to either address.
+
+EOF
+			exit;
+		}
+		if ($ak ne $ck) {
+			print $stdout <<"EOF";
+Your API key "$ak" doesn't match your consumer key "$ck".
+Please try again, or just hit CTRL-C to cancel if you're stuck.
+EOF
+			next PASTE1LOOP;
+		}
+		last PASTE1LOOP;
+	}
+		print $stdout <<"EOF";
+Okay, your consumer key is ==> $ck
+ and your consumer secret  ==> $cs
+
+IF THIS IS WRONG, PRESS CTRL-C NOW AND RESTART THE WIZARD!
+
+Next, we will get your user access token and access token secret.
+1. Click My Access Token.
+2. Select All (CTRL/Command-A) on your browser, copy (CTRL/Command-C) it, and
+   paste (CTRL/Command-V) it into this window. (You can also cut and paste a
+   smaller section if I can't understand your browser's layout.)
+3. Press ENTER/RETURN and CTRL-D when you have pasted the window contents.
+EOF
+
+	PASTE2LOOP: for(;;) {
+		print $stdout <<"EOF";
+
+-- Press ENTER and CTRL-D AFTER you have pasted the window contents! ---------
+Go ahead:
+EOF
+		undef $/;
+		$j = <STDIN2>;
+		print $stdout <<"EOF";
+
+-- EOF -----------------------------------------------------------------------
+Processing ...
+
+EOF
+		$j =~ s/[\r\n]/ /sg;
+		$at = '';
+		$ats = '';
+		($j =~ /oauth_token\)\s+([-a-zA-Z0-9_]{10,})\s+/)
+			&& ($at = $1);
+		($j =~ /oauth_token_secret\)\s+([-a-zA-Z0-9_]{10,})\s+/)
+			&& ($ats = $1);
+		if (!length($at) || !length($ats)) {
+			print $stdout <<"EOF";
+Something's wrong: I could not find your user access token or access token
+secret in that text. If this was a misfired paste, please restart the wizard.
+Otherwise, bug me at \@ttytter or ckaiser\@floodgap.com. Please don't send
+keys or secrets to either address.
+EOF
+			exit;
+		}
+		last PASTE2LOOP;
+	}
+	print $stdout <<"EOF";
+
+Consumer key =========> $ck
+Consumer secret ======> $cs
+Access token =========> $at
+Access token secret ==> $ats
+
+EOF
+	open(W, ">$keyf") || (print $stdout ("Unable to write to $keyf: $!\n"),
+			exit);
+	print W "ck=$ck&cs=$cs&at=$at&ats=$ats\n";
+	close(W);
+	chmod(0600, $keyf) || print $stdout
+"Warning: could not change permissions on $keyf : $!\n";
+	print $stdout "Keys written to regenerated keyfile $keyf\n";
+	print $stdout "Now restart TTYtter.\n";	
+	exit;
 }
 
 # now, get a token (either from Basic Auth, the keyfile, or xAuth)
@@ -1407,8 +1579,9 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	}
 	if (m#^/sh(ort)? (https?|gopher)(://[^ ]+)#) {
 		my $url = $2 . $3;
-		print $stdout
-"*** shortened to: @{[ (&urlshorten($url) || 'FAILED -- %% to retry') ]}\n";
+		my $answer = &urlshorten($url) || 'FAILED -- %% to retry';
+		print $stdout "*** shortened to: ";
+		print $streamout "$answer\n";
 		return 0;
 	}
 
@@ -1859,9 +2032,11 @@ EOF
 		my $user_b = $3;
 		my $g = &grabjson(
 			"${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
-		print $stdout
-		"--- does $user_a follow ${user_b}? => $g->{'literal'}\n"
-			if ($g->{'ok'});
+		if ($g->{'ok'}) {
+			print $stdout
+				"--- does $user_a follow ${user_b}? => ";
+			print $streamout "$g->{'literal'}\n"
+		}
 		return 0;
 	}
 
@@ -3580,8 +3755,9 @@ sub defaultautocompletion {
 			'/print', '/quit', '/bye', '/again',
 			'/wagain', '/whois', '/thump', '/dm',
 			'/refresh', '/dmagain', '/set', '/help',
-			'/reply', '/url', '/thread',
-			'/replies', '/ruler', '/exit', '/me',
+			'/reply', '/url', '/thread', '/retweet',
+			'/replies', '/ruler', '/exit', '/me', '/vcheck',
+			'/eretweet', '/fretweet', '/rtsofme',
 			'/verbose', '/short', '/follow', '/unfollow',
 			'/doesfollow', '/search', '/tron', '/troff',
 			'/delete', '/deletelast', '/dump', '/unset',
@@ -4578,17 +4754,19 @@ sub is_fail_whale {
 }
 
 sub is_json_error {
-	# is this actually a JSON error message? if so, extract it
-	my $data = shift;
-	if ($data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
-		my $probe = $3;
-		if ($data =~ /^\s*\{/s) { # JSON object?
-			my $dref = &parsejson($data);
-			return $dref->{'error'} if (length($dref->{'error'}));
-		}
-		return $probe;
-	}
-	return undef;
+        # is this actually a JSON error message? if so, extract it
+        my $data = shift;
+        if ($data =~ /(['"])(warning|errors?)\1\s*:\s*\1([^\1]*?)\1\}/s) {
+                my $probe = $3;
+                if ($data =~ /^\s*\{/s) { # JSON object?
+                        my $dref = &parsejson($data);
+                        return $dref->{'error'} if (length($dref->{'error'}));
+                        return (split(/\\n/, $dref->{'errors'}))[0]
+                                if(length($dref->{'errors'}));
+                }
+                return $probe;
+        }
+        return undef;
 }
 
 sub backticks {
