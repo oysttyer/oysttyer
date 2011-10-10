@@ -39,7 +39,7 @@ EOF
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.2";
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 2;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -66,7 +66,7 @@ EOF
 		location oldstatus readlinerepaint nocounter notifyquiet
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
-		url rlurl dmurl newline wrap notimeline lists
+		url rlurl dmurl newline wrap notimeline lists dmidurl
 		queryurl trendurl track colourprompt colourme notrack
 		colourdm colourreply colourwarn coloursearch colourlist idurl
 		notifies filter colourdefault backload searchhits dmsenturl
@@ -76,7 +76,7 @@ EOF
 		myfavsurl favurl favdelurl rtsofmeurl followurl leaveurl
 		dmupdate xauthurl credurl blockurl blockdelurl friendsurl
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
-		getuliurl getufliurl dmsenturl rturl rtsbyurl
+		getuliurl getufliurl dmsenturl rturl rtsbyurl dmidurl
 		statusliurl followliurl leaveliurl followersurl
 		oauthurl oauthauthurl oauthaccurl oauthbase
 	); %opts_secret = map { $_ => 1} qw(
@@ -100,7 +100,7 @@ EOF
 		nocounter linelength friendsurl followersurl lists
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl
-		statusliurl followliurl leaveliurl
+		statusliurl followliurl leaveliurl dmidurl
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -635,6 +635,7 @@ $dmurl ||= "${apibase}/direct_messages.json";
 $dmsenturl ||= "${apibase}/direct_messages/sent.json";
 $dmupdate ||= "${apibase}/direct_messages/new.json";
 $dmdelurl ||= "${apibase}/direct_messages/destroy";
+$dmidurl ||= "${apibase}/direct_messages/show";
 
 $favsurl ||= "${apibase}/favorites";
 $myfavsurl ||= "${apibase}/favorites.json";
@@ -651,7 +652,7 @@ $getfliurl ||= "${apibase}/%U/%L/subscribers.json"; # POST and DELETE too
 $statusliurl ||= "${apibase}/%U/lists/%L/statuses.json";
 
 $queryurl ||= "http://search.twitter.com/search.json";
-$trendurl ||= "http://api.twitter.com/1/trends/current.json";
+$trendurl ||= "http://api.twitter.com/1/trends/daily.json";
 
 # pick ONE!
 #$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
@@ -935,12 +936,12 @@ direct messages). IF THIS IS NOT CORRECT, PRESS CTRL-C NOW!
 
 4. Click Authorize app.
 
-5. A PIN number will appear. Enter it below.
+5. A PIN will appear. Enter it below.
 
 EOF
 		$j = '';
 		while(!(0+$j)) {
-			print $stdout "Enter PIN number> ";
+			print $stdout "Enter PIN> ";
 			chomp($j = <STDIN>);
 		}
 		print $stdout "\nRequest from $oauthaccurl ...";
@@ -1117,10 +1118,10 @@ direct messages). IF THIS IS NOT CORRECT, PRESS CTRL-C NOW!
 
 3. Click Authorize app.
 
-4. A PIN number will appear. Enter it below.
+4. A PIN will appear. Enter it below.
 
 EOF
-	print $stdout "Enter PIN number> ";
+	print $stdout "Enter PIN> ";
 	chomp($j = <STDIN>);
 	print $stdout "\nRequest from $oauthaccurl ...";
 	($at, $ats) = &tryhardfortoken($oauthaccurl, "oauth_verifier=$j");
@@ -1586,14 +1587,6 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	# add commands here
 
-#TODO
-# expand into a DMdumper sometime
-	if (m#^/zipet (...)#) {
-		$k = &get_dm($1);
-		warn "$k->{'sender'}->{'screen_name'} said $k->{'text'}\n";
-		return 0;
-	}
-
 	if (m#^/du(mp)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
 		my $tweet = &get_tweet($code);
@@ -1640,6 +1633,43 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		"${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
 		print $stdout
 			"-- %URL% is now $urlshort (/short to shorten)\n";
+		return 0;
+	}
+
+	# should we go get the DM from the server? maybe in the future.
+	if (m#^/du(mp)? ([dD][a-zA-Z][0-9])$#) {
+		my $code = lc($2);
+		my $dm = &get_dm($code);
+		my $k;
+		my $sn;
+		my $id;
+		my @superfields = (
+			[ "sender", "screen_name" ], # must always be first
+		);
+
+		if (!defined($dm)) {
+			print $stdout "-- no such DM (yet?): $code\n";
+			return 0;
+		}
+	
+		foreach $superfield (@superfields) {
+			my $sfn = join('->', @{ $superfield });
+			my $sfk = "{'" . join("'}->{'", @{ $superfield }) .
+				"'}";
+			my $sfv;
+			eval "\$sfv = &descape(\$dm->$sfk);";
+			print $stdout
+				substr("$sfn                          ", 0, 25).
+				" $sfv\n";
+			$sn = $sfv if (!length($sn) && length($sfv));
+		}
+
+		foreach $k (sort keys %{ $dm }) {
+			next if (ref($dm->{$k}));
+			print $stdout
+				substr("$k                          ", 0, 25) .
+					" " . &descape($dm->{$k}) . "\n";
+		}
 		return 0;
 	}
 
@@ -1816,16 +1846,19 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 			# this is moderate paranoia
-			foreach $i (keys %{ $t }) {
+			foreach $i (sort { $b cmp $a } keys %{ $t }) {
 				foreach $j (@{ $t->{$i} }) {		
 					my $k = &descape($j->{'query'});
 					my $l = ($k =~ /\sOR\s/) ? $k :
+						($k =~ /^"/) ? $k :
 						('"' . $k . '"');
 					print $stdout "/search $l\n";
 					$k =~ s/\sOR\s/ /g;
-					$k = '"' . $k . '"' if ($k =~ /\s/);
+					$k = '"' . $k . '"' if ($k =~ /\s/
+						&& $k !~ /^"/);
 					print $stdout "/tron $k\n";
 				}
+				last; # emulate old trends/current behaviour
 			}
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 		} else {
@@ -2359,6 +2392,63 @@ EOF
 			}
 		}
 		&tdisplay($thread_ref, 'thread', 0, 1); # use the mini-menu
+		return 0;
+	}
+
+	# pull out entities. this works for DMs and tweets.
+	# btw: T.CO IS WACK.
+	if (m#^/ent?(ities)? ([dDzZ]?[a-zA-Z][0-9])$#) {
+		my $v;
+		my $w;
+		my $thing;
+		my $genurl;
+		my $code = lc($2);
+		my $hash;
+		if ($code =~ /^d.[0-9]$/) {
+			$hash = &get_dm($code);
+			$thing = "DM";
+			$genurl = $dmidurl;
+		} else {
+			$hash = &get_tweet($code);
+			$thing = "tweet";
+			$genurl = $idurl;
+		}
+
+		if (!defined($hash)) {
+			print $stdout "-- no such $thing (yet?): $code\n";
+			return 0;
+		}
+
+		# we don't ordinarily ask for entities, so now we must.
+		my $id = $hash->{'id_str'};
+		$hash = &grabjson("${genurl}/${id}.json?include_entities=1", 0);
+		if (!defined($hash) || ref($hash) ne 'HASH') {
+		print $stdout "-- failed to get entities from server, sorry\n";
+				return 0;
+		}
+		
+		my $didprint = 0;
+		# Twitter puts entities in multiple fields.
+		foreach $w (qw(media urls)) {
+			my $p = $hash->{'entities'}->{$w};
+			next if (!defined($p) || ref($p) ne 'ARRAY');
+			foreach $v (@{ $p }) {
+				next if (!defined($v) || ref($v) ne 'HASH');
+				next if (!length($v->{'url'}) ||
+					!length($v->{'expanded_url'}));
+				my $u1 = &descape($v->{'url'});
+				my $u2 = &descape($v->{'expanded_url'});
+				print $stdout "$u1 => $u2\n";
+				$urlshort = $u1;
+				$didprint++;
+			}
+		}
+		if ($didprint) {
+			print $stdout &wwrap(
+	"-- %URL% is now $urlshort (/url opens)\n");
+		} else {
+			print $stdout "-- no entities or URLs found\n";
+		}
 		return 0;
 	}
 
@@ -5649,7 +5739,7 @@ sub grabjson {
 
 	# if wrapped in results object, unwrap it (@kellyterryjones)
 	# (and tag it to do more later)
-        if ($data =~ s/^\{['"]results['"]:(\[.*\]).*$/$1/isg) {
+        if ($data =~ s/^(\{.+,|\{)\s*['"]results['"]\s*:\s*(\[.*\]).*$/$2/isg) {
 		$kludge_search_api_adjust = 1;
 	}
 
@@ -6038,8 +6128,30 @@ sub descape {
 
 sub max { return ($_[0] > $_[1]) ? $_[0] : $_[1]; }
 sub min { return ($_[0] < $_[1]) ? $_[0] : $_[1]; }
-# this is mostly a utility function for /eval
-sub a   { return (scalar(@_) ? ("('" . join("', '", @_) . "')") : "NULL"); }
+sub prolog { my $k = shift; 
+	return "" if (!scalar(@_));
+	my $l = shift; return (&$k($l) . &$k(@_)); }
+# this is mostly a utility function for /eval. it is a recursive descent
+# pretty printer.
+sub a {
+	my $w;
+	my $x;
+	return '' if(scalar(@_) < 1);
+	if(scalar(@_) > 1) { $x = "(";
+		foreach $w (@_) {
+			$x .= &a($w);
+		}
+		return $x."), ";
+	}
+	$w = shift;
+	if(ref($w) eq 'SCALAR') { return "\\\"". $$w . "\", "; }
+	if(ref($w) eq 'HASH') { my %m = %{ $w };
+		return "\n\t{".&prolog(\&a, %m)."}, "; }
+	if(ref($w) eq 'ARRAY') { return "\n\t[".&prolog(\&a, @{ $w })."], "; }
+	return "\"$w\", ";
+}
+sub ssa   { return (scalar(@_) ? ("('" . join("', '", @_) . "')") : "NULL"); }
+
 sub strim { my $x=shift; $x=~ s/^\s+//; $x=~ s/\s+$//; return $x; }
 
 sub wwrap {
