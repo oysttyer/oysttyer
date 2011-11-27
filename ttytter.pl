@@ -20,26 +20,18 @@ BEGIN {
 	# THIS FUNCTION HAS GOTTEN TOO DAMN CLUTTERED!
 
 #	@INC = (); # wreck intentionally for testing
-
-	# this doesn't work for 5.14.0 (see Perl bug 92246)
-	if ($ENV{'PERL_SIGNALS'} ne 'unsafe' && $] >= 5.014) {
-		print STDOUT <<"EOF";
-TTYtter requires 'unsafe' Perl signals (which are of course for its
-purposes perfectly safe). unfortunately, due to Perl bug 92246 5.14+ cannot
-set this feature itself. set in your environment either of
-
-export PERL_SIGNALS=unsafe # sh, bash, ksh, etc.
-setenv PERL_SIGNALS unsafe # csh, tcsh, etc.
-
-and restart TTYtter, or use Perl 5.12 or earlier.
-EOF
-		exit;
+	# dynamically changing PERL_SIGNALS doesn't work in Perl 5.14+ (bug
+	# 92246). we deal with this by forcing -signals_use_posix if the
+	# environment variable wasn't already set.
+	if ($] >= 5.014000 && $ENV{'PERL_SIGNALS'} ne 'unsafe') {
+		$signals_use_posix = 1;
+	} else {
+		$ENV{'PERL_SIGNALS'} = 'unsafe';
 	}
-	$ENV{'PERL_SIGNALS'} = 'unsafe';
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.2";
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -62,8 +54,9 @@ EOF
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts notimeline
-		synch exception_is_maskable mentions simplestart freezebug
+		synch exception_is_maskable mentions simplestart
 		location oldstatus readlinerepaint nocounter notifyquiet
+		signals_use_posix
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -107,8 +100,9 @@ EOF
 		leader ssl rc norc vcheck apibase notifytype exts
 		nonewrts synch runcommand authtype oauthkey oauthsecret
 		tokenkey tokensecret xauthurl credurl keyf readlinerepaint
-		oldstatus simplestart freezebug exception_is_maskable oldperl
+		oldstatus simplestart exception_is_maskable oldperl
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
+		signals_use_posix
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
@@ -318,6 +312,30 @@ END {
 }
 
 #### COMMON STARTUP ####
+
+# if we requested POSIX signals, or we NEED posix signals (5.14+), we
+# must check if we have POSIX signals actually
+if ($signals_use_posix) {
+	eval 'use POSIX';
+	# God help the system that doesn't have SIGTERM
+	$j = eval 'return POSIX::SIGTERM' ;
+	die(<<"EOF") if (!(0+$j));
+*** death permeates me ***
+your configuration requires using POSIX signalling (either Perl 5.14+ or
+you specifically asked with -signals_use_posix). however, either you don't
+have POSIX.pm, or it doesn't work. 
+
+TTYtter requires 'unsafe' Perl signals (which are of course for its
+purposes perfectly safe). unfortunately, due to Perl bug 92246 5.14+ must
+use POSIX.pm, or have the switch set before starting TTYtter. run one of
+ 
+export PERL_SIGNALS=unsafe # sh, bash, ksh, etc.
+setenv PERL_SIGNALS unsafe # csh, tcsh, etc.
+ 
+and restart TTYtter, or use Perl 5.12 or earlier (without specifying
+-signals_use_posix).
+EOF
+}
 
 # do we have POSIX::Termios? (usually we do)
 eval 'use POSIX; $termios = new POSIX::Termios;';
@@ -1056,31 +1074,22 @@ EOF
 		$j =~ s/[\r\n]/ /sg;
 
 		# process this. as a checksum, API key should == consumer key.
-		$ak = '';
 		$ck = '';
 		$cs = '';
-		($j =~ /API key\s+([-a-zA-Z0-9_]{10,})\s+/) && ($ak = $1);
 		($j =~ /Consumer key\s+([-a-zA-Z0-9_]{10,})\s+/) && ($ck = $1);
 		($j =~ /Consumer secret\s+([-a-zA-Z0-9_]{10,})\s+/) &&
 			($cs = $1);
 
-		if (!length($ak) || !length($ck) || !length($cs)) {
+		if (!length($ck) || !length($cs)) {
 			# escape hatch
 			print $stdout <<"EOF";
-Something's wrong: I could not find your API key, consumer key or consumer
+Something's wrong: I could not find your consumer key or consumer
 secret in that text. If this was a misfired paste, please restart the wizard.
 Otherwise, bug me at \@ttytter or ckaiser\@floodgap.com. Please don't send
 keys or secrets to either address.
 
 EOF
 			exit;
-		}
-		if ($ak ne $ck) {
-			print $stdout <<"EOF";
-Your API key "$ak" doesn't match your consumer key "$ck".
-Please try again, or just hit CTRL-C to cancel if you're stuck.
-EOF
-			next PASTE1LOOP;
 		}
 		last PASTE1LOOP;
 	}
@@ -1160,7 +1169,8 @@ $hold = -1 if ($hold == 1 && !$script);
 $credentials = '';
 $status = pack("U0C*", unpack("C*", $status))
 	unless ($seven || !length($status) || $LANG =~ /8859/); # kludgy also
-chomp($status = <STDIN>) if ($status eq '-' && !$oldstatus);
+chomp(@status = <STDIN>) if ($status eq '-' && !$oldstatus);
+$status = join("\n", @status);
 for(;;) {
 	$rv = 0;
 	die(
@@ -1242,7 +1252,7 @@ for(;;) {
 }
 print "SUCCEEDED!\n";
 exit(0) if (length($status));
-$SIG{'USR1'} = sub { ; };
+&sigify(sub { ; }, qw(USR1));
 if (length($credentials)) {
 	print "-- processing credentials: ";
 	$my_json_ref = &parsejson($credentials);
@@ -1393,8 +1403,40 @@ sub defaultmain {
 	}
 }
 
-$SIG{'PIPE'} = $SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
-$SIG{'USR1'} = $SIG{'PWR'} = $SIG{'XCPU'} = \&repaint;
+&sigify(\&end_me, qw(PIPE BREAK INT));
+&sigify(\&repaint, qw(USR1 PWR XCPU));
+sub sigify {
+	# this routine abstracts setting signals to a subroutine reference.
+	# check and see if we have to use POSIX.pm (Perl 5.14+) or we can
+	# still use $SIG for proper signalling. We prefer the latter, but
+	# must support the former.
+	my $subref = shift;
+	my $k;
+
+	if ($signals_use_posix) {
+		my @w;
+		my $sigaction = POSIX::SigAction->new($subref);
+		while ($k = shift) {
+			my $e = &posix_signal_of($k);
+			# some signals may not exist on all systems.
+			next if (!(0+$e));
+			POSIX::sigaction($e, $sigaction)
+				|| die("sigaction failure: $! $@\n");
+		}
+	} else {
+		while ($k = shift) { $SIG{$k} = $subref; }
+	}
+}
+sub posix_signal_of {
+	die("never call posix_signal_of if signals_use_posix is false\n")
+		if (!$signals_use_posix);
+
+	# this assumes that POSIX::SIG* returns a scalar int value.
+	# not all signals exist on all systems. this ensures zeroes are
+	# returned for locally bogus ones.
+	return 0+(eval("return POSIX::SIG".shift));
+}
+
 sub send_repaint {
 	unless ($wrapseq){
 		return;
@@ -3299,25 +3341,17 @@ unless ($seven) {
 $interactive = $previous_last_id = $we_got_signal = 0;
 $suspend_output = -1;
 $dm_first_time = ($dmpause) ? 1 : 0;
-$SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
-# debugging for broken systems
-$SIG{'ALRM'} = sub {
-# remove this in TTYtter 1.2 if no other problems reported
-	warn("** your system's select() call is ignoring timeouts **\n" .
-	"** report your operating system to ckaiser\@floodgap.com **\n")
-		if ($freezebug);
-	$we_got_signal = 1;
-};
+&sigify("IGNORE", qw(BREAK INT)); # we only respond to SIGKILL/SIGTERM
 # allow foreground process to squelch us
 # freaking Linux signals encore. SIGSYS? really? wtf, Linus!
 # well, never mind. Solaris makes us use SIGXCPU/SIGXFSZ
-$SIG{'USR1'} = $SIG{'PWR'} = $SIG{'XCPU'} = sub {
+&sigify(sub {
 	$suspend_output ^= 1 if ($suspend_output != -1);
 	$we_got_signal = 1;
-};
-$SIG{'USR2'} = $SIG{'SYS'} = $SIG{'UNUSED'} = $SIG{'XFSZ'} = sub {
+}, qw(USR1 PWR XCPU));
+&sigify( sub {
 	$suspend_output = -1; $we_got_signal = 1;
-};
+}, qw(USR2 SYS UNUSED XFSZ));
 
 # loop until we are killed or told to stop.
 # we receive instructions on stdin, and send data back on our pipe().
@@ -3358,8 +3392,6 @@ DONT_REFRESH:
 	}
 	print P "0" if ($synchronous_mode && $interactive);
 	&send_repaint;
-	alarm ($effpause + $effpause + $effpause) if ($freezebug);
-		# security blanket warning
 	# this core loop is tricky. most signals will not restart the call.
 	# -- respond to alarms if we are ignoring our timeout.
 	# -- do not respond to bogus packets if a signal handler triggered it.
@@ -3376,7 +3408,6 @@ RESTART_SELECT:
 			goto RESTART_SELECT;
 		}
 		$we_got_signal = 0;
-		alarm 0 if ($freezebug);
 		# background communications central command code
 		# we received a command from the console, so let's look at it.
 		print $stdout "-- command received ", scalar
@@ -4126,9 +4157,7 @@ sub updatest {
 			print $stdout "-- sending to server\n";
 		} else {
 			$in_backticks = 1; # defeat END sub
-			$SIG{'BREAK'} = $SIG{'INT'} = sub {
-				exit 254;
-			};
+			&sigify(sub { exit 254; }, qw(BREAK INT));
 			sleep $slowpost;
 			exit 0;
 		}
@@ -6017,10 +6046,10 @@ sub backticks {
 		return $buf; # and $? is still in $?
 	} else {
 		$in_backticks = 1;
-		$SIG{'ALRM'} = sub {
+		&sigify(sub {
 			die(
 		"** user agent not honouring timeout (caught by sigalarm)\n");
-		};
+		}, qw(ALRM));
 		alarm 120; # this should be sufficient
 		if (length($rerr)) {
 			close(STDERR); 
