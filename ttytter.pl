@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.2";
-	$TTYtter_PATCH_VERSION = 3;
+	$TTYtter_PATCH_VERSION = 4;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -1169,8 +1169,10 @@ $hold = -1 if ($hold == 1 && !$script);
 $credentials = '';
 $status = pack("U0C*", unpack("C*", $status))
 	unless ($seven || !length($status) || $LANG =~ /8859/); # kludgy also
-chomp(@status = <STDIN>) if ($status eq '-' && !$oldstatus);
-$status = join("\n", @status);
+if ($status eq '-' && !$oldstatus) {
+	chomp(@status = <STDIN>);
+	$status = join("\n", @status);
+}
 for(;;) {
 	$rv = 0;
 	die(
