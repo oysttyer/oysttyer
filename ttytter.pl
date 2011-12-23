@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "1.2";
-	$TTYtter_PATCH_VERSION = 4;
+	$TTYtter_PATCH_VERSION = 5;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -340,6 +340,11 @@ EOF
 # do we have POSIX::Termios? (usually we do)
 eval 'use POSIX; $termios = new POSIX::Termios;';
 print $stdout "-- termios test: $termios\n" if ($verbose);
+
+# try to get signal numbers for SIGUSR1/USR2 from POSIX. use 30/31 if failed.
+eval 'use POSIX; $SIGUSR1 = POSIX::SIGUSR1; $SIGUSR2 = POSIX::SIGUSR2';
+$SIGUSR1 ||= 30;
+$SIGUSR2 ||= 31;
 	
 # wrap warning
 die(
@@ -1380,9 +1385,9 @@ sub defaultmain {
 	eval '$termrl->hook_no_counter';
 	if ($termrl) {
 		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
-			kill 30, $child; # suppress output
+			kill $SIGUSR1, $child; # suppress output
 			$rv = &prinput($_);
-			kill 31, $child; # resume output
+			kill $SIGUSR2, $child; # resume output
 			last if ($rv < 0);
 			&sync_console unless (!$rv || !$synch);
 			if ($dont_use_counter ne $nocounter) {
@@ -1394,9 +1399,9 @@ sub defaultmain {
 	} else {
 		&$prompt;
 		while(<>) { #not stdin so we can read from script files
-			kill 30, $child; # suppress output
+			kill $SIGUSR1, $child; # suppress output
 			$rv = &prinput(&uforcemulti($_));
-			kill 31, $child; # resume output
+			kill $SIGUSR2, $child; # resume output
 			last if ($rv < 0);
 			&sync_console unless (!$rv || !$synch);
 			&$prompt;
@@ -1450,7 +1455,7 @@ sub send_repaint {
 		&repaint;
 	} else {
 		# we are not the parent, call the parent to repaint itself
-		kill 30, $parent; # send SIGUSR1
+		kill $SIGUSR1, $parent;
 	}
 }
 sub repaint {
@@ -2529,12 +2534,13 @@ EOF
 		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
-#	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
+	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
 # sigh. I HATE YOU TINYARRO.WS
 #TODO
 # eventually we will have to put a punycode implementation into openurl
 # to handle things like Mac OS X's open which don't understand UTF-8 URLs.
-	=~ s#(http|https|ftp|gopher)://([^'\\]+?)('|\\|\s|$)##) {
+# when we do, uncomment this again
+#	=~ s#(http|https|ftp|gopher)://([^'\\]+?)('|\\|\s|$)##) {
 			my $url = $1 . "://$2";
 			$url =~ s/[\.\?]$//;
 			&openurl($url);
@@ -4948,7 +4954,7 @@ sub get_tweet {
 	return $store_hash{$code} if ($source); # foreground c/foreground twt
 
 	print $stdout "-- querying background: $code\n" if ($verbose);
-	kill 31, $child if ($child);
+	kill $SIGUSR2, $child if ($child);
 	print C "pipet $code ----------\n";
 	while(length($k) < 1024) {
 		sysread(W, $l, 1024);
@@ -4986,7 +4992,7 @@ sub get_dm {
 
 	return undef if (length($code) != 3 || $code !~ s/^d// ||
 				$code !~ /^[a-z][0-9]$/);
-	kill 31, $child if ($child); # prime pipe
+	kill $SIGUSR2, $child if ($child); # prime pipe
 	print C "piped $code ----------\n"; # internally two alphanum, recall
 	while(length($k) < 1024) {
 		sysread(W, $l, 1024);
@@ -5159,7 +5165,7 @@ sub synckey {
 	print $stdout "*** (transmitting to background)\n"
 		if ($interactive || $verbose);
 	return if (!$child); 
-	kill 31, $child if ($child);
+	kill $SIGUSR2, $child if ($child);
 	print C
 	(substr("${commchar}$key                           ", 0, 19) . "\n");
 	print C (substr(($value . $space_pad), 0, 1024));
@@ -5177,7 +5183,7 @@ sub getvariable {
 			$key eq 'rate_limit_rate' ||
 			$key eq 'rate_limit_left') {
 		my $value;
-		kill 31, $child if ($child);
+		kill $SIGUSR2, $child if ($child);
 		print C (substr("?$key                    ", 0, 19) . "\n");
 		sysread(W, $value, 1024);
 		$value =~ s/\s+$//;
