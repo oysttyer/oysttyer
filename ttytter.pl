@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.0";
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -54,7 +54,7 @@ BEGIN {
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts notimeline
-		synch exception_is_maskable mentions simplestart
+		synch exception_is_maskable mentions simplestart octwercs
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
 	); %opts_sync = map { $_ => 1 } qw(
@@ -75,7 +75,7 @@ BEGIN {
 		statusliurl followliurl leaveliurl followersurl
 		oauthurl oauthauthurl oauthaccurl oauthbase
 	); %opts_secret = map { $_ => 1} qw(
-		superverbose ttytteristas
+		superverbose ttytteristas octwercs
 	); %opts_comma_delimit = map { $_ => 1 } qw(
 		lists notifytype notifies
 	); %opts_space_delimit = map { $_ => 1 } qw(
@@ -86,7 +86,7 @@ BEGIN {
 		url pause dmurl dmpause superverbose ansi verbose
 		update uurl rurl wurl avatar ttytteristas frurl track
 		rlurl noprompt shorturl newline wrap verify autosplit
-		notimeline queryurl trendurl colourprompt colourme
+		notimeline queryurl octwercs trendurl colourprompt colourme
 		colourdm colourreply colourwarn coloursearch colourlist idurl
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
@@ -629,9 +629,11 @@ $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
 $apibase ||= "${http_proto}://api.twitter.com/1";
 $nonewrts ||= 0;
+
 # special case: if we explicitly refuse backload, don't load initially.
 $backload = 30 if (!defined($backload)); # zero is valid!
 $dont_refresh_first_time = 1 if (!$backload);
+
 $searchhits ||= 20;
 $url ||= "${apibase}/statuses/home_timeline.json";
 
@@ -1374,11 +1376,8 @@ if ($daemon) {
 
 			&$heartbeat;
 			&update_effpause;
-			if ($dont_refresh_first_time) {
-				$dont_refresh_first_time = 0;
-			} else {
-				&refresh(0);
-			}
+			&refresh(0);
+			$dont_refresh_first_time = 0;
 			if ($dmpause) {
 				if (!--$dmcount) {
 					&dmrefresh(0);
@@ -2649,7 +2648,7 @@ EOF
 		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
-	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
+	=~ s#(h?ttp|h?ttps|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##){
 # sigh. I HATE YOU TINYARRO.WS
 #TODO
 # eventually we will have to put a punycode implementation into openurl
@@ -2657,6 +2656,7 @@ EOF
 # when we do, uncomment this again
 #	=~ s#(http|https|ftp|gopher)://([^'\\]+?)('|\\|\s|$)##) {
 			my $url = $1 . "://$2";
+			$url = "h$url" if ($url =~ /^ttps?:/);
 			$url =~ s/[\.\?]$//;
 			&openurl($url);
 		}
@@ -3487,7 +3487,7 @@ for(;;) {
 	&update_effpause;
 	$wrapseq = 0; # remember, we don't know when commands are sent.
 	&refresh($interactive, $previous_last_id) unless
-		($dont_refresh_first_time || (!$effpause && !$interactive));
+		(!$effpause && !$interactive);
 	$dont_refresh_first_time = 0;
 	$previous_last_id = $last_id;
 	if ($dmpause && ($effpause || $synch)) {
@@ -3971,7 +3971,8 @@ sub start_streaming {
 			# should reconnect.
 			if ($buf =~ /[^0-9\r\l\n\s]+/s) {
 				close(NURSE);
-				kill 9, $streampid; # and SIGCHLD will reap
+				kill 9, $streampid if ($streampid);
+					# and SIGCHLD will reap
 				kill 9, $curlpid if ($curlpid);
 				goto HELLOAGAINNURSE;
 			}
@@ -4185,8 +4186,14 @@ sub refresh {
 	if (!$notrack && scalar(@trackstrings)) {
 		my $r;
 		my $k;
-		my $l = &max((($last_id) ? 100 :
-			$fetchwanted || $backload), $searchhits);
+		my $l;
+
+		if (!$last_id) {
+			$l = &min($backload, $searchhits);
+		} else {
+			$l = (($fetchwanted) ? $fetchwanted :
+				&max(100, $searchhits));
+		}
 		# temporarily squelch server complaints (see below)
 		$muffle_server_messages = 1 unless ($verbose);
 		foreach $k (@trackstrings) {
@@ -4312,8 +4319,12 @@ sub refresh {
 	# do computations on the ID itself, because it's "opaque."
 	$fetch_id = 0 if ($last_id == 0);
 	&send_removereadline if ($termrl);
-	($last_id, $crap) =
-		&tdisplay($my_json_ref, undef, $relative_last_id);
+	if ($dont_refresh_first_time) {
+		$last_id = &max($my_json_ref->[0]->{'id_str'}, $last_id);
+	} else {
+		($last_id, $crap) =
+			&tdisplay($my_json_ref, undef, $relative_last_id);
+	}
 	my $new_fi = (scalar(@{ $my_json_ref })) ?
 		$my_json_ref->[(scalar(@{ $my_json_ref })-1)]->{'id_str'} :
 		'';
@@ -4583,6 +4594,9 @@ sub updatest {
 	}
 
 	unless ($rt_id) {
+		if ($octwercs) {
+			1 while ($string =~ s#http(s?)://#ttp\1://#);
+		}
 		$urle = '';
 		foreach $i (unpack("${pack_magic}C*", $string)) {
 			my $k = chr($i);
@@ -6726,6 +6740,15 @@ sub descape {
 		} else {
 			# try to promote to UTF-8
 			&$utf8_decode($x);
+
+			# Twitter uses UTF-16 for high code points, which
+			# Perl's UTF-8 support does not like as surrogates.
+			# try to decode these here; they are always back-to-
+			# back surrogates of the form \uDxxx\uDxxx
+			$x =~
+s/\\u([dD][890abAB][0-9a-fA-F]{2})\\u([dD][cdefCDEF][0-9a-fA-F]{2})/&deutf16($1,$2)/eg;
+
+			# decode the rest
 			$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
 			$x = &uforcemulti($x);
 		}
@@ -6742,6 +6765,19 @@ sub descape {
 	return $x;
 }
 
+# used by descape: turn UTF-16 surrogates into a Unicode character
+sub deutf16 {
+	my $one = hex(shift);
+	my $two = hex(shift);
+	# subtract 55296 from $one to yield top ten bits
+	$one -= 55296; # $d800
+	# subtract 56320 from $two to yield bottom ten bits
+	$two -= 56320; # $dc00
+
+	# experimentally, Twitter uses this endianness below (we have no BOM)
+	# see RFC 2781 4.3
+	return chr(($one << 10) + $two + 65536);
+}
 sub max { return ($_[0] > $_[1]) ? $_[0] : $_[1]; }
 sub min { return ($_[0] < $_[1]) ? $_[0] : $_[1]; }
 sub prolog { my $k = shift; 
