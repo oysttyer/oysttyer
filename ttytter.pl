@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.0";
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -40,6 +40,7 @@ BEGIN {
 	(warn ("$my_version_string\n"), exit) if ($version);
 
 	$space_pad = " " x 1024;
+	$background_is_ready = 0;
 
 	# for multi-module extension handling
 	$multi_module_mode = 0;
@@ -63,7 +64,7 @@ BEGIN {
 		queryurl trendurl track colourprompt colourme notrack
 		colourdm colourreply colourwarn coloursearch colourlist idurl
 		notifies filter colourdefault backload searchhits dmsenturl
-		nostreamreplies mentions
+		nostreamreplies mentions wtrendurl atrendurl
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 		apibase queryurl trendurl idurl delurl dmdelurl favsurl
@@ -73,7 +74,8 @@ BEGIN {
 		creliurl delliurl deluliurl crefliurl delfliurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl dmidurl
 		statusliurl followliurl leaveliurl followersurl
-		oauthurl oauthauthurl oauthaccurl oauthbase
+		oauthurl oauthauthurl oauthaccurl oauthbase wtrendurl
+		atrendurl
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas octwercs
 	); %opts_comma_delimit = map { $_ => 1 } qw(
@@ -91,11 +93,11 @@ BEGIN {
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
 		rtsofmeurl followurl leaveurl dmupdate mentions backload
-		lat long location searchhits blockurl blockdelurl
+		lat long location searchhits blockurl blockdelurl woeid
 		nocounter linelength friendsurl followersurl lists
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
-		creliurl delliurl deluliurl crefliurl delfliurl
-		getuliurl getufliurl dmsenturl rturl rtsbyurl
+		creliurl delliurl deluliurl crefliurl delfliurl atrendurl
+		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
@@ -431,10 +433,10 @@ if (length($exts) && $exts ne '0') {
 		$EM_SCRIPT_ON = 1;
 		$EM_SCRIPT_OFF = -1;
 		$extension_mode = $EM_DONT_CARE;
-		die("** file not found: $!\n") if (! -r "$file");
+		die("** $file not found: $!\n") if (! -r "$file");
 		require $file; # and die if bad
-		die("** failed to load: $@\n") if ($@);
-		die("** consistency failure: reference failure\n")
+		die("** $file failed to load: $@\n") if ($@);
+		die("** consistency failure: reference failure on $file\n")
 			if (!$store->{'loaded'});
 
 		# check type of extension (interactive or non-interactive). if
@@ -697,7 +699,11 @@ $dostream ||= 0;
 $eventbuf ||= 0;
 
 $queryurl ||= "http://search.twitter.com/search.json";
-$trendurl ||= "http://api.twitter.com/1/trends/daily.json";
+#TODO
+# this isn't actually used anymore.
+$trendurl ||= "${apibase}/trends/daily.json";
+$wtrendurl ||= "${apibase}/trends/";
+$atrendurl ||= "${apibase}/trends/available.json";
 
 # pick ONE!
 #$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
@@ -1318,7 +1324,8 @@ for(;;) {
 }
 print "SUCCEEDED!\n";
 exit(0) if (length($status));
-&sigify(sub { ; }, qw(USR1));
+&sigify(sub { ; }, qw(USR1 PWR XCPU));
+&sigify(sub { $background_is_ready++ }, qw(USR2 SYS UNUSED XFSZ));
 if (length($credentials)) {
 	print "-- processing credentials: ";
 	$my_json_ref = &parsejson($credentials);
@@ -1353,9 +1360,6 @@ if ($daemon) {
 	} else {
 		$bufferpid = 0;
 		if ($dostream) {
-			$bufferpid = &start_streaming;
-			$rin = '';	
-			vec($rin, fileno(STBUF), 1) = 1;
 			&sigify(sub {
 				kill $SIGHUP, $nursepid if ($nursepid);
 				kill $SIGHUP, $bufferpid if ($bufferpid);
@@ -1365,6 +1369,9 @@ if ($daemon) {
 				kill 9, $$;
 			}, qw(TERM HUP PIPE));
 			&sigify("IGNORE", qw(INT));
+			$bufferpid = &start_streaming;
+			$rin = '';	
+			vec($rin, fileno(STBUF), 1) = 1;
 		}
 		$parent = 0;
 		$dmcount = 1 if ($dmpause); # force fetch
@@ -1611,6 +1618,9 @@ if ($synch) {
 	&thump;
 	# the second will be cleared by the console
 }
+
+# wait for background to become ready
+sleep 1 while (!$background_is_ready);
 
 # start the 
 &$main;
@@ -1996,38 +2006,94 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		&setvariable('track', $track, 1);
 		return 0;
 	}
-	if ($_ eq '/tre' || $_ eq '/trends') {
+	if (s#^/tre(nds)?\s*##) {
+#TODO
+# in 2.1, remove trendurl and make everything based on woeid
 		my $t;
-		my $r = &grabjson("$trendurl", 0, 1);
+		my $wwoeid = (length) ? $_ : $woeid;
+		$wwoeid ||= "1";
+		my $r = ($wwoeid) ?
+			  &grabjson("${wtrendurl}${wwoeid}.json", 0, 0, 0)
+			: &grabjson("$trendurl", 0, 0, 0); # hack
+		my $fr = ($wwoeid && $wwoeid ne '1') ?
+			" FOR WOEID $wwoeid" : ' GLOBALLY';
 
 #{"as_of":1237580149,"trends":{"2009-03-20 20:15:49":[{"query":"#sxsw OR SXSW",
-		if (defined($r) && ref($r) eq 'HASH' && ($t = $r->{'trends'})){
+		if (defined($r) && ref($r) eq 'HASH') {
+			$t = $r->{'trends'};
+		} elsif (defined($r) && ref ($r) eq 'ARRAY') {
+			$t = $r->[0]->{'trends'};
+		}
+		if (defined($t) && (ref($t) eq 'HASH' || ref($t) eq 'ARRAY')) {
 			my $i;
 			my $j;
 
-			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
+			print $stdout "${EM}<<< TRENDING TOPICS${fr} >>>${OFF}\n";
 			# this is moderate paranoia
+			if (ref($r) eq 'HASH') {
+
+			# this is the old behaviour. it will be removed.
 			foreach $i (sort { $b cmp $a } keys %{ $t }) {
 				foreach $j (@{ $t->{$i} }) {		
 					my $k = &descape($j->{'query'});
 					my $l = ($k =~ /\sOR\s/) ? $k :
 						($k =~ /^"/) ? $k :
 						('"' . $k . '"');
-					print $stdout "/search $l\n";
+					print $streamout "/search $l\n";
 					$k =~ s/\sOR\s/ /g;
 					$k = '"' . $k . '"' if ($k =~ /\s/
 						&& $k !~ /^"/);
-					print $stdout "/tron $k\n";
+					print $streamout "/tron $k\n";
 				}
 				last; # emulate old trends/current behaviour
 			}
+
+			} else {
+				foreach $j (@{ $t }) {
+					my $k = &descape($j->{'name'});
+					my $l = ($k =~ /\sOR\s/) ? $k :
+						($k =~ /^"/) ? $k :
+						('"' . $k . '"');
+					print $streamout "/search $l\n";
+					$k =~ s/\sOR\s/ /g;
+					$k = '"' . $k . '"' if ($k =~ /\s/
+						&& $k !~ /^"/);
+					print $streamout "/tron $k\n";
+				}
+			} 
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 		} else {
-			print $stdout "-- sorry, trends not available.\n";
+			print $stdout
+"-- sorry, trends not available for WOEID $wwoeid.\n";
 		}
 		return 0;
 	}
-		
+
+	# woeid finder based on lat/long
+	if ($_ eq '/woeids') {
+		my $max = 10;
+		if (!$lat && !$long) {
+			print $stdout
+			"-- set your location with lat/long first.\n";
+			return 0;
+		}
+		my $r = &grabjson("$atrendurl?lat=$lat&long=$long", 0, 0, 0);
+		if (defined($r) && ref($r) eq 'ARRAY') {
+			my $i;
+			foreach $i (@{ $r }) {
+				my $woeid = &descape($i->{'woeid'});
+				my $nm = &descape($i->{'name'}) . ' (' .
+					&descape($i->{'countryCode'}) .')';
+				print $streamout "$nm\n/set woeid $woeid\n";
+				last unless ($max--);
+			}
+		} else {
+			print $stdout
+"-- sorry, couldn't get a supported WOEID for your location.\n";
+		}
+		return 0;
+	}
+
 	1 if (s/^\/#([^\s]+)/\/tron #\1/);
 	# /# command falls through to tron
 	if (s/^\/tron\s+// && s/\s*$// && length) {
@@ -2390,9 +2456,9 @@ m#^http://[^.]+\.(twimg\.com|twitter\.com).+/images/default_profile_\d+_normal.p
 					system($exec);
 				}
 			}
-			print $stdout "\n";
-			&userline($my_json_ref, $stdout);
-			print $stdout &wwrap(
+			print $streamout "\n";
+			&userline($my_json_ref, $streamout);
+			print $streamout &wwrap(
 "\"@{[ &strim(&descape($my_json_ref->{'description'})) ]}\"\n")
 			if (length(&strim($my_json_ref->{'description'})));
 			if (length($my_json_ref->{'url'})) {
@@ -2400,27 +2466,27 @@ m#^http://[^.]+\.(twimg\.com|twitter\.com).+/images/default_profile_\d+_normal.p
 				$urlshort = &descape($my_json_ref->{'url'});
 				$urlshort =~ s/^\s+//;
 				$urlshort =~ s/\s+$//;
-				print $stdout "${EM}URL:${OFF}\t\t$urlshort\n";
+				print $streamout "${EM}URL:${OFF}\t\t$urlshort\n";
 			}
-			print $stdout &wwrap(
+			print $streamout &wwrap(
 "${EM}Location:${OFF}\t@{[ &descape($my_json_ref->{'location'}) ]}\n")
 				if (length($my_json_ref->{'location'}));
-			print $stdout <<"EOF";
+			print $streamout <<"EOF";
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
 			unless ($anonymous || $whoami eq $uname) {
 				my $g =
 		&grabjson("$frurl?user_a=$whoami&user_b=$uname", 0);
-				print $stdout &wwrap(
+				print $streamout &wwrap(
 	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n")
 					if (ref($g) eq 'HASH');
 				my $g =
 		&grabjson("$frurl?user_a=$uname&user_b=$whoami", 0);
-				print $stdout &wwrap(
+				print $streamout &wwrap(
 "${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n")
 					if (ref($g) eq 'HASH');
-				print $stdout "\n";
+				print $streamout "\n";
 			}
 			print $stdout &wwrap(
 	"-- %URL% is now $urlshort (/short shortens, /url opens)\n")
@@ -2598,11 +2664,15 @@ EOF
 			foreach $v (@{ $p }) {
 				next if (!defined($v) || ref($v) ne 'HASH');
 				next if (!length($v->{'url'}) ||
-					!length($v->{'expanded_url'}));
+					(!length($v->{'expanded_url'}) &&
+					 !length($v->{'media_url'})));
 				my $u1 = &descape($v->{'url'});
 				my $u2 = &descape($v->{'expanded_url'});
+				my $u3 = &descape($v->{'media_url'});
+				my $u4 = &descape($v->{'media_url_https'});
+				$u2 = $u4 || $u3 || $u2;
 				print $stdout "$u1 => $u2\n";
-				$urlshort = $u1;
+				$urlshort = $u4 || $u3 || $u1;
 				$didprint++;
 			}
 		}
@@ -2830,8 +2900,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		print $stdout &wwrap(
 "-- verify you want to delete: \"@{[ &descape($tweet->{'text'}) ]}\"");
 		print $stdout "\n";
-		$answer = &linein(
-	"-- sure you want to delete? (only y or Y is affirmative):");
+		$answer = lc(&linein(
+	"-- sure you want to delete? (only y or Y is affirmative):"));
 		if ($answer ne 'y') {
 			print $stdout "-- ok, tweet is NOT deleted.\n";
 			return 0;
@@ -2853,8 +2923,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		"(from @{[ &descape($dm->{'sender'}->{'screen_name'}) ]}) ".
 			"\"@{[ &descape($dm->{'text'}) ]}\"");
 		print $stdout "\n";
-		$answer = &linein(
-	"-- sure you want to delete? (only y or Y is affirmative):");
+		$answer = lc(&linein(
+	"-- sure you want to delete? (only y or Y is affirmative):"));
 		if ($answer ne 'y') {
 			print $stdout "-- ok, DM is NOT deleted.\n";
 			return 0;
@@ -2875,8 +2945,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		print $stdout &wwrap(
 "-- verify you want to delete: \"$lasttwit\"");
 		print $stdout "\n";
-		$answer = &linein(
-	"-- sure you want to delete? (only y or Y is affirmative):");
+		$answer = lc(&linein(
+	"-- sure you want to delete? (only y or Y is affirmative):"));
 		if ($answer ne 'y') {
 			print $stdout "-- ok, tweet is NOT deleted.\n";
 			return 0;
@@ -3024,8 +3094,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $m = $1;
 		my $u = lc($2);
 		if ($m eq 'block') {	
-			$answer = &linein(
-	"-- sure you want to block $u? (only y or Y is affirmative):");
+			$answer = lc(&linein(
+	"-- sure you want to block $u? (only y or Y is affirmative):"));
 			if ($answer ne 'y') {
 				print $stdout "-- ok, $u is NOT blocked.\n";
 				return 0;
@@ -3117,8 +3187,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			$state = "deleted list $lname";
 			print $stdout
 				"-- verify you want to delete list $lname\n";
-			my $answer = &linein(
-		"-- sure you want to delete? (only y or Y is affirmative):");
+			my $answer = lc(&linein(
+		"-- sure you want to delete? (only y or Y is affirmative):"));
 			if ($answer ne 'y') {
 				print $stdout "-- ok, list is NOT deleted.\n";
 				return 0;
@@ -3440,12 +3510,26 @@ unless ($seven) {
 	binmode($stdout, ":utf8");
 }
 
-# initialize streaming
+# allow foreground process to squelch us
+# we have to cover all the various versions of 30/31 signals on various
+# systems just in case we are on a system without POSIX.pm. this set should
+# cover Linux 2.x/3.x, AIX, Mac OS X, *BSD and Solaris. we have to assert
+# these signals before starting streaming, or we may "kill" ourselves by
+# accident because it is possible to process a tweet before these are
+# operational.
+&sigify(sub {
+	$suspend_output ^= 1 if ($suspend_output != -1);
+	$we_got_signal = 1;
+}, qw(USR1 PWR XCPU));
+&sigify( sub {
+	$suspend_output = -1; $we_got_signal = 1;
+}, qw(USR2 SYS UNUSED XFSZ));
+&sigify("IGNORE", qw(INT)); # don't let slowpost kill us
+
+# now we can safely initialize streaming
 if ($dostream) {
 	@events = ();
 	$lasteventtime = time();
-	$bufferpid = &start_streaming;
-	vec($rin, fileno(STBUF), 1) = 1;
 	&sigify(sub {
 		print $stdout "-- killing processes $nursepid $bufferpid\n"
 			if ($verbose);
@@ -3458,27 +3542,19 @@ if ($dostream) {
 		kill 9, $bufferpid if ($bufferpid);
 		kill $SIGTERM, $$;
 	}, qw(HUP)); # use SIGHUP etc. from parent process to signal end
+	$bufferpid = &start_streaming;
+	vec($rin, fileno(STBUF), 1) = 1;
 } else {
 	&sigify("IGNORE", qw(HUP)); # we only respond to SIGKILL/SIGTERM
 }
-&sigify("IGNORE", qw(INT)); # don't let slowpost kill us
 
 $interactive = $previous_last_id = $we_got_signal = 0;
 $suspend_output = -1;
 $stream_failure = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
 
-# allow foreground process to squelch us
-# we have to cover all the various versions of 30/31 signals on various
-# systems just in case we are on a system without POSIX.pm. this set should
-# cover Linux 2.x/3.x, AIX, Mac OS X, *BSD and Solaris.
-&sigify(sub {
-	$suspend_output ^= 1 if ($suspend_output != -1);
-	$we_got_signal = 1;
-}, qw(USR1 PWR XCPU));
-&sigify( sub {
-	$suspend_output = -1; $we_got_signal = 1;
-}, qw(USR2 SYS UNUSED XFSZ));
+# tell the foreground we are ready
+kill $SIGUSR2, $parent;
 
 # loop until we are killed or told to stop.
 # we receive instructions on stdin, and send data back on our pipe().
@@ -3942,11 +4018,18 @@ sub start_streaming {
 	}, qw(HUP TERM));
 	&sigify("IGNORE", qw(INT));
 
+	$packets_read = 0; # part of exponential backoff
+	$wait_time = 0;
+
 	# open the nurse process
 	HELLOAGAINNURSE: $w = "{\"packet\" : \"connect\", \"payload\" : {} }";
 	select(STDOUT); $|++;
 	printf STDOUT ("%08x%s", length($w), $w);
 	close(NURSE);
+	if (!$packets_read) { $wait_time += (($wait_time) ? $wait_time : 1) }
+		else { $wait_time = 0; }
+	$packets_read = 0;
+	$wait_time = ($wait_time > 60) ? 60 : $wait_time;
 	if ($streampid = open(NURSE, "-|")) {
 		# within the buffer process
 		select(NURSE); $|++; select(STDOUT);
@@ -3986,9 +4069,12 @@ sub start_streaming {
 			1 while $duf =~ s/[\r\n]//g;
 			$duf = "{ \"packet\" : \"data\", \"pid\" : \"$streampid\", \"curlpid\" : \"$curlpid\", \"payload\" : $duf }";
 			printf STDOUT ("%08x%s", length($duf), $duf);
+			$packets_read++;
 		}
 	} else {
 		# within the nurse process
+		$0 = "TTYtter (waiting $wait_time sec to connect to stream)";
+		sleep $wait_time;
 		$curlpid = 0;
 		$replarg = ($streamallreplies) ? '&replies=all' : '';
 		&sigify(sub {
@@ -4011,7 +4097,7 @@ sub start_streaming {
 		printf STDOUT ("%08x", $curlpid);
 
 		# "DIE QUICKLY"
-		$0 = "TTYtter (streaming socket nurse thread to $curlpid)";
+		$0 = "TTYtter (streaming socket nurse thread to ${curlpid})";
 
 		select(K); $|++; select(STDOUT); $|++;
 		print K "$args\n";
@@ -4585,8 +4671,8 @@ sub updatest {
 
 		print $stdout
 			&wwrap("-- verify you want to $verb: \"$string\"\n");
-		$answer = &linein(
-			"-- send to server? (only y or Y is affirmative):");
+		$answer = lc(&linein(
+			"-- send to server? (only y or Y is affirmative):"));
 		if ($answer ne 'y') {
 			print $stdout "-- ok, NOT sent to server.\n";
 			return 97;
