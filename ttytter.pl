@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.0";
-	$TTYtter_PATCH_VERSION = 2;
+	$TTYtter_PATCH_VERSION = 3;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -75,7 +75,7 @@ BEGIN {
 		getuliurl getufliurl dmsenturl rturl rtsbyurl dmidurl
 		statusliurl followliurl leaveliurl followersurl
 		oauthurl oauthauthurl oauthaccurl oauthbase wtrendurl
-		atrendurl
+		atrendurl frupdurl
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas octwercs
 	); %opts_comma_delimit = map { $_ => 1 } qw(
@@ -99,6 +99,7 @@ BEGIN {
 		creliurl delliurl deluliurl crefliurl delfliurl atrendurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
+		frupdurl
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -663,6 +664,7 @@ $blockurl ||= "${apibase}/blocks/create.json";
 $blockdelurl ||= "${apibase}/blocks/destroy.json";
 $friendsurl ||= "${apibase}/statuses/friends.json";
 $followersurl ||= "${apibase}/statuses/followers.json";
+$frupdurl ||= "${apibase}/friendships/update.json";
 
 $rlurl ||= "${apibase}/account/rate_limit_status.json";
 
@@ -1226,6 +1228,11 @@ EOF
 # now, get a token (either from Basic Auth, the keyfile or OAuth)
 ($mytoken, $mytokensecret) = &authtoken;
 } # unless anonymous
+
+# if we are testing the stream, this is where we split
+if ($streamtest) {
+	print $stdout ">>> STREAMING CONNECT TEST <<< (kill process to end)\n";
+	&start_streaming; } # this never returns in this mode
 
 # initial login tests and command line controls
 if ($statusurl) {
@@ -2884,6 +2891,13 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		return 0;
 	}
 
+	# enable and disable NewRTs from users
+	# we allow this even if newRTs are off from -nonewrts
+	if (s#^/rts(on|off)\s+## && length) {
+		&rtsonoffuser($_, 1, ($1 eq 'on'));
+		return 0;
+	}
+
 	if (m#^/del(ete)?\s+([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
 		my $tweet = &get_tweet($code);
@@ -3985,9 +3999,11 @@ print $stdout "** or use /lists or /listoff to reduce the number of lists\n";
 
 sub start_streaming {
 	$bufferpid = 0;
-	if($bufferpid = open(STBUF, "-|")) {
-		# streaming processes initialized
-		return $bufferpid;
+	unless ($streamtest) {
+		if($bufferpid = open(STBUF, "-|")) {
+			# streaming processes initialized
+			return $bufferpid;
+		}
 	}
 
 	# now within buffer process
@@ -4043,6 +4059,16 @@ sub start_streaming {
 		# read the curlpid from the stream
 		read(NURSE, $curlpax, 8);
 		$curlpid = hex($curlpax);
+
+		# if we are testing the socket, just emit data.
+		if ($streamtest) {
+			my $c;
+
+			for(;;) {
+				sysread(NURSE, $c, 1);
+				print STDOUT $c;
+			}
+		}
 		HELLONURSE: while(1) {
 			# restart nurse process if it/curl died
 			goto HELLOAGAINNURSE if(!$streampid);
@@ -4877,6 +4903,22 @@ sub boruuser {
 	return 0;
 }
 
+# enable or disable retweets for a user
+sub rtsonoffuser {
+	my $uname = shift;
+	my $interactive = shift;
+	my $selection = shift;
+	my $verb = ($selection) ? 'enabled' : 'disabled';
+	my $tval = ($selection) ? 'true' : 'false';
+
+	my ($en, $em) = &central_cd_dispatch(
+		"retweets=${tval}&screen_name=${uname}",
+		$interactive, $frupdurl);
+	print $stdout "-- ok, you have ${verb} retweets for user $uname.\n"
+		if ($interactive && !$en);
+	return 0;
+}
+
 #### TTYtter internal API utility functions ####
 # ... which your API *can* call
 
@@ -4996,9 +5038,8 @@ sub standardevent {
 	my $g = '>>> ';
 	my $verb = &descape($ref->{'event'});
 	
-	# the events we recognize are (un)favourite, delete and follow.
-	# the rest come as DMs and tweets (tweets/RTs/replies).
-	# @episod has promised me he will document the rest of the events.
+	# @episod has promised me he will document all of the events.
+	# still waiting ...
 
 	if (length($verb)) { # delete is different.
 		my $tar_sn = '@'.&descape($ref->{'target'}->{'screen_name'});
@@ -5009,6 +5050,8 @@ sub standardevent {
 		"$sou_sn just ${verb}d ${tar_sn}'s tweet: \"$txt\"";
 		} elsif ($verb eq 'follow') {
 			$g .= "$sou_sn is now following $tar_sn";
+		} elsif ($verb eq 'user_update') {
+		$g .= "$sou_sn updated their profile (/whois $sou_sn to see)";
 #TODO
 # these need to be fleshed out
 		} elsif ($verb eq 'list_member_added') {
@@ -5018,7 +5061,7 @@ sub standardevent {
 		} elsif ($verb eq 'list_user_subscribed') {
 			$g .= "$sou_sn is now following a list from $tar_sn";
 		} elsif ($verb eq 'list_user_unsubscribed') {
-			$g .= "$sou_sn is no longer following a list from $tar_sn";
+		$g .= "$sou_sn is no longer following a list from $tar_sn";
 		} elsif ($verb eq 'list_create') {
 			$g .= "$sou_sn created a new list";
 		} elsif ($verb eq 'list_destroyed') {
@@ -6811,7 +6854,12 @@ sub descape {
 		# intermediate form if HTML entities get in
 		$x =~ s/\&\#([0-9]+);/'\u' . sprintf("%04x", $1)/eg;
 
-		$x =~ s/\\u2028/\\n/g;
+		$x =~ s/\\u202[89]/\\n/g;
+
+		# canonicalize Unicode whitespace
+		1 while ($x =~ s/\\u(00[aA]0)/ /g);
+		1 while ($x =~ s/\\u(200[0-9aA])/ /g);
+		1 while ($x =~ s/\\u(20[25][fF])/ /g);
 		if ($seven) {
 			# known UTF-8 entities (char for char only)
 			$x =~ s/\\u201[89]/\'/g;
