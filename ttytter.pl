@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.0";
-	$TTYtter_PATCH_VERSION = 3;
+	$TTYtter_PATCH_VERSION = 4;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -1408,21 +1408,54 @@ if ($daemon) {
 				SLEEP_AGAIN: for(;;) {
 					$nfound = select($rout = $rin,
 						undef, undef, $snooze);
-					if ($nfound) {
-						my $buf;
+					if ($nfound &&
+					vec($rout, fileno(STBUF), 1)==1) {
+						my $buf = '';
 						my $rbuf;
 						my $len;
 
+						sysread(STBUF, $buf, 1);
+						if (!length($buf)) {
+							$read_failure++;
+							# a stuck ready FH says
+							# our buffer is dead;
+							# see MONITOR: below.
+							if ($read_failure>100){
+print $stdout "*** unrecoverable failure of buffer process, aborting\n";
+								exit;
+							}
+							next SLEEP_AGAIN;
+						}
+						$read_failure = 0;
+						if ($buf !~ /^[0-9a-fA-F]+$/) {
+							print $stdout
+		"-- warning: bogus character(s) ".unpack("H*", $buf)."\n"
+							if ($superverbose);
+							next SLEEP_AGAIN;
+						}
 						while (length($buf) < 8) {
-							read(STBUF, $rbuf, 1);
+				# don't read 8 -- read 1. that means we can
+				# skip trailing garbage without a window.
+							sysread(STBUF,$rbuf,1);
 						if ($rbuf =~ /[0-9a-fA-F]/) {
-							$buf .= $rbuf;
+								$buf .= $rbuf;
 							} else {
-								$buf = '';
+							print $stdout
+	"-- warning: bogus character(s) ".unpack("H*", $rbuf)."\n"
+						if ($superverbose);
+							$buf = ''
+							if(length($rbuf));
 							}
 						}
+					print $stdout "-- length packet: $buf\n"
+							if ($superverbose);
 						$len = hex($buf);
-						read(STBUF, $buf, $len);
+						$buf = '';
+						while (length($buf) < $len) {
+							sysread(STBUF, $rbuf,
+							($len-length($buf)));
+							$buf .= $rbuf;
+						}
 						&streamevents(
 							&parsejson($buf) );
 						$snooze = $wake - time();
@@ -1853,7 +1886,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	# evaluator
 	if (m#^/ev(al)? (.+)$#) {
 		$k = eval $2;
-		print $stdout "==> $k $@\n";
+		print $stdout "==> ";
+		print $streamout "$k $@\n";
 		return 0;
 	}
 
@@ -2251,12 +2285,13 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 				"*** why are you appending to a boolean?\n";
 			return 0;
 		}
-		my $old = &getvariable($key);
-		if (!defined($old) || !$opts_can_set{$key}) {
+		if (!$opts_can_set{$key}) {
 			print $stdout
 				"*** setting is not stackable: $key\n";
 			return 0;
 		}
+		my $old = &getvariable($key);
+		$old += 0 if ($opts_boolean{$key});
 		push(@{ $push_stack{$key} }, $old);
 		print $stdout "--- saved on stack for $key: $old\n";
 		if ($comm eq 'padd' && length($old)) {
@@ -2662,6 +2697,11 @@ EOF
 		print $stdout "-- failed to get entities from server, sorry\n";
 				return 0;
 		}
+
+                # if a retweeted status, get the status.
+                $hash = $hash->{'retweeted_status'}
+                        if (defined($hash->{'retweeted_status'}) &&
+                                ref($hash->{'retweeted_status'}) eq 'HASH');
 		
 		my $didprint = 0;
 		# Twitter puts entities in multiple fields.
@@ -5062,7 +5102,7 @@ sub standardevent {
 			$g .= "$sou_sn is now following a list from $tar_sn";
 		} elsif ($verb eq 'list_user_unsubscribed') {
 		$g .= "$sou_sn is no longer following a list from $tar_sn";
-		} elsif ($verb eq 'list_create') {
+		} elsif ($verb eq 'list_created') {
 			$g .= "$sou_sn created a new list";
 		} elsif ($verb eq 'list_destroyed') {
 			$g .= "$sou_sn destroyed a list";
@@ -6160,7 +6200,7 @@ $vs .= "** NEW Term::ReadLine::TTYtter VERSION AVAILABLE: $inversion **\n" .
        "** GET IT: $download\n";
 				$update_trlt = $download;
 			} else {
-$vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($inversion)\n";
+$vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 			}
 		}
 	}
@@ -6739,15 +6779,16 @@ sub is_fail_whale {
 sub is_json_error {
 	# is this actually a JSON error message? if so, extract it
 	my $data = shift;
-	if ($data =~ /(['"])(warning|errors?)\1\s*:\s*\1([^\1]*?)\1\}/s) {
-		my $probe = $3;
+	if ($data =~ /(['"])(warning|errors?)\1\s*:\s*/s) {
 		if ($data =~ /^\s*\{/s) { # JSON object?
 			my $dref = &parsejson($data);
 			return $dref->{'error'} if (length($dref->{'error'}));
+			return $dref->{'errors'}->[0]->{'message'}
+				if (length($dref->{'errors'}->[0]->{'message'}));
 			return (split(/\\n/, $dref->{'errors'}))[0]
 				if(length($dref->{'errors'}));
 		}
-		return $probe;
+		return $data;
 	}
 	return undef;
 }
