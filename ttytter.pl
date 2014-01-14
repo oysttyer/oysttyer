@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v2.0 (c)2007-2012 cameron kaiser (and contributors).
+# TTYtter v2.1 (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -30,8 +30,8 @@ BEGIN {
 	}
 	
 	$command_line = $0; $0 = "TTYtter";
-	$TTYtter_VERSION = "2.0";
-	$TTYtter_PATCH_VERSION = 4;
+	$TTYtter_VERSION = "2.1";
+	$TTYtter_PATCH_VERSION = 0;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -55,31 +55,34 @@ BEGIN {
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts notimeline
-		synch exception_is_maskable mentions simplestart octwercs
+		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
+		nofilter
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
-		queryurl trendurl track colourprompt colourme notrack
+		queryurl track colourprompt colourme notrack
 		colourdm colourreply colourwarn coloursearch colourlist idurl
 		notifies filter colourdefault backload searchhits dmsenturl
-		nostreamreplies mentions wtrendurl atrendurl
+		nostreamreplies mentions wtrendurl atrendurl filterusers
+		filterats filterrts filteratonly filterflags nofilter
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
-		apibase queryurl trendurl idurl delurl dmdelurl favsurl
-		myfavsurl favurl favdelurl rtsofmeurl followurl leaveurl
+		apibase queryurl idurl delurl dmdelurl favsurl
+		favurl favdelurl followurl leaveurl
 		dmupdate credurl blockurl blockdelurl friendsurl
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
 		creliurl delliurl deluliurl crefliurl delfliurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl dmidurl
 		statusliurl followliurl leaveliurl followersurl
 		oauthurl oauthauthurl oauthaccurl oauthbase wtrendurl
-		atrendurl frupdurl
+		atrendurl frupdurl lookupidurl rtsofmeurl
 	); %opts_secret = map { $_ => 1} qw(
-		superverbose ttytteristas octwercs
+		superverbose ttytteristas
 	); %opts_comma_delimit = map { $_ => 1 } qw(
-		lists notifytype notifies
+		lists notifytype notifies filterflags filterrts filterats
+		filterusers filteratonly
 	); %opts_space_delimit = map { $_ => 1 } qw(
 		track
 	);
@@ -88,25 +91,26 @@ BEGIN {
 		url pause dmurl dmpause superverbose ansi verbose
 		update uurl rurl wurl avatar ttytteristas frurl track
 		rlurl noprompt shorturl newline wrap verify autosplit
-		notimeline queryurl octwercs trendurl colourprompt colourme
+		notimeline queryurl colourprompt colourme
 		colourdm colourreply colourwarn coloursearch colourlist idurl
-		urlopen delurl notrack dmdelurl favsurl myfavsurl
+		urlopen delurl notrack dmdelurl favsurl
 		favurl favdelurl slowpost notifies filter colourdefault
-		rtsofmeurl followurl leaveurl dmupdate mentions backload
+		followurl leaveurl dmupdate mentions backload
 		lat long location searchhits blockurl blockdelurl woeid
 		nocounter linelength friendsurl followersurl lists
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
 		creliurl delliurl deluliurl crefliurl delfliurl atrendurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
-		frupdurl
+		frupdurl filterusers filterats filterrts filterflags
+		filteratonly nofilter rtsofmeurl
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
 		leader ssl rc norc vcheck apibase notifytype exts
 		nonewrts synch runcommand authtype oauthkey oauthsecret
 		tokenkey tokensecret credurl keyf readlinerepaint
-		simplestart exception_is_maskable oldperl
+		simplestart exception_is_maskable oldperl notco
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
 		signals_use_posix dostream eventbuf streamallreplies
 	); %valid = (%opts_can_set, %opts_others);
@@ -142,6 +146,7 @@ BEGIN {
 	"to use defaults, use -norc or don't specify the -rc option.\n\n");
 		}
 	}
+	warn "** -twarg is deprecated\n" if (length($twarg));
 	$seven ||= 0;
 	$oldperl ||= 0;
 	$parent = $$;
@@ -357,6 +362,8 @@ to use TTYtter 2.x, or bad things will happen such as signal mismatches,
 unexpected quits, and dogs and cats living peacefully in the same house.
 
 EOF
+	print $stdout "** t.co support needs Term::ReadLine:TTYtter 1.4+ (-notco to ignore)\n"
+		if (length($trlv) && !$notco && 0+$trlv < 1.4);
 }
 
 # try to get signal numbers for SIG* from POSIX. use internals if failed.
@@ -574,8 +581,15 @@ if (length($tquery) && $tquery ne '0') {
 	&tracktags_makearray;
 }
 
-# compile filter
+# compile filterflags
+&filterflags_compile;
+
+# compile filters
 exit(1) if (!&filter_compile);
+$filterusers_sub = &filteruserlist_compile(undef, $filterusers);
+$filterrts_sub = &filteruserlist_compile(undef, $filterrts);
+$filteratonly_sub = &filteruserlist_compile(undef, $filteratonly);
+exit(1) if (!&filterats_compile);
 
 # compile lists
 exit(1) if (!&list_compile);
@@ -620,6 +634,9 @@ binmode(W, ":utf8") unless ($seven);
 # default command line options
 
 $anonymous ||= 0;
+$ssl ||= 1;
+die("** -anonymous is no longer supported with Twitter (you must use -apibase also)\n")
+	if ($anonymous && !length($apibase));
 undef $user if ($anonymous);
 print $stdout "-- using SSL for default URLs.\n" if ($ssl);
 $http_proto = ($ssl) ? 'https' : 'http';
@@ -630,7 +647,7 @@ $location ||= 0;
 $linelength ||= 140;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
-$apibase ||= "${http_proto}://api.twitter.com/1";
+$apibase ||= "${http_proto}://api.twitter.com/1.1";
 $nonewrts ||= 0;
 
 # special case: if we explicitly refuse backload, don't load initially.
@@ -646,40 +663,40 @@ $oauthaccurl ||= "${oauthbase}/oauth/access_token";
 
 $credurl ||= "${apibase}/account/verify_credentials.json";
 $update ||= "${apibase}/statuses/update.json";
-$rurl ||= "${apibase}/statuses/mentions.json";
+$rurl ||= "${apibase}/statuses/mentions_timeline.json";
 $uurl ||= "${apibase}/statuses/user_timeline.json";
-$idurl ||= "${apibase}/statuses/show";
-$delurl ||= "${apibase}/statuses/destroy";
+$idurl ||= "${apibase}/statuses/show.json";
+$delurl ||= "${apibase}/statuses/destroy/%I.json";
 
 $rturl ||= "${apibase}/statuses/retweet";
-$rtsbyurl ||= "${apibase}/statuses/%I/retweeted_by.json";
+$rtsbyurl ||= "${apibase}/statuses/retweets/%I.json";
 $rtsofmeurl ||= "${apibase}/statuses/retweets_of_me.json";
 
 $wurl ||= "${apibase}/users/show.json";
 
-$frurl ||= "${apibase}/friendships/exists.json";
-$followurl ||= "${apibase}/friendships/create";
-$leaveurl ||= "${apibase}/friendships/destroy";
+$frurl ||= "${apibase}/friendships/show.json";
+$followurl ||= "${apibase}/friendships/create.json";
+$leaveurl ||= "${apibase}/friendships/destroy.json";
 $blockurl ||= "${apibase}/blocks/create.json";
 $blockdelurl ||= "${apibase}/blocks/destroy.json";
-$friendsurl ||= "${apibase}/statuses/friends.json";
-$followersurl ||= "${apibase}/statuses/followers.json";
+$friendsurl ||= "${apibase}/friends/ids.json";
+$followersurl ||= "${apibase}/followers/ids.json";
 $frupdurl ||= "${apibase}/friendships/update.json";
+$lookupidurl ||= "${apibase}/users/lookup.json";
 
-$rlurl ||= "${apibase}/account/rate_limit_status.json";
+$rlurl ||= "${apibase}/application/rate_limit_status.json";
 
 $dmurl ||= "${apibase}/direct_messages.json";
 $dmsenturl ||= "${apibase}/direct_messages/sent.json";
 $dmupdate ||= "${apibase}/direct_messages/new.json";
-$dmdelurl ||= "${apibase}/direct_messages/destroy";
-$dmidurl ||= "${apibase}/direct_messages/show";
+$dmdelurl ||= "${apibase}/direct_messages/destroy.json";
+$dmidurl ||= "${apibase}/direct_messages/show.json";
 
-$favsurl ||= "${apibase}/favorites";
-$myfavsurl ||= "${apibase}/favorites.json";
-$favurl ||= "${apibase}/favorites/create";
-$favdelurl ||= "${apibase}/favorites/destroy";
+$favsurl ||= "${apibase}/favorites/list.json";
+$favurl ||= "${apibase}/favorites/create.json";
+$favdelurl ||= "${apibase}/favorites/destroy.json";
 
-$getlisurl ||= "${apibase}/lists.json";
+$getlisurl ||= "${apibase}/lists/list.json";
 $creliurl ||= "${apibase}/lists/create.json";
 $delliurl ||= "${apibase}/lists/destroy.json";
 $modifyliurl ||= "${apibase}/lists/update.json";
@@ -693,19 +710,14 @@ $getfliurl ||= "${apibase}/lists/subscribers.json";
 $getliurl ||= "${apibase}/lists/members.json";
 $statusliurl ||= "${apibase}/lists/statuses.json";
 
-$streamurl ||= ($anonymous)
-	# this doesn't actually work yet.
-	? "https://stream.twitter.com/1/statuses/sample.json"
-	: "https://userstream.twitter.com/2/user.json";
+$streamurl ||= "https://userstream.twitter.com/2/user.json";
 $dostream ||= 0;
 $eventbuf ||= 0;
 
-$queryurl ||= "http://search.twitter.com/search.json";
-#TODO
-# this isn't actually used anymore.
-$trendurl ||= "${apibase}/trends/daily.json";
-$wtrendurl ||= "${apibase}/trends/";
-$atrendurl ||= "${apibase}/trends/available.json";
+$queryurl ||= "${apibase}/search/tweets.json";
+# no more $trendurl in 2.1.
+$wtrendurl ||= "${apibase}/trends/place.json";
+$atrendurl ||= "${apibase}/trends/closest.json";
 
 # pick ONE!
 #$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
@@ -1255,9 +1267,9 @@ for(;;) {
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
 	die(
-"sorry, status too long: reduce by @{[ length($status)-$linelength ]} chars, ".
+"sorry, status too long: reduce by @{[ &length_tco($status)-$linelength ]} chars, ".
 "or use -autosplit={word,char,cut}.\n")
-		if (length($status) > $linelength && !$autosplit);
+		if (&length_tco($status) > $linelength && !$autosplit);
 	($status, $next) = &csplit($status, ($autosplit eq 'char' ||
 			$autosplit eq 'cut') ? 1 : 0)
 		if (!length($next));
@@ -1336,7 +1348,7 @@ exit(0) if (length($status));
 if (length($credentials)) {
 	print "-- processing credentials: ";
 	$my_json_ref = &parsejson($credentials);
-	$whoami = $my_json_ref->{'screen_name'};
+	$whoami = lc($my_json_ref->{'screen_name'});
 	if (!length($whoami)) {
 		print "FAILED!\nis your account suspended, or wrong token?\n";
 		exit;
@@ -1373,6 +1385,9 @@ if ($daemon) {
 				kill 9, $curlpid if ($curlpid);
 				sleep 1;
 				# send myself a shutdown
+				kill 9, $nursepid if ($nursepid);
+				kill 9, $bufferpid if ($bufferpid);
+				kill 9, $curlpid if ($curlpid);
 				kill 9, $$;
 			}, qw(TERM HUP PIPE));
 			&sigify("IGNORE", qw(INT));
@@ -1405,13 +1420,14 @@ if ($daemon) {
 			if (!$bufferpid) {
 				sleep $snooze;
 			} else {
+				my $read_failure = 0;
 				SLEEP_AGAIN: for(;;) {
 					$nfound = select($rout = $rin,
 						undef, undef, $snooze);
 					if ($nfound &&
 					vec($rout, fileno(STBUF), 1)==1) {
 						my $buf = '';
-						my $rbuf;
+						my $rbuf = '';
 						my $len;
 
 						sysread(STBUF, $buf, 1);
@@ -1535,6 +1551,8 @@ sub defaultmain {
 	print C "rsga---------------\n";
 	$dont_use_counter = $nocounter;
 	eval '$termrl->hook_no_counter';
+	$tco_sub = sub { return &main::fastturntotco(shift); };
+	eval '$termrl->hook_no_tco';
 	if ($termrl) {
 		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
 			kill $SIGUSR1, $child; # suppress output
@@ -1797,8 +1815,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	# add commands here
 
-	if (m#^/du(mp)? ([zZ]?[a-zA-Z][0-9])$#) {
+	# dumper
+	if (m#^/du(mp)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
+		unless ($code =~ /^d[0-9][0-9]+$/) { # this is a DM.
 		my $tweet = &get_tweet($code);
 		my $k;
 		my $sn;
@@ -1807,6 +1827,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			[ "user", "screen_name" ], # must always be first
 			[ "retweeted_status", "id_str" ],
 			[ "user", "geo_enabled" ],
+			[ "place", "id" ],
+			[ "place", "country_code" ],
+			[ "place", "full_name" ],
+			[ "place", "place_type" ],
 			[ "tag", "type" ],
 			[ "tag", "payload" ],
 		);
@@ -1844,10 +1868,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		print $stdout
 			"-- %URL% is now $urlshort (/short to shorten)\n";
 		return 0;
+		} # if dxxxx, fall through to the below.
 	}
 
-	# should we go get the DM from the server? maybe in the future.
-	if (m#^/du(mp)? ([dD][a-zA-Z][0-9])$#) {
+	if (m#^/du(mp)? ([dD][a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
 		my $dm = &get_dm($code);
 		my $k;
@@ -1980,12 +2004,13 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
 		$countmaybe += 0;
 		$countmaybe ||= $searchhits;
-		$kw =~ s/([^ a-z0-9A-Z_])/&uhex($1)/eg;
-		$kw =~ s/\s+/+/g;
+		$kw = &url_oauth_sub($kw);
 		$kw = "q=$kw" if ($kw !~ /^q=/);
-		$kw .= "&rpp=$countmaybe";
 
-		my $r = &grabjson("$queryurl?$kw", 0, 1);
+		my $r = &grabjson("$queryurl?$kw", 0, 0, $countmaybe, {
+					"type" => "search",
+					"payload" => $k
+				}, 1);
 		if (defined($r) && ref($r) eq 'ARRAY' && scalar(@{ $r })) {
 			&dt_tdisplay($r, 'search');
 		} else {
@@ -2047,61 +2072,35 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		&setvariable('track', $track, 1);
 		return 0;
 	}
+
 	if (s#^/tre(nds)?\s*##) {
-#TODO
-# in 2.1, remove trendurl and make everything based on woeid
-		my $t;
+		my $t = undef;
 		my $wwoeid = (length) ? $_ : $woeid;
 		$wwoeid ||= "1";
-		my $r = ($wwoeid) ?
-			  &grabjson("${wtrendurl}${wwoeid}.json", 0, 0, 0)
-			: &grabjson("$trendurl", 0, 0, 0); # hack
+		my $r = &grabjson("${wtrendurl}?id=${wwoeid}",
+				0, 0, 0, undef, 1);
 		my $fr = ($wwoeid && $wwoeid ne '1') ?
 			" FOR WOEID $wwoeid" : ' GLOBALLY';
 
-#{"as_of":1237580149,"trends":{"2009-03-20 20:15:49":[{"query":"#sxsw OR SXSW",
-		if (defined($r) && ref($r) eq 'HASH') {
-			$t = $r->{'trends'};
-		} elsif (defined($r) && ref ($r) eq 'ARRAY') {
+		if (defined($r) && ref ($r) eq 'ARRAY') {
 			$t = $r->[0]->{'trends'};
 		}
-		if (defined($t) && (ref($t) eq 'HASH' || ref($t) eq 'ARRAY')) {
+		if (defined($t) && ref($t) eq 'ARRAY') {
 			my $i;
 			my $j;
 
 			print $stdout "${EM}<<< TRENDING TOPICS${fr} >>>${OFF}\n";
-			# this is moderate paranoia
-			if (ref($r) eq 'HASH') {
-
-			# this is the old behaviour. it will be removed.
-			foreach $i (sort { $b cmp $a } keys %{ $t }) {
-				foreach $j (@{ $t->{$i} }) {		
-					my $k = &descape($j->{'query'});
-					my $l = ($k =~ /\sOR\s/) ? $k :
-						($k =~ /^"/) ? $k :
-						('"' . $k . '"');
-					print $streamout "/search $l\n";
-					$k =~ s/\sOR\s/ /g;
-					$k = '"' . $k . '"' if ($k =~ /\s/
-						&& $k !~ /^"/);
-					print $streamout "/tron $k\n";
-				}
-				last; # emulate old trends/current behaviour
+			foreach $j (@{ $t }) {
+				my $k = &descape($j->{'name'});
+				my $l = ($k =~ /\sOR\s/) ? $k :
+					($k =~ /^"/) ? $k :
+					('"' . $k . '"');
+				print $streamout "/search $l\n";
+				$k =~ s/\sOR\s/ /g;
+				$k = '"' . $k . '"' if ($k =~ /\s/
+					&& $k !~ /^"/);
+				print $streamout "/tron $k\n";
 			}
-
-			} else {
-				foreach $j (@{ $t }) {
-					my $k = &descape($j->{'name'});
-					my $l = ($k =~ /\sOR\s/) ? $k :
-						($k =~ /^"/) ? $k :
-						('"' . $k . '"');
-					print $streamout "/search $l\n";
-					$k =~ s/\sOR\s/ /g;
-					$k = '"' . $k . '"' if ($k =~ /\s/
-						&& $k !~ /^"/);
-					print $streamout "/tron $k\n";
-				}
-			} 
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 		} else {
 			print $stdout
@@ -2118,7 +2117,8 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 			"-- set your location with lat/long first.\n";
 			return 0;
 		}
-		my $r = &grabjson("$atrendurl?lat=$lat&long=$long", 0, 0, 0);
+		my $r = &grabjson("$atrendurl?lat=$lat&long=$long", 0, 0, 0,
+			undef, 1);
 		if (defined($r) && ref($r) eq 'ARRAY') {
 			my $i;
 			foreach $i (@{ $r }) {
@@ -2207,7 +2207,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		# check the list validity
 		my $my_json_ref = &grabjson(
 		"${statusliurl}?owner_screen_name=${uname}&slug=${lname}",
-			0, 0, 0);
+			0, 0, 0, undef, 1);
 		if (!$my_json_ref || ref($my_json_ref) ne 'ARRAY') {
 			print $stdout
 			"*** list $uname/$lname seems bogus; not added\n";
@@ -2265,15 +2265,61 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		&setvariable($key, &getvariable($key).$value, 1);
 		return 0;
 	}
+	# delete from a variable (if not boolean)
+	if (/^\/del ([^ ]+) (.+)\s*$/) {
+		my $key = $1;
+		my $value = $2;
+		my $old;
+		if ($opts_boolean{$key}) {
+			print $stdout
+				"*** why are you deleting from a boolean?\n";
+			return 0;
+		}
+		if (!length($old = &getvariable($key))) {
+			print $stdout "*** $key is already empty\n";
+			return 0;
+		}
+		my $del =
+			($opts_space_delimit{$key}) ? '\s+' :
+			($opts_comma_delimit{$key}) ? '\s*,\s*' :
+			undef;
+		if (!defined($del)) {
+			# simple substitution
+			1 while ($old =~ s/$value//g);
+		} else {
+			1 while ($old =~ s/$del$value($del)/\1/g);
+			1 while ($old =~ s/^$value$del//);
+			1 while ($old =~ s/$del$value//);
+		}
+		&setvariable($key, $old, 1);
+		return 0;
+	}
+	# I thought about implementing a /pdel but besides being ugly
+	# I don't think most people will push a truncated setting. tell me
+	# if I'm wrong.
 
 	# stackable settings
-	# shortcut for boolean settings (push only -- irrelevant for pad)
 	if (/^\/pu(sh)? ([^ ]+)\s*$/) {
 		my $key = $2;
-		$_ = "/push $key 1"
-			if($opts_boolean{$key} && $opts_can_set{$key});
-		# fall through to three argument version
+		if ($opts_can_set{$key}) {
+			if ($opts_boolean{$key}) {
+				$_ = "/push $key 1";
+				# fall through to three argument version
+			} else {
+				if (!$opts_can_set{$key}) {
+					print $stdout
+					"*** setting is not stackable: $key\n";
+					return 0;
+				}
+				my $old = &getvariable($key);
+				push(@{ $push_stack{$key} }, $old);
+				print $stdout
+					"--- saved on stack for $key: $old\n";
+				return 0;
+			}
+		}
 	}
+
 	# common code for set and append
 	if (/^\/(pu|push|pad|padd) ([^ ]+) (.+)\s*$/) {
 		my $comm = $1;
@@ -2462,7 +2508,7 @@ EOF
 			if ($verbose);
 		my $my_json_ref =
 		&grabjson("${uurl}?screen_name=${uname}&include_rts=true",
-			0, 0, $countmaybe);
+			0, 0, $countmaybe, undef, 1);
 		&dt_tdisplay($my_json_ref, 'again');
 		unless ($mode eq 'w' || $mode eq 'wf') {
 			return 0;
@@ -2475,7 +2521,7 @@ EOF
 		print $stdout "-- synchronous /whois command for $uname\n"
 			if ($verbose);
 		my $my_json_ref =
-		&grabjson("${wurl}?screen_name=${uname}", 0);
+		&grabjson("${wurl}?screen_name=${uname}", 0, 0, 0, undef, 1);
 
 		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
 				length($my_json_ref->{'screen_name'})) {
@@ -2518,15 +2564,17 @@ ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
 
 EOF
 			unless ($anonymous || $whoami eq $uname) {
-				my $g =
-		&grabjson("$frurl?user_a=$whoami&user_b=$uname", 0);
+				my $g = &grabjson(
+	"$frurl?source_screen_name=$whoami&target_screen_name=$uname", 0, 0, 0,
+					undef, 1);
 				print $streamout &wwrap(
-	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n")
+	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'relationship'}->{'target'}->{'followed_by'}${OFF}\n")
 					if (ref($g) eq 'HASH');
-				my $g =
-		&grabjson("$frurl?user_a=$uname&user_b=$whoami", 0);
+				my $g = &grabjson(
+	"$frurl?source_screen_name=$uname&target_screen_name=$whoami", 0, 0, 0,
+					undef, 1);
 				print $streamout &wwrap(
-"${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n")
+"${EM}Does this user follow${OFF} you? ... ${EM}$g->{'relationship'}->{'target'}->{'followed_by'}${OFF}\n")
 					if (ref($g) eq 'HASH');
 				print $streamout "\n";
 			}
@@ -2554,15 +2602,24 @@ EOF
 			return 0;
 		}
 		my $g = &grabjson(
-			"${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
-		if ($g->{'ok'}) {
+"${frurl}?source_screen_name=${user_a}&target_screen_name=${user_b}", 0, 0, 0,
+				undef, 1);
+		if ($msg = &is_json_error($g)) {
+			print $stdout <<"EOF";
+${MAGENTA}*** warning: server error message received
+*** "$ec"${OFF}
+EOF
+		} elsif ($g->{'relationship'}->{'target'}) {
 			print $stdout "--- does $user_a follow ${user_b}? => ";
-			print $streamout "$g->{'literal'}\n"
+			print $streamout "$g->{'relationship'}->{'target'}->{'followed_by'}\n"
+		} else {
+			print $stdout
+"-- sorry, bogus server response, try again later.\n";
 		}
 		return 0;
 	}
 
-	# this handles lists too.
+	# this is dual-headed and supports both lists and regular followers.
 	if(s#^/(frs|friends|fos|followers)(\s+\+\d+)?\s*##) {
 		my $countmaybe = $2;
 		my $mode = $1;
@@ -2578,15 +2635,13 @@ EOF
 		"-- you must specify a username for a list when anonymous.\n";
 			return 0;
 		}
+		$who ||= $whoami;
 		if (!length($lname)) {
-			$user = "&screen_name=$_" if length;
 			$what = ($mode eq 'frs' || $mode eq 'friends')
 				? "friends" : "followers";
 			$mode = ($mode eq 'frs' || $mode eq 'friends')
 				? $friendsurl : $followersurl;
-			$who = "user $who";
 		} else {
-			$who ||= $whoami;
 			$what = ($mode eq 'frs' || $mode eq 'friends')
 				? "friends/members" : "followers/subscribers";
 			$mode = ($mode eq 'frs' || $mode eq 'friends')
@@ -2604,6 +2659,74 @@ EOF
 		# per @episod, the stuff we get is "less" fresh.
 		my $countper = ($countmaybe < 100) ? $countmaybe : 100;
 
+		if (!length($lname)) {
+			# we need to get IDs, then call lookup. right now it's
+			# limited to 5000 because that is the limit for API 1.1
+			# without having to do pagination here too. sorry.
+			if ($countmaybe >= 5000) {
+				print $stdout
+"-- who do you think you are? Scoble? currently limited to 4999 or less\n";
+				return 0;
+			}
+
+			# grab all the IDs
+			my $ids_ref = &grabjson(
+	"$mode?count=${countmaybe}&screen_name=${who}&stringify_ids=true",
+					0, 0, 0, undef, 1);
+			return 0 if (!$ids_ref || ref($ids_ref) ne 'HASH' ||
+				!$ids_ref->{'ids'});
+			$ids_ref = $ids_ref->{'ids'};
+			return 0 if (ref($ids_ref) ne 'ARRAY');
+			my @ids = @{ $ids_ref };
+			@ids = sort { 0+$a <=> 0+$b } @ids;
+				# make it somewhat deterministic
+
+			my $dount = &min($countmaybe, scalar(@ids));
+			my $swallow = &min(100, $dount);
+			my @usarray = undef; shift(@usarray); # force underflow
+			my $l_ref = undef;
+
+			# for each block of $countper, emit
+			my $printed = 0;
+
+			FFABIO: while ($dount--) {
+				if (!scalar(@usarray)) {
+					my @next_ids;
+
+					last FFABIO if (!scalar(@ids));
+
+					# if we asked for less than 100, get
+					# that. otherwise,
+					# get the top 100 off that list (or
+					# the list itself, if 100 or less)
+					if (scalar(@ids) <= $swallow) {
+						@next_ids = @ids;
+						@ids = ();			
+					} else {
+						@next_ids =
+							@ids[0..($swallow-1)];
+						@ids = @ids[$swallow..$#ids];
+					}
+
+					# turn it into a list to pass to
+					# lookupidurl and get the list
+					$l_ref = &postjson($lookupidurl,
+			"user_id=".&url_oauth_sub(join(',', @next_ids)));
+					last FFABIO if(ref($l_ref) ne 'ARRAY');
+					@usarray = sort
+					{ 0+($a->{'id'}) <=> 0+($b->{'id'}) }
+						@{ $l_ref };
+					last if (!scalar(@usarray));
+				}
+				&$userhandle(shift(@usarray));
+				$printed++;
+			}
+			print $stdout "-- sorry, no $what found for $who.\n"
+				if (!$printed);
+			return 0;
+		}
+
+		# lists
 		# loop through using the cursor until desired number.
 		my $cursor = -1; # initial value
 		my $printed = 0;
@@ -2611,11 +2734,13 @@ EOF
 		my $json_ref = undef;
 		my @usarray = undef; shift(@usarray); # force underflow
 
+		# this is a simpler version of the above.
 		FABIO: while($countmaybe--) {
 			if(!scalar(@usarray)) {
 				last FABIO if ($nofetch);
 				$json_ref = &grabjson(
-			"${mode}?count=${countper}&cursor=${cursor}${user}");
+			"${mode}?count=${countper}&cursor=${cursor}${user}",
+					0, 0, 0, undef, 1);
 				@usarray = @{ $json_ref->{'users'} };
 				last FABIO if (!scalar(@usarray));
 				$cursor = $json_ref->{'next_cursor_str'} ||
@@ -2631,7 +2756,7 @@ EOF
 	}
 
 	# threading
-	if (m#^/th(read)?\s+(\+\d+\s+)?([zZ]?[a-zA-Z][0-9])$#) {
+	if (m#^/th(read)?\s+(\+\d+\s+)?([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $countmaybe = $2;
 		if (length($countmaybe)) {
 			print $stdout
@@ -2651,7 +2776,8 @@ EOF
 		while ($id && $limit) {
 			print $stdout "-- thread: fetching $id\n"
 				if ($verbose);
-			my $next = &grabjson("${idurl}/${id}.json", 0);
+			my $next = &grabjson("${idurl}?id=${id}", 0, 0, 0,
+				undef, 1);
 			$id = 0;
 			$limit--;
 			if (defined($next) && ref($next) eq 'HASH') {
@@ -2668,14 +2794,20 @@ EOF
 
 	# pull out entities. this works for DMs and tweets.
 	# btw: T.CO IS WACK.
-	if (m#^/ent?(ities)? ([dDzZ]?[a-zA-Z][0-9])$#) {
+	if (m#^/ent?(ities)? ([dDzZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $v;
 		my $w;
 		my $thing;
 		my $genurl;
 		my $code = lc($2);
 		my $hash;
-		if ($code =~ /^d.[0-9]$/) {
+		if ($code !~ /[a-z]/) {
+			# this is an optimization: we don't need to get
+			# the old tweet since we're going to fetch it anyway.
+			$hash = { "id_str" => $code };
+			$thing = "tweet";
+			$genurl = $idurl;
+		} elsif ($code =~ /^d.[0-9]+$/) {
 			$hash = &get_dm($code);
 			$thing = "DM";
 			$genurl = $dmidurl;
@@ -2690,18 +2822,17 @@ EOF
 			return 0;
 		}
 
-		# we don't ordinarily ask for entities, so now we must.
 		my $id = $hash->{'id_str'};
-		$hash = &grabjson("${genurl}/${id}.json?include_entities=1", 0);
+		$hash = &grabjson("${genurl}?id=${id}", 0, 0, 0, undef, 1);
 		if (!defined($hash) || ref($hash) ne 'HASH') {
 		print $stdout "-- failed to get entities from server, sorry\n";
 				return 0;
 		}
 
-                # if a retweeted status, get the status.
-                $hash = $hash->{'retweeted_status'}
-                        if (defined($hash->{'retweeted_status'}) &&
-                                ref($hash->{'retweeted_status'}) eq 'HASH');
+		# if a retweeted status, get the status.
+		$hash = $hash->{'retweeted_status'}
+			if (defined($hash->{'retweeted_status'}) &&
+				ref($hash->{'retweeted_status'}) eq 'HASH');
 		
 		my $didprint = 0;
 		# Twitter puts entities in multiple fields.
@@ -2742,18 +2873,20 @@ EOF
 		&openurl($_);
 		return 0;
 	}
-	if (m#^/(url|open) ([dDzZ]?[a-zA-Z][0-9])$#) {
+	if (m#^/(url|open) ([dDzZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
 		my $tweet;
+		my $genurl = undef;
 		$urlshort = undef;
 
-		if ($code =~ /^d/ && length($code) == 3) {
+		if ($code =~ /^d/ && length($code) > 2) {
 			$tweet = &get_dm($code); # USO!
 			if (!defined($tweet)) {
 				print $stdout
 					"-- no such DM (yet?): $code\n";
 				return 0;
 			}
+			$genurl = $dmidurl;
 		} else {
 			$tweet = &get_tweet($code);
 			if (!defined($tweet)) {
@@ -2761,7 +2894,56 @@ EOF
 					"-- no such tweet (yet?): $code\n";
 				return 0;
 			}
+			$genurl = $idurl;
 		} 
+
+		# to be TOS-compliant, we must try entities first to use
+		# t.co wrapped links. this is a tiny version of /entities.
+		unless ($notco) {
+			my $id = $tweet->{'retweeted_status'}->{'id_str'}
+				|| $tweet->{'id_str'};
+			my $hash;
+
+			# only fetch if we have to. if we already fetched
+			# because we were given a direct id_str instead of a
+			# menu code, then we already have the entities.
+			if ($code !~ /^[0-9]+$/) {
+				$hash = &grabjson("${genurl}?id=${id}",
+					0, 0, 0, undef, 1);
+			} else {
+				# MAKE MONEY FAST WITH OUR QUICK CACHE PLAN
+				$hash = $tweet;
+			}
+			if (defined($hash) && ref($hash) eq 'HASH') {
+				my $w;
+				my $v;
+				my $didprint = 0;
+
+				# Twitter puts entities in multiple fields.
+				foreach $w (qw(media urls)) {
+					my $p = $hash->{'entities'}->{$w};
+					next if (!defined($p) ||
+						ref($p) ne 'ARRAY');
+					foreach $v (@{ $p }) {
+						next if (!defined($v) ||
+							ref($v) ne 'HASH');
+						next if (!length($v->{'url'}) ||
+							(!length($v->{'expanded_url'}) &&
+					 		!length($v->{'media_url'})));
+						my $u1 = &descape($v->{'url'});
+						&openurl($u1);
+						$didprint++;
+					}
+				}
+				print $stdout
+				"-- sorry, couldn't find any URL.\n"
+					if (!$didprint);
+				return 0;
+			}
+			print $stdout
+				"-- unable to use t.co URLs, using fallback\n";
+		}
+		# that failed, so fall back on the old method.
 		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
@@ -2782,6 +2964,7 @@ EOF
 		return 0;
 	}
 
+#TODO
 	if (s/^\/(favourites|favorites|faves|favs|fl)(\s+\+\d+)?\s*//) {
 		my $my_json_ref;
 		my $countmaybe = $2;
@@ -2789,8 +2972,8 @@ EOF
 		$countmaybe += 0;
 
 		if (length) {
-			$my_json_ref = &grabjson("${favsurl}/${_}.json", 0, 0,
-				$countmaybe);
+			$my_json_ref = &grabjson("${favsurl}?screen_name=$_",
+				0, 0, $countmaybe, undef, 1);
 		} else {
 			if ($anonymous) {
 				print $stdout
@@ -2799,8 +2982,8 @@ EOF
 				print $stdout
 				"-- synchronous /favourites user command\n"
 					if ($verbose);
-				$my_json_ref = &grabjson($myfavsurl, 0, 0,
-					$countmaybe);
+				$my_json_ref = &grabjson($favsurl, 0, 0,
+					$countmaybe, undef, 1);
 			}
 		}
 		if (defined($my_json_ref)
@@ -2820,17 +3003,17 @@ EOF
 		return 0;
 	}
 	if (
-m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
+m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $mode = $1;
 		my $secondmode = $2;
 		my $code = lc($3);
 		$secondmode = ($secondmode eq 'retweet') ? 'rt' : $secondmode;
-		my $tweet = &get_tweet($code);
 		if ($mode eq 'un' && $secondmode eq 'rt') {
 			print $stdout
 				"-- hmm. seems contradictory. no dice.\n";
 			return 0;
 		}
+		my $tweet = &get_tweet($code);
 		if (!defined($tweet)) {
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
@@ -2848,7 +3031,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 	}
 
 	# Retweet API and manual RTs
-	if (s#^/([oe]?)r(etweet|t) ([zZ]?[a-zA-Z][0-9])\s*##) {
+	if (s#^/([oe]?)r(etweet|t) ([zZ]?[a-zA-Z]?[0-9]+)\s*##) {
 		my $mode = $1;
 		my $code = lc($3);
 		my $tweet = &get_tweet($code);
@@ -2883,23 +3066,24 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
 	}
-	if (m#^/(re)?rts?of?me?(\s+\+\d+)?$# && !$nonewrts) {
+
+        if (m#^/(re)?rts?of?me?(\s+\+\d+)?$# && !$nonewrts) {
 #TODO
 # when more fields are added, integrate them over the JSON_ref
-		my $mode = $1;
-		my $countmaybe = $2;
-		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
-		$countmaybe += 0;
-		
-		my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
-		&dt_tdisplay($my_json_ref, "rtsofme");
-		if ($mode eq 're') {
-			$_ = '/re'; # and fall through ...
-		} else {
-			return 0;
-		}
-	}
-	if (m#^/rts?of\s+([zZ]?[a-zA-Z][0-9])$# && !$nonewrts) {
+                my $mode = $1;
+                my $countmaybe = $2;
+                $countmaybe =~ s/[^\d]//g if (length($countmaybe));
+                $countmaybe += 0;
+                
+                my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
+                &dt_tdisplay($my_json_ref, "rtsofme");
+                if ($mode eq 're') {
+                        $_ = '/re'; # and fall through ...
+                } else {
+                        return 0;
+                }
+        }
+	if (m#^/rts?of\s+([zZ]?[a-zA-Z]?[0-9]+)$# && !$nonewrts) {
 		my $code = lc($1);
 		my $tweet = &get_tweet($code);
 		my $id;
@@ -2916,7 +3100,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		}
 		my $url = $rtsbyurl;
 		$url =~ s/%I/$id/;
-		my $users_ref = &grabjson("$url?count=100");
+		my $users_ref = &grabjson("$url", 0, 0, 100, undef, 1);
 		return if (!defined($users_ref) || ref($users_ref) ne 'ARRAY');
 		my $k = scalar(@{ $users_ref });
 		if (!$k) {
@@ -2926,7 +3110,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		}
 		my $j;
 		foreach $j (@{ $users_ref }) {
-			&$userhandle($j);
+			&$userhandle($j->{'user'});
 		}
 		return 0;
 	}
@@ -2938,8 +3122,9 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		return 0;
 	}
 
-	if (m#^/del(ete)?\s+([zZ]?[a-zA-Z][0-9])$#) {
+	if (m#^/del(ete)?\s+([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
+		unless ($code =~ /^d[0-9][0-9]+$/) { # this is a DM.
 		my $tweet = &get_tweet($code);
 		if (!defined($tweet)) {
 			print $stdout "-- no such tweet (yet?): $code\n";
@@ -2963,9 +3148,10 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		$lastpostid = -1 if ($tweet->{'id_str'} == $lastpostid);
 		&deletest($tweet->{'id_str'}, 1);
 		return 0;
+		} # dxxx falls through to ...
 	}
 	# DM delete version
-	if (m#^/del(ete)? ([dD][a-zA-Z][0-9])$#) {
+	if (m#^/del(ete)? ([dD][a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
 		my $dm = &get_dm($code);
 		if (!defined($dm)) {
@@ -3010,9 +3196,10 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		return 0;
 	}
 
-	if (s#^/(v)?re(ply)? ([zZ]?[a-zA-Z][0-9]) ## && length) {
+	if (s#^/(v)?re(ply)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
 		my $mode = $1;
 		my $code = lc($3);
+		unless ($code =~ /^d[0-9][0-9]+/) { # this is a DM
 		my $tweet = &get_tweet($code);
 		if (!defined($tweet)) {
 			print $stdout "-- no such tweet (yet?): $code\n";
@@ -3030,9 +3217,14 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
+		}  else {
+			# this is a DM, reconstruct it
+			$_ = "/${mode}re $code $_";
+			# and fall through to ...
+		}
 	}
 	# DM reply version
-	if (s#^/(dm)?re(ply)? ([dD][a-zA-Z][0-9]) ## && length) {
+	if (s#^/(dm)?re(ply)? ([dD][a-zA-Z]?[0-9]+) ## && length) {
 		my $code = lc($3);
 		my $dm = &get_dm($code);
 		if (!defined($dm)) {
@@ -3045,7 +3237,49 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		$_ = "/dm $target $_";
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
-		# and fall through to ...
+		# and fall through to /dm
+	}
+	# replyall (based on @FunnelFiasco's extension)
+	if (s#^/(v)?r(eply)?(to)?a(ll)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
+		my $mode = $1;
+		my $code = $5;
+
+		# common code from /vreply
+		my $tweet = &get_tweet($code);
+		if (!defined($tweet)) {
+			print $stdout "-- no such tweet (yet?): $code\n";
+			return 0;
+		}
+		my $target = &descape($tweet->{'user'}->{'screen_name'});
+		my $text = $_;
+		$_ = '@' . $target;
+		unless ($mode eq 'v') {
+			$in_reply_to = $tweet->{'id_str'};
+			$expected_tweet_ref = $tweet;
+		} else {
+			$_ = ".$_";
+		}
+
+		# don't repeat the target or myself; track other mentions
+		my %did_mentions = map { $_ => 1 } (lc($target));
+		my $reply_tweet = &descape($tweet->{'text'});
+
+		while($reply_tweet =~ s/\@(\w+)//) {
+			my $name = $1;
+			my $mame = lc($name); # preserve camel case
+			next if ($mame eq $whoami || $did_mentions{$mame}++);
+			$_ .= " \@$name";
+		}
+		$_ .= " $text";
+
+		# add everyone in did_mentions to readline_completion
+		grep { $readline_completion{'@'.$_}++ } (keys %did_mentions)
+			if ($termrl);
+
+		# and fall through to post
+		print $stdout &wwrap("(expanded to \"$_\")");
+		print $stdout "\n";
+		goto TWEETPRINT; # fugly! FUGLY!
 	}
 
 	if (m#^/re(plies)?(\s+\+\d+)?$#) {
@@ -3062,7 +3296,8 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			# updated and may not act as we expect.
 			print $stdout "-- synchronous /replies command\n"
 				if ($verbose);
-			my $my_json_ref = &grabjson($rurl, 0, 0, $countmaybe);
+			my $my_json_ref = &grabjson($rurl, 0, 0, $countmaybe,
+				undef, 1);
 			&dt_tdisplay($my_json_ref, "replies");
 		}
 		return 0;
@@ -3283,7 +3518,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 
 		my $my_json_ref = &grabjson(
 		"${statusliurl}?owner_screen_name=${uname}&slug=${lname}",
-			0, 0, $countmaybe);
+			0, 0, $countmaybe, undef, 1);
 		&dt_tdisplay($my_json_ref, "again");
 		return 0;
 	}
@@ -3339,19 +3574,29 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 			if(!scalar(@usarray)) {
 				last LABIO if ($nofetch);
 				$json_ref = &grabjson(
-			"${furl}&count=${countper}&cursor=${cursor}");
-				@usarray = @{ $json_ref->{
-					((length($lname)) ? 'users' : 'lists')
-				} };
+			"${furl}&count=${countper}&cursor=${cursor}", 0, 0, 0,
+					undef, 1);
+				@usarray = @{ ((length($lname)) ?
+					$json_ref->{'users'} :
+					$json_ref
+				) };
 				last LABIO if (!scalar(@usarray));
+				if (length($lname)) {
 				$cursor = $json_ref->{'next_cursor_str'} ||
 					$json_ref->{'next_cursor'} || -1;
 				$nofetch = ($cursor < 1) ? 1 : 0;
+				} else { $nofetch = 1; }
 			}
 			my $list_ref = shift(@usarray);
 			if (length($lname)) {
 				&$userhandle($list_ref);
 			} else {
+				# lists/list returns their lists AND the
+				# ones they subscribe to, different from 1.0.
+				# right now we just deal with that.
+				#next if ($uname ne
+				#	$list_ref->{'user'}->{'screen_name'});
+
 				# listhandle?
 				my $list_name =
 "\@$list_ref->{'user'}->{'screen_name'}/@{[ &descape($list_ref->{'slug'}) ]}";
@@ -3606,6 +3851,7 @@ $interactive = $previous_last_id = $we_got_signal = 0;
 $suspend_output = -1;
 $stream_failure = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
+$stuck_stdin = 0;
 
 # tell the foreground we are ready
 kill $SIGUSR2, $parent;
@@ -3775,7 +4021,17 @@ EOF
 		goto RESTART_SELECT if(vec($rout, fileno(STDIN), 1) != 1);
 		print $stdout "-- waiting for data ", scalar localtime, "\n"
 			if ($superverbose);
-		goto RESTART_SELECT if(sysread(STDIN, $rout, 20) != 20);
+		if(sysread(STDIN, $rout, 20) != 20) {
+			# if we get repeated "ready" but no data on STDIN,
+			# like the streaming buffer, we probably lost our
+			# IPC and we should die here.
+			if (++$stuck_stdin > 100) {
+				print $stdout "parent is dead; we die too\n";
+				kill 9,$$;
+			}
+			goto RESTART_SELECT;
+		}
+		$stuck_stdin = 0;
 		# background communications central command code
 		# we received a command from the console, so let's look at it.
 		print $stdout "-- command received ", scalar
@@ -3796,6 +4052,10 @@ EOF
 		($key->{'user'}->{'geo_enabled'} || "false") . " ".
 		($key->{'geo'}->{'coordinates'}->[0]). " ".
 		($key->{'geo'}->{'coordinates'}->[1]). " ".
+		$key->{'place'}->{'id'} . " ".
+		$key->{'place'}->{'country_code'} ." ".
+		$key->{'place'}->{'place_type'} . " ".
+		unpack("${pack_magic}H*", $key->{'place'}->{'full_name'})." ".
 		$key->{'tag'}->{'type'}. " ". # NO SPACES!
 		unpack("${pack_magic}H*", $key->{'tag'}->{'payload'}). " ".
 		($key->{'retweet_count'} || "0") . " " .
@@ -3897,6 +4157,23 @@ EOF
 						if ($key eq 'notifies');
 					&list_compile
 						if ($key eq 'lists');
+					&filterflags_compile
+						if ($key eq 'filterflags');
+					$filterrts_sub =
+						&filteruserlist_compile(
+							$filterrts_sub, $value)
+						if ($key eq 'filterrts');
+					$filterusers_sub =
+						&filteruserlist_compile(
+							$filterusers_sub,$value)
+						if ($key eq 'filterusers');
+					$filteratonly_sub =
+						&filteruserlist_compile(
+							$filteratonly_sub,
+								$value)
+						if ($key eq 'filteratonly');
+					&filterats_compile
+						if ($key eq 'filterats');
 				}
 			}
 			goto RESTART_SELECT;
@@ -3950,20 +4227,33 @@ sub update_effpause {
 	if (!$rate_limit_next && !$anonymous && ($pause > 0 ||
 		$pause eq 'auto')) {
 
-# {'reset_time_in_seconds':1218948315,'remaining_hits':98,'reset_time':'Sun Aug 17 04:45:15 +0000 2008','hourly_limit':100}
+		# Twitter 1.0 used a simple remaining_hits and
+		# hourly_limit. 1.1 uses multiple rate endpoints. we
+		# are only interested in certain specific ones, though
+		# we currently fetch them all and we might use more later.
 
 		$rate_limit_next = 5;
-		$rate_limit_ref = &grabjson($rlurl, 0);
+		$rate_limit_ref = &grabjson($rlurl, 0, 0, 0, undef, 1);
 
 		if (defined $rate_limit_ref &&
 				ref($rate_limit_ref) eq 'HASH') {
-			$rate_limit_left =
-				$rate_limit_ref->{'remaining_hits'}+0;
-			$rate_limit_rate =
-				$rate_limit_ref->{'hourly_limit'}+0;
-			if ($rate_limit_left < 10 && $rate_limit_rate) {
+
+		# of mentions_timeline, home_timeline and search/tweets,
+		# choose the MOST restrictive and normalize that.
+
+			$rate_limit_left = &min(
+0+$rate_limit_ref->{'resources'}->{'statuses'}->{'\\/statuses\\/home_timeline'}->{'remaining'},
+				&min(
+0+$rate_limit_ref->{'resources'}->{'statuses'}->{'\\/statuses\\/mentions_timeline'}->{'remaining'},
+0+$rate_limit_ref->{'resources'}->{'search'}->{'\\/search\\/tweets'}->{'remaining'}));
+			$rate_limit_rate = &min(
+0+$rate_limit_ref->{'resources'}->{'statuses'}->{'\\/statuses\\/home_timeline'}->{'limit'},
+				&min(
+0+$rate_limit_ref->{'resources'}->{'statuses'}->{'\\/statuses\\/mentions_timeline'}->{'limit'},
+0+$rate_limit_ref->{'resources'}->{'search'}->{'\\/search\\/tweets'}->{'limit'}));
+			if ($rate_limit_left < 3 && $rate_limit_rate) {
 				$estring = 
-"*** warning: $rate_limit_left API requests remain";
+"*** warning: API rate limit imminent";
 				if ($pause eq 'auto') {
 					$estring .=
 				"; temporarily halting autofetch";
@@ -3972,38 +4262,29 @@ sub update_effpause {
 				&$exception(5, "$estring\n");
 			} else {
 				if ($pause eq 'auto') {
-# this is computed to give you approximately 50% over the limit for client
-# requests
-# first, how many requests do we want to make an hour? $dmpause in a sec
-						$effpause =
-				$rate_limit_rate - ($rate_limit_rate * 0.5);
-# second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
-						$effpause -=
-				((1/$dmpause) * $effpause) if ($dmpause);
-# third, divide by two (1:1) if replies "mention" streamix is on
-						$effpause = int($effpause/2)
-							if ($mentions);
-# take 1 request away for each subscription in @listlist (i.e., each one,
-# cut effpause in half again). if this gets us below zero, warn here.
-						if (scalar(@listlist)) {
-			$effpause = int($effpause/(2**scalar(@listlist)));
-							if (!$effpause) {
-print $stdout "** WARNING: YOU ARE FOLLOWING TOO MANY LISTS SIMULTANEOUSLY!\n";
-print $stdout "** automatic rate limit control cannot manage this many lists\n";
-print $stdout "** to disable this message, use a fixed number with -pause\n";
-print $stdout "** or use /lists or /listoff to reduce the number of lists\n";
-# and fall through to the fallback ha ha ha 
-							}
-						}
-# finally determine how many seconds should elapse
+
+# the new rate limits do not require us to reduce our fetching for mentions,
+# direct messages or search, because they pull from different buckets, and
+# their rate limits are roughly the same.
+					$effpause = 5*$rate_limit_rate;
+					# this will usually be 75s
+# for lists, however, we have to drain the list bucket faster, so for every
+# list AFTER THE FIRST ONE we subscribe to, add rate_limit_rate to slow.
+# for search, it has 180 requests, so we don't care so much. if this
+# changes later, we will probably need something similar to this for
+# cases where the search array is > 1.
+					$effpause += ((scalar(@listlist)-1)*
+						$rate_limit_rate)
+					if (scalar(@listlist) > 1);
+
+					if (!$effpause) {
 						print $stdout
-		"-- effective pause time zero?!, using fallback 180sec\n"
-						if (!$effpause && $verbose);
-						$effpause =
-				($effpause) ? int(3600/$effpause) : 180;
-# we don't go under sixty.
-						$effpause = 60
-							if ($effpause < 60);
+"-- rate limit rate failure: using 180 second fallback\n";
+						$effpause = 180;
+					}
+
+					# we don't go under sixty.
+					$effpause = 60 if ($effpause < 60);
 				} else {
 					$effpause = 0+$pause;
 				}
@@ -4016,12 +4297,12 @@ print $stdout "** or use /lists or /listoff to reduce the number of lists\n";
 		($last_rate_limit > $rate_limit_rate) ? ' REDUCED to':
 					'';
 			$notify_rate = 
-"-- notification: API rate limit is${adverb} ${rate_limit_rate} req/hr\n"
+"-- notification: API rate limit is${adverb} ${rate_limit_rate} req/15min\n"
 				if ($last_rate_limit != $rate_limit_rate);
 			$last_rate_limit = $rate_limit_rate;
 		} else {
 			$rate_limit_next = 0;
-			$effpause = ($pause eq 'auto') ? 120 : 0+$pause;
+			$effpause = ($pause eq 'auto') ? 180 : 0+$pause;
 			print $stdout
 "-- failed to fetch rate limit (rate is $effpause sec)\n"
 				if ($verbose);
@@ -4253,10 +4534,16 @@ sub streamevents {
 
 		# must be an event. see if standardevent can make sense of it.
 		elsif (!$notimeline) {
-			&send_removereadline if ($termrl);
-			&$eventhandle($w->{'payload'});
-			$wrapseq = 1;
-			&send_repaint if ($termrl);
+			$w = $w->{'payload'};
+			my $sou_sn =
+				&descape($w->{'source'}->{'screen_name'});
+			if (!length($sou_sn) || !$filterusers_sub ||
+					!&$filterusers_sub($sou_sn)) {
+				&send_removereadline if ($termrl);
+				&$eventhandle($w);
+				$wrapseq = 1;
+				&send_repaint if ($termrl);
+			}
 		}
 	}
 }
@@ -4291,7 +4578,7 @@ sub refresh {
 			(($last_id) ? 250 : $fetchwanted || $backload), {
 				"type" => "timeline",
 				"payload" => "api"
-			});
+			}, 1);
 		# if I can't get my own timeline, ABORT! highest priority!
 		return if (!defined($base_json_ref) ||
 			ref($base_json_ref) ne 'ARRAY');
@@ -4325,7 +4612,7 @@ sub refresh {
 			: $fetchwanted || $backload), {
 				"type" => "reply",
 				"payload" => ""
-			});
+			}, 1);
 		push(@streams, $r)
 			if (defined($r) &&
 				ref($r) eq 'ARRAY' &&
@@ -4350,11 +4637,11 @@ sub refresh {
 		$muffle_server_messages = 1 unless ($verbose);
 		foreach $k (@trackstrings) {
 		# use fetch_id here in both modes.
-		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
-				$fetch_id, 1, 0, {
+		$r = &grabjson("$queryurl?${k}&result_type=recent",
+				$fetch_id, 0, $l, {
 					"type" => "search",
 					"payload" => $k
-				});
+				}, 1);
 		# depending on the state of the search API, we might be using
 		# a bogus search ID that is too far back. so if this fails,
 		# try again with last_id, but not if we're streaming (it
@@ -4362,22 +4649,22 @@ sub refresh {
 			if (!defined($r) || ref($r) ne 'ARRAY' || !$dostream) {
 		print $stdout "-- search retry $k attempted with last_id\n"
 				if ($verbose);
-		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
-				$last_id, 1, 0, {
+		$r = &grabjson("$queryurl?${k}&result_type=recent",
+				$last_id, 0, $l, {
 					"type" => "search",
 					"payload" => $k
-				});
+				}, 1);
 				$dont_roll_back_too_far = 1;
 			}
 		# or maybe not even then?
 			if (!defined($r) || ref($r) ne 'ARRAY') {
 		print $stdout "-- search retry $k attempted with zero!\n"
 				if ($verbose);
-		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
-				0, 1, 0, {
+		$r = &grabjson("$queryurl?${k}&result_type=recent",
+				0, 0, $l, {
 					"type" => "search",
 					"payload" => $k
-				});
+				}, 1);
 				$dont_roll_back_too_far = 1;
 			}
 			push(@streams, $r)
@@ -4401,7 +4688,7 @@ sub refresh {
 					"payload" => ($k->[0] ne $whoami) ?
 						"$k->[0]/$k->[1]" :
 						"$k->[1]"
-				});
+				}, 1);
 			push(@streams, $r)
 				if (defined($r) && ref($r) eq 'ARRAY' &&
 					scalar(@{ $r }));
@@ -4498,6 +4785,10 @@ sub refresh {
 	&send_repaint if ($termrl);
 } 
 
+# convenience function for filters (see below)
+sub killtw { my $j = shift; $filtered++; $filter_next{$j->{'id_str'}}++
+		if ($is_background); }
+
 # handle (i.e., display) an array of tweets in standard format
 sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $my_json_ref = shift;
@@ -4530,15 +4821,56 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			my $g = ($i-1);
 			$j = $my_json_ref->[$g];
 			my $id = $j->{'id_str'};
+			my $sn = $j->{'user'}->{'screen_name'};
+			next if (!length($sn));
+			$sn = lc(&descape($sn));
 
-			next if (!length($j->{'user'}->{'screen_name'}));
-			if ($filter_c && &$filter_c(&descape($j->{'text'}))) {
-				$filtered++;
-				$filter_next{$j->{'id_str'}}++
-					if ($is_background);
-				next;
+			#
+			# implement filter stages:
+			# do so in such a way that we can toss tweets out
+			# quickly, because multiple layers eat CPU!
+			#
+
+			# zeroth: if this is us, do not filter.
+			if (($anonymous || $sn ne $whoami) && !($nofilter)) {
+
+			# first, filterusers. this is very fast.
+			# do for the tweet
+			(&killtw($j), next) if
+				($filterusers_sub &&
+				&$filterusers_sub($sn));
+			# and if the tweet has a retweeted status, do for
+			# that.
+			(&killtw($j), next) if
+				($j->{'retweeted_status'} &&
+				 $filterusers_sub &&
+				&$filterusers_sub(lc(&descape($j->
+					{'retweeted_status'}->
+					{'user'}->{'screen_name'}))));
+
+			# second, filterrts. this is almost as fast.
+			(&killtw($j), next) if
+				($filterrts_sub &&
+				 length($j->{'retweeted_status'}->{'id_str'})&&
+				&$filterrts_sub($sn));
+
+			# third, filteratonly. this has a fast case and a
+			# slow case.
+			my $tex = &descape($j->{'text'});
+			(&killtw($j), next) if
+				($filteratonly_sub &&
+				&$filteratonly_sub($sn) && # fast test
+				 $tex !~ /\@$whoami\b/i);  # slow test
+
+			# fourth, filterats. this is somewhat expensive.
+			(&killtw($j), next) if ($filterats_c &&
+				&$filterats_c($tex));
+			
+			# finally, classic -filter. this is the most expensive.
+			(&killtw($j), next) if ($filter_c && &$filter_c($tex));
 			}
 
+			# damn it, user may actually want this tweet.
 			# assign menu codes and place into caches
 			$key = (($is_background) ? '' : 'z' ).
 				substr($alphabet, $tweet_counter/10, 1) .
@@ -4620,7 +4952,7 @@ sub dmrefresh {
 	return if (!$interactive && !$last_id && !$notimeline); # NOT last_dm
 
 	$my_json_ref = &grabjson((($sent_dm) ? $dmsenturl : $dmurl),
-		(($sent_dm) ? 0 : $last_dm), 0, $dmfetchwanted)
+		(($sent_dm) ? 0 : $last_dm), 0, $dmfetchwanted, undef, 1)
 			if (!defined($my_json_ref) ||
 				ref($my_json_ref) ne 'ARRAY');
 	return if (!defined($my_json_ref)
@@ -4746,9 +5078,6 @@ sub updatest {
 	}
 
 	unless ($rt_id) {
-		if ($octwercs) {
-			1 while ($string =~ s#http(s?)://#ttp\1://#);
-		}
 		$urle = '';
 		foreach $i (unpack("${pack_magic}C*", $string)) {
 			my $k = chr($i);
@@ -4873,9 +5202,10 @@ EOF
 sub deletest {
 	my $id = shift;
 	my $interactive = shift;
+	my $url = $delurl;
 
-	my $update = "${delurl}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	$url =~ s/%I/$id/;
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $url);
 	print $stdout "-- tweet id #${id} has been removed\n"
 		if ($interactive && !$en);
 	print $stdout "*** (was the tweet already deleted?)\n"
@@ -4888,8 +5218,7 @@ sub deletedm {
 	my $id = shift;
 	my $interactive = shift;
 
-	my $update = "${dmdelurl}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $dmdelurl);
 	print $stdout "-- DM id #${id} has been removed\n"
 		if ($interactive && !$en);
 	print $stdout "*** (was the DM already deleted?)\n"
@@ -4905,8 +5234,7 @@ sub cordfav {
 	my $text = shift;
 	my $verb = shift;
 
-	my $update = "${basefav}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $basefav);
 	print $stdout "-- favourite $verb for tweet id #${id}: \"$text\"\n"
 		if ($interactive && !$en);
 	print $stdout "*** (was the favourite already ${verb}?)\n"
@@ -4921,9 +5249,8 @@ sub foruuser {
 	my $basef = shift;
 	my $verb = shift;
 
-	my $update = "${basef}/${uname}.json";
 	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
-		$interactive, $update);
+		$interactive, $basef);
 	print $stdout "-- ok, you have $verb following user $uname.\n"
 		if ($interactive && !$en);
 	return 0;
@@ -4994,10 +5321,11 @@ sub standardtweet {
 	# prepend screen name "badges"
 	$sn = "\@$sn" if ($ref->{'in_reply_to_status_id_str'} > 0);
 	$sn = "+$sn" if ($ref->{'user'}->{'geo_enabled'} eq 'true' &&
-		$ref->{'geo'}->{'coordinates'}->[0] ne 'undef' &&
+		(($ref->{'geo'}->{'coordinates'}->[0] ne 'undef' &&
 		length($ref->{'geo'}->{'coordinates'}->[0]) &&
 		$ref->{'geo'}->{'coordinates'}->[1] ne 'undef' &&
-		length($ref->{'geo'}->{'coordinates'}->[0]));
+		length($ref->{'geo'}->{'coordinates'}->[0])) ||
+		length($ref->{'place'}->{'id'})));
 	$sn = "%$sn" if (length($ref->{'retweeted_status'}->{'id_str'}));
 	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
 	# prepend list information, if this tweet originated from a list
@@ -5078,42 +5406,62 @@ sub standardevent {
 	my $g = '>>> ';
 	my $verb = &descape($ref->{'event'});
 	
-	# @episod has promised me he will document all of the events.
-	# still waiting ...
+	# https://dev.twitter.com/docs/streaming-apis/messages
 
-	if (length($verb)) { # delete is different.
+	if (length($verb)) { # see below for server-level events
 		my $tar_sn = '@'.&descape($ref->{'target'}->{'screen_name'});
 		my $sou_sn = '@'.&descape($ref->{'source'}->{'screen_name'});
+		
+		my $tar_list_name = '';
+		my $tar_list_desc = '';
+		
+		# For all verbs starting with "list", get name and desc
+		if ($verb =~ m/^list/ ) {
+			$tar_list_name = &descape($ref->{'target_object'}->{'full_name'});
+			$tar_list_desc = &descape($ref->{'target_object'}->{'description'});
+		}
+		
 		if ($verb eq 'favorite' || $verb eq 'unfavorite') {
-			my $txt = &descape($ref->{'target_object'}->{'text'});
+			my $rto = &destroy_all_tco($ref->{'target_object'});
+			my $txt = &descape($rto->{'text'});
 			$g .=
 		"$sou_sn just ${verb}d ${tar_sn}'s tweet: \"$txt\"";
 		} elsif ($verb eq 'follow') {
 			$g .= "$sou_sn is now following $tar_sn";
 		} elsif ($verb eq 'user_update') {
 		$g .= "$sou_sn updated their profile (/whois $sou_sn to see)";
-#TODO
-# these need to be fleshed out
 		} elsif ($verb eq 'list_member_added') {
-			$g .= "$sou_sn added $tar_sn to a list";
+			$g .= "$sou_sn added $tar_sn to the list \"$tar_list_desc\" ($tar_list_name)";
 		} elsif ($verb eq 'list_member_removed') {
-			$g .= "$sou_sn removed $tar_sn from a list";
+			$g .= "$sou_sn removed $tar_sn from the list \"$tar_list_desc\" ($tar_list_name)";
 		} elsif ($verb eq 'list_user_subscribed') {
-			$g .= "$sou_sn is now following a list from $tar_sn";
+			$g .= "$sou_sn is now following the list \"$tar_list_desc\" ($tar_list_name) from $tar_sn";
 		} elsif ($verb eq 'list_user_unsubscribed') {
-		$g .= "$sou_sn is no longer following a list from $tar_sn";
+		$g .= "$sou_sn is no longer following the list \"$tar_list_desc\" ($tar_list_name) from $tar_sn";
 		} elsif ($verb eq 'list_created') {
-			$g .= "$sou_sn created a new list";
+			$g .= "$sou_sn created the new list \"$tar_list_desc\" ($tar_list_name)";
 		} elsif ($verb eq 'list_destroyed') {
-			$g .= "$sou_sn destroyed a list";
+			$g .= "$sou_sn destroyed the list \"$tar_list_desc\" ($tar_list_name)";
 		} elsif ($verb eq 'list_updated') {
-			$g .= "$sou_sn updated a list";
+			$g .= "$sou_sn updated the list \"$tar_list_desc\" ($tar_list_name)";
+		} elsif ($verb eq 'block' || $verb eq 'unblock') {
+			$g .= "$sou_sn ${verb}ed $tar_sn ($tar_sn is not ".
+				"notified)";
+		} elsif ($verb eq 'access_revoked') {
+			$g .= "$sou_sn revoked oAuth access to $tar_sn";
+		} elsif ($verb eq 'access_unrevoked') {
+			$g .= "$sou_sn restored oAuth access to $tar_sn";
 		} else {
 			# try to handle new types of events we don't
-			# recognize yet
+			# recognize yet.
 			$verb .= ($verb =~ /e$/) ? 'd' : 'ed';
 			$g .= "$sou_sn $verb $tar_sn (basic)";
 		}
+
+	# server events ("public stream messages") are handled differently.
+	# we support almost all except for the ones that are irrelevant to
+	# this medium.
+
 	} elsif ($ref->{'delete'}) {
 		# this is the best we can do -- it's already on the screen!
 		# we don't want to make it easy which tweet it is, since that
@@ -5121,6 +5469,22 @@ sub standardevent {
 		$g .=
 		"tweet ID# ".$ref->{'delete'}->{'status'}->{'id_str'}.
 			" deleted by server";
+	} elsif ($ref->{'status_withheld'}) {
+		# Twitter doesn't document id_str as available here. check.
+		if (!length($ref->{'status_withheld'}->{'id_str'})) {
+			# do nothing right now
+		} else { $g .=
+		"tweet ID# ".$ref->{'status_withheld'}->{'id_str'}.
+			" censored by server in your country";
+		}
+	} elsif ($ref->{'user_withheld'}) {
+		$g .=
+		"user ID# ".$ref->{'user_withheld'}->{'user_id'}.
+			" censored by server in your country";
+	} elsif ($ref->{'disconnect'}) {
+		$g .=
+		"DISCONNECTED BY SERVER (".$ref->{'disconnect'}->{'code'}.
+			"); will retry: ".$ref->{'disconnect'}->{'reason'};
 	} else {
 		# we have no idea what this is. just BS our way out.
 		$g .= "unknown server event received (non-fatal)";
@@ -5458,7 +5822,7 @@ sub defaulttweettype {
 
 	# br3nda's and smb's modified colour patch
 	unless ($anonymous) {
-		if ($sn eq $whoami) {
+		if (lc($sn) eq $whoami) {
 			# if it's me speaking, colour the line yellow
 			return 'me';
 		} elsif ($tweet =~ /\@$whoami(\b|$)/i) {
@@ -5548,10 +5912,10 @@ sub defaultautocompletion {
 			'/print', '/quit', '/bye', '/again',
 			'/wagain', '/whois', '/thump', '/dm',
 			'/refresh', '/dmagain', '/set', '/help',
-			'/reply', '/url', '/thread', '/retweet',
+			'/reply', '/url', '/thread', '/retweet', '/replyall',
 			'/replies', '/ruler', '/exit', '/me', '/vcheck',
 			'/oretweet', '/eretweet', '/fretweet', '/liston',
-			'/listoff', '/dmsent', '/rtsof', '/rtsofme',
+			'/listoff', '/dmsent', '/rtsof', '/rtson', '/rtsoff',
 			'/lists', '/withlist', '/add', '/padd', '/push',
 			'/pop', '/followers', '/friends', '/lfollow',
 			'/lleave', '/listfollowers', '/listfriends',
@@ -5688,6 +6052,15 @@ sub notifier_libnotify {
 # structure (or the actual tweet structure itself if it can).
 sub get_tweet {
 	my $code = lc(shift);
+
+#TODO
+# implement querying the id_cache here. we need IPC for it, though.
+	# if the code is all numbers, treat it like an id_str, and try
+	# to get it from the server. we have similar code in get_dm.
+	# the first tweet that is of relevance is ID 20. try /dump 20 :)
+	return &grabjson("${idurl}?id=${code}", 0, 0, 0, undef, 1)
+		if ($code =~ /^[0-9]+$/ && (0+$code > 19));
+
 	return undef if ($code !~ /^z?[a-z][0-9]$/);
 	my $source = ($code =~ /^z/) ? 1 : 0;
 	my $k = '';
@@ -5717,15 +6090,20 @@ sub get_tweet {
 		$w->{'user'}->{'geo_enabled'},
 		$w->{'geo'}->{'coordinates'}->[0],
 		$w->{'geo'}->{'coordinates'}->[1],
+		$w->{'place'}->{'id'},
+		$w->{'place'}->{'country_code'},
+		$w->{'place'}->{'place_type'},
+		$w->{'place'}->{'full_name'},
 		$w->{'tag'}->{'type'},
 		$w->{'tag'}->{'payload'},
 		$w->{'retweet_count'}, 
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
-			$l) = split(/\s/, $k, 13);
+			$l) = split(/\s/, $k, 17);
 	($w->{'source'}, $k) = split(/\|/, $l, 2);
 	$w->{'text'} = pack("H*", $k);
+	$w->{'place'}->{'full_name'} = pack("H*",$w->{'place'}->{'full_name'});
 	$w->{'tag'}->{'payload'} = pack("H*", $w->{'tag'}->{'payload'});
-	return undef if (!length($w->{'text'})); # not possible
+	return undef if (!length($w->{'text'})); # unpossible
 	$w->{'created_at'} =~ s/_/ /g;
 	return $w;
 }
@@ -5738,9 +6116,15 @@ sub get_dm {
 	my $k = '';
 	my $l = '';
 	my $w = {'sender' => {}};
+	return undef if (length($code) < 3 || $code !~ s/^d//);
 
-	return undef if (length($code) != 3 || $code !~ s/^d// ||
-				$code !~ /^[a-z][0-9]$/);
+	# this is the aforementioned "similar code" (see get_tweet).
+	# optimization: I doubt ANY of us can get DMIDs less than 9.
+	return &grabjson("${dmidurl}?id=$code", 0, 0, 0, undef, 1)
+		if ($code =~ /^[0-9]+$/ && (0+$code > 9));
+
+	return undef if ($code !~ /^[a-z][0-9]$/);
+
 	kill $SIGUSR2, $child if ($child); # prime pipe
 	print C "piped $code ----------\n"; # internally two alphanum, recall
 	while(length($k) < 1024) {
@@ -5870,6 +6254,17 @@ sub setvariable {
 			&filter_compile if ($key eq 'filter');
 			&notify_compile if ($key eq 'notifies');
 			&list_compile if ($key eq 'lists');
+			&filterflags_compile if ($key eq 'filterflags');
+			$filterrts_sub = &filteruserlist_compile(
+				$filterrts_sub, $value)
+					if ($key eq 'filterrts');
+			$filterusers_sub = &filteruserlist_compile(
+				$filterusers_sub,$value)
+					if ($key eq 'filterusers');
+			$filteratonly_sub = &filteruserlist_compile(
+				$filteratonly_sub, $value)
+					if ($key eq 'filteratonly');
+			&filterats_compile if ($key eq 'filterats');
 
 			# transmit to background process sync-ed values
 			if ($opts_sync{$key}) {
@@ -6053,23 +6448,20 @@ sub tracktags_compile {
 
 	my $k;
 	my $l = '';
-	my @jtags = map { # don't alter @tracktags, and support UTF-8
-		$j=$_; $j=~s/([^0-9a-zA-Z_])/&uhex($1)/eg; $j;
-	} @tracktags;
-	# need to make 140 character pieces
-	TAGBAG: foreach $k (@jtags) {
+	# need to limit track tags to a certain number of pieces
+	TAGBAG: foreach $k (@tracktags) {
 		if (length($k) > 130) { # I mean, really
 			print $stdout
 				"-- warning: track tag \"$k\" is TOO LONG\n";
 			next TAGBAG;
 		}
-		if (length($l)+length($k) > 130) { # reasonable safety
-			push(@trackstrings, $l);
+		if (length($l)+length($k) > 150) { # balance of size/querytime
+			push(@trackstrings, "q=".&url_oauth_sub($l));
 			$l = '';
 		}
-		$l = (length($l)) ? "${l}+OR+${k}" : "q=${k}";
+		$l = (length($l)) ? "${l} OR ${k}" : "${k}";
 	}
-	push(@trackstrings, $l) if (length($l));
+	push(@trackstrings, "q=".&url_oauth_sub($l)) if (length($l));
 }
 
 # notification multidispatch
@@ -6131,16 +6523,85 @@ print $stdout "*** syntax error in list $u/$l\n";
 	return 1;
 }
 
-# filter compiler
-sub filter_compile {
+# -filterflags compiler (replaces old -filter syntax)
+sub filterflags_compile {
+	my $s = $filterflags;
 	undef %filter_attribs;
+	$s =~ s/^\s*['"]?\s*//;
+	$s =~ s/\s*['"]?\s*$//;
+	return if (!length($s));
+	%filter_attribs = map { $_ => 1 } split(/\s*,\s*/, $s);
+}
+
+# -filterrts and -filterusers compiler. these simply use a list of usernames,
+# so they are fast and the same code suffices. emit code to compile that
+# just is one if-expression after another.
+sub filteruserlist_compile {
+	my $old = shift;
+	my $s = shift;
+	undef $k;
+	$s =~ s/^\s*['"]?\s*//;
+	$s =~ s/\s*['"]?\s*$//;
+	return $k if (!length($s));
+	my @us = map { $k=lc($_); "\$sn eq '$k'" } split(/\s*,\s*/, $s);
+	my $uus = join(' || ', @us);
+	my $uuus = <<"EOF";
+		\$k = sub {
+			my \$sn = shift;
+			return 1 if ($uus);
+			return 0;
+		};
+EOF
+#	print $stdout $uuus;
+	eval $uuus;
+	if (!defined($k)) {
+		print $stdout "** bogus name in user list (error = $@)\n";
+		return $old;
+	}
+	return $k;
+}
+
+# -filterats compiler. this takes a list of usernames and then compiles a
+# whole bunch of regexes.
+sub filterats_compile {
+	undef $filterats_c;
+	my $s = $filterats;
+	$s =~ s/^\s*['"]?\s*//;
+	$s =~ s/\s*['"]?\s*$//;
+	return 1 if (!length($s)); # undef
+	my @us = map { $k=lc($_); "\$x=~/\\\@$k\\b/i" } split(/\s*,\s*/, $s);
+	my $uus = join(' || ', @us);
+	my $uuus = <<"EOF";
+		\$filterats_c = sub {
+			my \$x = shift;
+			return 1 if ($uus);
+			return 0;
+		};
+EOF
+#	print $stdout $uuus;
+	eval $uuus;
+	if (!defined($filterats_c)) {
+		print $stdout "** bogus name in user list (error = $@)\n";
+		return 0;
+	}
+	return 1;
+}
+
+# -filter compiler. this is the generic case.
+sub filter_compile {
+	undef %filter_attribs unless (length($filterflags));
 	undef $filter_c;
-	if ($filter) {
+	if (length($filter)) {
 		my $tfilter = $filter;
 		$tfilter =~ s/^['"]//;
 		$tfilter =~ s/['"]$//;
-		# note attributes
-		$filter_attribs{$1}++ while ($tfilter =~ s/^([a-z]+),//);
+		# note attributes (compatibility)
+		while ($tfilter =~ s/^([a-z]+),//) {
+			my $atkey = $1;
+			$filter_attribs{$atkey}++;
+			print $stdout
+		"** $atkey filter parameter should be in -filterflags\n";
+		}
 		my $b = <<"EOF";
 		\$filter_c = sub {
 			local \$_ = shift;
@@ -6434,6 +6895,8 @@ sub grabjson {
 	my $is_anon = shift;
 	my $count = shift;
 	my $tag = shift;
+	my $do_entities = shift;
+
 	my $kludge_search_api_adjust = 0;
 	my $my_json_ref = undef; # durrr hat go on foot
 	my $i;
@@ -6455,6 +6918,9 @@ sub grabjson {
 	# timeline control. this speeds up parsing since there's less data.
 	# can't use skip_user: no SN
 	push (@xargs, "since_id=${last_id}") if ($last_id);
+
+	# request entities, which should be supported everywhere now
+	push (@xargs, "include_entities=1") if ($do_entities);
 
 	my $resource = (scalar(@xargs)) ?
 		[ $url, join('&', sort @xargs) ] : $url;
@@ -6524,16 +6990,9 @@ sub grabjson {
 		return undef;
 	}
 
-	# THIS IS A TEMPORARY KLUDGE for API issue #26
-	# http://code.google.com/p/twitter-api/issues/detail?id=26
-	if ($data =~ s/Couldn't find Status with ID=[0-9]+,//) {
-		print $stdout ">>> cfswi sucky kludge tripped <<<\n"
-			if ($superverbose);
-	}
-
-	# if wrapped in results object, unwrap it (@kellyterryjones)
+	# if wrapped in statuses object, unwrap it
 	# (and tag it to do more later)
-        if ($data =~ s/^(\{.+,|\{)\s*['"]results['"]\s*:\s*(\[.*\]).*$/$2/isg) {
+        if ($data =~ s/^\s*(\{)\s*['"]statuses['"]\s*:\s*(\[.*\]).*$/$2/isg) {
 		$kludge_search_api_adjust = 1;
 	}
 
@@ -6557,6 +7016,34 @@ sub grabjson {
 
 	$laststatus = 0;
 	return $my_json_ref;
+}
+
+# convert t.co into actual URLs. separate from normalizejson because other
+# things need this. modified from /entities.
+sub destroy_all_tco {
+	my $hash = shift;
+	return $hash if ($notco);
+	my $v;
+	my $w;
+
+	# Twitter puts entities in multiple fields.
+	foreach $w (qw(media urls)) {
+		my $p = $hash->{'entities'}->{$w};
+		next if (!defined($p) || ref($p) ne 'ARRAY');
+		foreach $v (@{ $p }) {
+			next if (!defined($v) || ref($v) ne 'HASH');
+			next if (!length($v->{'url'}) ||
+				(!length($v->{'expanded_url'}) &&
+				 !length($v->{'media_url'})));
+			my $u1 = quotemeta($v->{'url'});
+			my $u2 = $v->{'expanded_url'};
+			my $u3 = $v->{'media_url'};
+			my $u4 = $v->{'media_url_https'};
+			$u2 = $u4 || $u3 || $u2;
+			$hash->{'text'} =~ s/$u1/$u2/;
+		}
+	}
+	return $hash;
 }
 
 # takes a tweet structure and normalizes it according to settings.
@@ -6623,29 +7110,23 @@ sub normalizejson {
 		$i = &fix_geo_api_data($i);
 	}
 
-	# normalize Search
+	# hooray! this just tags it
 	if ($kludge_search_api_adjust) {
-		# hopefully this hack can die with API v2.
 		$i->{'class'} = "search";
-		$i->{'user'}->{'screen_name'} =
-			$i->{'from_user'};
-		# translate time stamps
-		# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
-		# Fri, 20 Mar 2009 16:35:56 +0000 (search)
-		$i->{'created_at'} =~
-	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
 	}
 
 	# normalize newRTs
 	# if we get newRTs with -nonewrts, oh well
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
-		# without truncation
+		# without truncation, but detco it first
+		$rt = &destroy_all_tco($rt);
+		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 	}
 
-	return $i;
+	return &destroy_all_tco($i);
 }
 
 # process the JSON data ... simplemindedly, because I just write utter crap,
@@ -6733,11 +7214,22 @@ sub parsejson {
 			&$exception(11, "*** JSON warning: null list\n");
 			return undef;
 		}
-		# total failure should fail hard, because this indicates an
-		# absolutely serious error at this stage (all traps failed)
-		&screech
-		("$data\n$tdata\nJSON IS UNSAFE TO EXECUTE! BAILING OUT!\n")
-			if ($tdata =~ /[^\[\]\{\}:,]/);
+		# at this point all we should have are structural elements.
+		# if something other than JSON structure is visible, then
+		# the syntax tree is mangled. don't try to run it, it
+		# might be unsafe. this exception was formerly uniformly
+		# fatal. it is now non-fatal as of 2.1.
+		if ($tdata =~ /[^\[\]\{\}:,]/) {
+			&$exception(99, "*** JSON syntax error\n");
+			print $stdout <<"EOF" if ($verbose);
+--- data received ---
+$data
+--- syntax tree ---
+$tdata
+--- JSON PARSING ABORTED DUE TO SYNTAX TREE FAILURE --
+EOF
+			return undef;
+		}
 	}
 
 	# syntax tree passed, so let's turn it into a Perl reference.
@@ -6753,8 +7245,18 @@ sub parsejson {
 	print $stdout "$data => $my_json_ref $@\n"  if ($superverbose);
 
 	# do a sanity check
-	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
-		if (!defined($my_json_ref));
+	if (!defined($my_json_ref)) {
+		&$exception(99, "*** JSON syntax error\n");
+		print $stdout <<"EOF" if ($verbose);
+--- data received ---
+$data
+--- syntax tree ---
+$tdata
+--- JSON PARSING FAILED --
+$@
+--- JSON PARSING FAILED --
+EOF
+	}
 
 	return $my_json_ref;
 }
@@ -6776,12 +7278,16 @@ sub is_fail_whale {
 		$data =~ m#[\r\l\n\s]*DB_DataObject Error: Connect failed#s);
 }
 
+# {'errors':[{'message':'Rate limit exceeded','code':88}]}
 sub is_json_error {
 	# is this actually a JSON error message? if so, extract it
 	my $data = shift;
 	if ($data =~ /(['"])(warning|errors?)\1\s*:\s*/s) {
 		if ($data =~ /^\s*\{/s) { # JSON object?
 			my $dref = &parsejson($data);
+			print $stdout "*** is_json_error returning true\n"
+				if ($verbose);
+			# support 1.0 and 1.1 error objects
 			return $dref->{'error'} if (length($dref->{'error'}));
 			return $dref->{'errors'}->[0]->{'message'}
 				if (length($dref->{'errors'}->[0]->{'message'}));
@@ -6881,6 +7387,10 @@ sub screech {
 	}
 	die("death not achieved conventionally");
 }
+
+# &in($x, @y) returns true if $x is a member of @y
+sub in { my $key = shift; my %mat = map { $_ => 1 } @_;
+	return $mat{$key}; }
 
 sub descape {
 	my $x = shift;
@@ -7049,10 +7559,43 @@ sub uhex {
 	return $k;
 }
 
+# for t.co
+# adapted from github.com/twitter/twitter-text-js/blob/master/twitter-text.js
+# this is very hard to get right, and I know there are edge cases. this first
+# one is designed to be quick and dirty because it needs to be fast more than
+# it needs to be accurate, since T:RL:T calls it a LOT. however, it can be
+# fooled, see below.
+sub fastturntotco {
+	my $s = shift;
+	my $w;
+
+	# turn domain names into http urls. this should look at .com, .net,
+	# .etc., but things like you.suck.too probably *should* hit this
+	# filter. this uses the heuristic that a domain name over some limit
+	# is probably not actually a domain name.
+	($s =~ s#\b(([a-zA-Z0-9-_]\.)+([a-zA-Z]){2,})\b#((length($w="$1")>45)?$w:"http://$w")#eg);
+
+	# now turn all http and https URLs into t.co strings
+	($s =~ s#\b(https?)://[a-zA-Z0-9-_]+[^\s]*?('|\\|\s|[\.;:,!\?]\s+|[\.;:,!\?]$|$)#\1://t.co/1234567\2#gi);
+	return $s;
+}
+# slow t.co converter. this is for future expansion.
+sub turntotco {
+	return &fastturntotco(shift);
+}
+
+sub ulength_tco {
+	my $w = shift;
+	return &ulength(($notco) ? $w : &turntotco($w));
+}
+sub length_tco {
+	my $w = shift;
+	return length(($notco) ? $w : &turntotco($w));
+}
 # take a string and return up to $linelength CHARS plus the rest.
-sub csplit { return &cosplit(@_, sub { return   length(shift); }); }
+sub csplit { return &cosplit(@_, sub { return  &length_tco(shift); }); }
 # take a string and return up to $linelength BYTES plus the rest.
-sub usplit { return &cosplit(@_, sub { return &ulength(shift); }); }
+sub usplit { return &cosplit(@_, sub { return &ulength_tco(shift); }); }
 sub cosplit {
 	# this is the common code for &csplit and &usplit.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
@@ -7077,8 +7620,8 @@ sub cosplit {
 
 	# this needs to be reply-aware, so we put @'s at the beginning of
 	# the second half too (and also Ds for DMs)
-	$r .= $1 if ($k =~ s/^(\@[^\s]+\s)\s*// ||
-			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # not while -- just one
+	$r .= $1 while ($k =~ s/^(\@[^\s]+\s)\s*// ||
+			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # we have r/a, so while
 	$k = "$r$k";
 
 	my $i = $linelength;
@@ -7235,7 +7778,7 @@ print $stdout " FINAL HASH \n" if ($showwork);
 # this is NOT UTF-8 safe
 sub url_oauth_sub {
 	my $x = shift;
-	$x =~ s/([^-0-9a-zA-Z._~])/"%".uc(unpack("H2",$1))/eg; return $x;
+	$x =~ s/([^-0-9a-zA-Z._~])/"%".uc(unpack("H*",$1))/eg; return $x;
 }
 
 # default method of getting password: ask for it. only relevant for Basic Auth,
