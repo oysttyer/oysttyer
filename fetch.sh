@@ -7,15 +7,15 @@
 
 DIST_URL=$@
 
-function get_lines_from_changelog {
+get_lines_from_changelog() {
 	changelog=$1
 	version=$2
 	#Find line number of change
 	start=`sed -n "/^##Changes in version $version/=" $changelog`
 	#Find line number of n ext change
 	startnext=`expr $start + 1`
-	endprevious=`sed -n "$startnext,$ { /^##Changes/=; }" $changelog | head -n 1`
-	end=`expr $end - 1`
+	endnext=`sed -n "$startnext,$ { /^##Changes/=; }" $changelog | head -n 1`
+	end=`expr $endnext - 1`
 	#Get those lines
 	sed -n "$start,$end p" $changelog > commit.tmp
 }
@@ -32,7 +32,7 @@ while read line; do
 	get_lines_from_changelog CHANGELOG.markdown $TAG
 	curl $URL > ttytter.pl
 	git add ttytter.pl
-	git commit -file commit.tmp --date="$DATE" --author"=Cameron Kaiser <ckaiser@floodgap.com>"
+	git commit --file commit.tmp --date="$DATE" --author"=Cameron Kaiser <ckaiser@floodgap.com>"
 	git tag $TAG 
 done< dist.txt
 
