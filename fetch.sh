@@ -48,13 +48,17 @@ while read line; do
 	DATE=`echo $line | awk '{print $2",", $4, $3, $6, $5}'`
 	TAG=`echo $line | awk '{print $1}' | sed 's/\.txt//g'`
 	TAG=`fixtag $TAG`
-	get_lines_from_changelog CHANGELOG.markdown $TAG
-	curl $URL > ttytter.pl
-	git add ttytter.pl
-	git commit --file commit.tmp --date="$DATE" --author"=Cameron Kaiser <ckaiser@floodgap.com>"
-	git tag $TAG 
+	#Don't add existing version - not yet clever enough to prevent adding versions in wrong order; probably no point ever making it that clever
+	OK_TO_ADD=`git show-ref --tags | grep $TAG -c`
+	if [ $OK_TO_ADD -eq 0 ]; then
+		get_lines_from_changelog CHANGELOG.markdown $TAG
+		curl $URL > ttytter.pl
+		git add ttytter.pl
+		git commit --file commit.tmp --date="$DATE" --author"=Cameron Kaiser <ckaiser@floodgap.com>"
+		git tag $TAG 
+	fi
 done< dist.txt
 
-#Clean up
+#Clean up - this will error if actually didn't commit anything; that's fine
 rm dist.txt
 rm commit.tmp
