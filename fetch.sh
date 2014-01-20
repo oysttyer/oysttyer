@@ -18,11 +18,15 @@ get_lines_from_changelog() {
 		#Find line number of next change
 		startnext=`expr $start + 1`
 		endnext=`sed -n "$startnext,$ { /^##Changes/=; }" $changelog | head -n 1`
-		end=`expr $endnext - 1`
+		if [ -z "$endnext" ]; then
+			end=$
+		else
+			end=`expr $endnext - 1`
+		fi
 		#Get those lines
 		sed -n "$start,$end p" $changelog > commit.tmp
 	else
-		"No Changelog entry available" > commit.tmp
+		echo "No Changelog entry available" > commit.tmp
 	fi
 }
 
