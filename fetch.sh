@@ -1,9 +1,11 @@
 #!/bin/sh
 
 # Given a dist URL from floodgap, fetch all versions on that page, commit with right date and commit message from a changelog
-# Ideally only do this if a more recent version 
+# Ideally only do this if a more recent version - todo
 # Changelog mostly here: http://www.floodgap.com/software/ttytter/dl.html
 # (Had to manually put together the changelog in a markdown format)
+
+# Needs an initial commit to exist
 
 DIST_URL=$@
 
@@ -12,12 +14,16 @@ get_lines_from_changelog() {
 	version=$2
 	#Find line number of change
 	start=`sed -n "/^##Changes in version $version/=" $changelog`
-	#Find line number of n ext change
-	startnext=`expr $start + 1`
-	endnext=`sed -n "$startnext,$ { /^##Changes/=; }" $changelog | head -n 1`
-	end=`expr $endnext - 1`
-	#Get those lines
-	sed -n "$start,$end p" $changelog > commit.tmp
+	if ! [ -z "$start" ]; then
+		#Find line number of next change
+		startnext=`expr $start + 1`
+		endnext=`sed -n "$startnext,$ { /^##Changes/=; }" $changelog | head -n 1`
+		end=`expr $endnext - 1`
+		#Get those lines
+		sed -n "$start,$end p" $changelog > commit.tmp
+	else
+		"No Changelog entry available" > commit.tmp
+	fi
 }
 
 # Hacky cludge to fix tags from Floodgap:
