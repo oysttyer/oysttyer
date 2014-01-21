@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v0.9 (c)2007-2010 cameron kaiser (and contributors).
+# TTYtter v1.2 (c)2007-2011 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -16,50 +16,101 @@
 require 5.005;
 
 BEGIN {
+	# ONLY STUFF THAT MUST RUN BEFORE INITIALIZATION GOES HERE!
+	# THIS FUNCTION HAS GOTTEN TOO DAMN CLUTTERED!
+
 #	@INC = (); # wreck intentionally for testing
-	$0 = "TTYtter";
-	$TTYtter_VERSION = "0.9";
-	$TTYtter_PATCH_VERSION = 12;
+	# dynamically changing PERL_SIGNALS doesn't work in Perl 5.14+ (bug
+	# 92246). we deal with this by forcing -signals_use_posix if the
+	# environment variable wasn't already set.
+	if ($] >= 5.014000 && $ENV{'PERL_SIGNALS'} ne 'unsafe') {
+		$signals_use_posix = 1;
+	} else {
+		$ENV{'PERL_SIGNALS'} = 'unsafe';
+	}
+	
+	$command_line = $0; $0 = "TTYtter";
+	$TTYtter_VERSION = "1.2";
+	$TTYtter_PATCH_VERSION = 5;
+	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
+	# this is kludgy, yes.
+	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
+			$ENV{'ALL'};
+	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
+	(warn ("$my_version_string\n"), exit) if ($version);
+
 	$space_pad = " " x 1024;
 
-	(warn ("${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}\n"), exit)
-		if ($version);
+	# for multi-module extension handling
+	$multi_module_mode = 0;
+	$multi_module_context = 0;
+	$muffle_server_messages = 0;
+	undef $master_store;
+	undef %push_stack;
 
-	$ENV{'PERL_SIGNALS'} = 'unsafe';
+	$padded_patch_version = substr($TTYtter_PATCH_VERSION . " ", 0, 2);
 
 	%opts_boolean = map { $_ => 1 } qw(
 		ansi noansi verbose superverbose ttytteristas noprompt
 		seven silent hold daemon script anonymous readline ssl
-		newline vcheck verify noratelimit notrack
+		newline vcheck verify noratelimit notrack nonewrts notimeline
+		synch exception_is_maskable mentions simplestart
+		location oldstatus readlinerepaint nocounter notifyquiet
+		signals_use_posix
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause ttytteristas verbose superverbose
-		url rlurl dmurl newline wrap autosplit notimeline
+		url rlurl dmurl newline wrap notimeline lists dmidurl
 		queryurl trendurl track colourprompt colourme notrack
-		colourdm colourreply colourwarn coloursearch idurl
-		notifies filter colourdefault
+		colourdm colourreply colourwarn coloursearch colourlist idurl
+		notifies filter colourdefault backload searchhits dmsenturl
 	); %opts_urls = map {$_ => 1} qw(
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 		apibase queryurl trendurl idurl delurl dmdelurl favsurl
-		myfavsurl favurl favdelurl
+		myfavsurl favurl favdelurl rtsofmeurl followurl leaveurl
+		dmupdate xauthurl credurl blockurl blockdelurl friendsurl
+		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
+		getuliurl getufliurl dmsenturl rturl rtsbyurl dmidurl
+		statusliurl followliurl leaveliurl followersurl
+		oauthurl oauthauthurl oauthaccurl oauthbase
 	); %opts_secret = map { $_ => 1} qw(
 		superverbose ttytteristas
-	); %opts_can_set = map { $_ => 1 } qw(
+	); %opts_comma_delimit = map { $_ => 1 } qw(
+		lists notifytype notifies
+	); %opts_space_delimit = map { $_ => 1 } qw(
+		track
+	);
+
+	   %opts_can_set = map { $_ => 1 } qw(
 		url pause dmurl dmpause superverbose ansi verbose
 		update uurl rurl wurl avatar ttytteristas frurl track
 		rlurl noprompt shorturl newline wrap verify autosplit
 		notimeline queryurl trendurl colourprompt colourme
-		colourdm colourreply colourwarn coloursearch idurl
+		colourdm colourreply colourwarn coloursearch colourlist idurl
 		urlopen delurl notrack dmdelurl favsurl myfavsurl
 		favurl favdelurl slowpost notifies filter colourdefault
+		rtsofmeurl followurl leaveurl dmupdate mentions backload
+		lat long location searchhits blockurl blockdelurl
+		nocounter linelength friendsurl followersurl lists
+		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
+		getuliurl getufliurl dmsenturl rturl rtsbyurl
+		statusliurl followliurl leaveliurl dmidurl
 	); %opts_others = map { $_ => 1 } qw(
-		lynx curl seven silent maxhist noansi lib hold status
+		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
-		leader ssl rc norc vcheck apibase notifytype olib
+		leader ssl rc norc vcheck apibase notifytype exts
+		nonewrts synch runcommand authtype oauthkey oauthsecret
+		tokenkey tokensecret xauthurl credurl keyf readlinerepaint
+		oldstatus simplestart exception_is_maskable oldperl
+		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
+		signals_use_posix
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
-	$supreturnto = $verbose + 0;
 	unless ($norc) {
-		if (open(W, ($n = "$ENV{'HOME'}/.ttytterrc${rc}"))) {
+		my $rcf =
+			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.ttytterrc${rc}";
+		if (open(W, $rcf)) {
+			# 5.14 sets this lazily, so this gives us a way out
+			eval 'binmode(W, ":utf8")' unless ($seven);
 			while(<W>) {
 				chomp;
 				next if (/^\s*$/ || /^#/);
@@ -69,7 +120,11 @@ BEGIN {
 			warn "** that's stupid, setting rc in an rc file\n";
 				} elsif ($key eq 'norc') {
 			warn "** that's dumb, using norc in an rc file\n";
+				} elsif (length $$key) {
+					; # carry on
 				} elsif ($valid{$key} && !length($$key)) {
+					$$key = $value;
+				} elsif ($key =~ /^extpref_/) {
 					$$key = $value;
 				} elsif (!$valid{$key}) {
 			warn "** setting $key not supported in this version\n";
@@ -77,26 +132,94 @@ BEGIN {
 			}
 			close(W);
 		} elsif (length($rc)) {
-			die("couldn't access rc file $n: $!\n".
+			die("couldn't access rc file $rcf: $!\n".
 	"to use defaults, use -norc or don't specify the -rc option.\n\n");
 		}
 	}
 	$seven ||= 0;
-	$lib ||= "";
+	$oldperl ||= 0;
 	$parent = $$;
+	$script = 1 if (length($runcommand));
+	$supreturnto = $verbose + 0;
+	$postbreak_time = 0;
+	$postbreak_count = 0;
 
-	# defaults that our lib can override
+	# our minimum official support is now 5.8.6.
+	if ($] < 5.008006 && !$oldperl) {
+		die(<<"EOF");
+
+*** you are using a version of Perl in "extended" support: $] ***
+the minimum tested version of Perl required by TTYtter 1.2+ is 5.8.6.
+
+Perl 5.005 thru 5.8.5 probably can still run TTYtter, but they are not
+tested with it. if you want to suppress this warning, specify -oldperl on
+the command line, or put oldperl=1 in your .ttytterrc. bug patches will 
+still be accepted for older Perls; see the TTYtter home page for info.
+
+for Perl 5.005, remember to also specify -seven.
+
+EOF
+	}
+
+	# defaults that our extensions can override
 	$last_id = 0;
 	$last_dm = 0;
-	$print_max = 100; # shiver
+	# a correct fix for -daemon would make this unlimited, but this
+	# is good enough for now.
+	$print_max ||= ($daemon) ? 999999 : 250; # shiver
+
+	$suspend_output = -1;
+
+	# try to find an OAuth keyfile if we haven't specified key+secret
+	# no worries if this fails; we could be Basic Auth, after all
+	$whine = (length($keyf)) ? 1 : 0;
+	$keyf ||= "$ENV{'HOME'}/.ttytterkey";
+	$keyf = "$ENV{'HOME'}/.ttytterkey${keyf}" if ($keyf !~ m#/#);
+	$attempted_keyf = $keyf;
+	if (!length($oauthkey) && !length($oauthsecret) # set later
+			&& !length($tokenkey)
+			&& !length($tokensecret) && !$oauthwizard) {
+		my $keybuf = '';
+		if(open(W, $keyf)) {
+			while(<W>) {
+				chomp;
+				s/\s+//g;
+				$keybuf .= $_;
+			}
+			close(W);
+			my (@pairs) = split(/\&/, $keybuf);
+			foreach(@pairs) {
+				my (@pair) = split(/\=/, $_, 2);
+				$oauthkey = $pair[1]
+					if ($pair[0] eq 'ck');
+				$oauthsecret = $pair[1]
+					if ($pair[0] eq 'cs');
+				$tokenkey = $pair[1]
+					if ($pair[0] eq 'at');
+				$tokensecret = $pair[1]
+					if ($pair[0] eq 'ats');
+			}
+			die("** tried to load OAuth tokens from $keyf\n".
+	"  but it seems corrupt or incomplete. please see the documentation,\n".
+	"  or delete the file so that we can try making your keyfile again.\n")
+				if ((!length($oauthkey) ||
+					!length($oauthsecret) ||
+					!length($tokenkey) ||
+					!length($tokensecret)));
+		} else {
+			die("** couldn't open keyfile $keyf: $!\n".
+	"if you want to run the OAuth wizard to create this file, add ".
+				"-oauthwizard\n")
+				if ($whine);
+			$keyf = ''; # i.e., we loaded nothing from a key file
+		}
+	}
 
 	# try to init Term::ReadLine if it was requested
 	# (shakes fist at @br3nda, it's all her fault)
 	%readline_completion = ();
-	if ($readline) {
-		die(
-		"you can't use -silent and -readline together. pick one.\n")
-			if ($silent || $script);
+	if ($readline && !$silent && !$script) {
+		$ENV{"PERL_RL"} = "TTYtter" if (!length($ENV{'PERL_RL'}));
 		eval
 'use Term::ReadLine; $termrl = new Term::ReadLine ("TTYtter", \*STDIN, \*STDOUT)'
 		|| die(
@@ -109,31 +232,37 @@ BEGIN {
 		#$termrl->Attribs()->{'autohistory'} = undef; # not yet
 		(%readline_completion) = map {$_ => 1} split(/\s+/, $readline);
 		%original_readline = %readline_completion;
+		# readline repaint can't be tested here. we cache our
+		# result later.
 	} else {
 		$stdout = \*STDOUT;
 		$stdin = \*STDIN;
 	}
+	$wrapseq = 0;
+	$lastlinelength = -1;
 
 	print $stdout "$leader\n" if (length($leader));
+
+	# state information
+	$lasttwit = '';
+	$lastpostid = 0;
 
 	# stub namespace for multimodules and (eventually) state saving
 	undef %store;
 	$store = \%store;
 
-	if (length($olib)) {
-		warn "** executing olib: $olib\n" unless ($silent);
-		eval($olib);
-	}
-	if (length($lib)) {
-		warn "** attempting to load library: $lib\n" unless ($silent);
-		require $lib;
-	}
+	$pack_magic = ($] < 5.006) ? '' : "U0";
+	$utf8_encode = sub { ; };
+	$utf8_decode = sub { ; };
 	unless ($seven) {
 		eval
 'use utf8;binmode($stdin,":utf8");binmode($stdout,":utf8");return 1' ||
 	die("$@\nthis perl doesn't fully support UTF-8. use -seven.\n");
+
 	# this is for the prinput utf8 validator.
 	# adapted from http://mail.nl.linux.org/linux-utf8/2003-03/msg00087.html
+	# eventually this will be removed when 5.6.x support is removed,
+	# and Perl will do the UTF-8 validation for us.
 		$badutf8='[\x00-\x7f][\x80-\xbf]+|^[\x80-\xbf]+|'.
 			 '[\xc0-\xdf][\x00-\x7f\xc0-\xff]|'.
 	 		 '[\xc0-\xdf][\x80-\xbf]{2}|'.
@@ -154,261 +283,317 @@ BEGIN {
 	 		 '\xf8[\x80-\x87][\x80-\xbf]{3}|'.
 	 		 '\xfc[\x80-\x83][\x80-\xbf]{4}'; # gah!
 
+		eval <<'EOF';
+		$utf8_encode = sub { utf8::encode(shift); };
+		$utf8_decode = sub { utf8::decode(shift); };
+EOF
 	}
+	$wraptime = sub { my $x = shift; return ($x, $x); };
 	if ($timestamp) {
+		my $fail = "-- can't use custom timestamps.\nspecify -timestamp by itself to use Twitter's without module.\n";
 		if (length($timestamp) > 1) { # pattern specified
 			eval 'use Date::Parse;return 1' ||
-		die("$@\nno Date::Parse -- no custom timestamps.\nspecify -timestamp by itself to use Twitter's without module.\n");
+				die("$@\nno Date::Parse $fail");
 			eval 'use Date::Format;return 1' ||
-		die("$@\nno Date::Format -- no custom timestamps.\nspecify -timestamp by itself to use Twitter's without module.\n");
-			$mtimestamp = 1;
+				die("$@\nno Date::Format $fail");
 			$timestamp = "%Y-%m-%d %k:%M:%S"
 				if ($timestamp eq "default" ||
 				    $timestamp eq "def");
-		}
-	}
-
-	# do we have POSIX::Termios? (usually we do)
-	eval 'use POSIX; $termios = new POSIX::Termios;';
-	print $stdout "-- termios test: $termios\n" if ($verbose);
-
-	# wrap warning
-	die(
-"** dude, what the hell kind of terminal can't handle a 5 character line?\n")
-		if ($wrap > 1 && $wrap < 5);
-	print $stdout "** warning: prompts not wrapped for wrap < 70\n"
-		if ($wrap > 1 && $wrap < 70);
-
-	$is_background = 0;
-	$alphabet = "abcdefghijkLmnopqrstuvwxyz";
-
-	%store_hash = ();
-	$back_split = 200; # i.e., 200 tweets reserved for background menuroll
-	$mini_split = 250; # i.e., 10 tweets for the mini-menu (/th)
-	# leaving 50 tweets for the foreground temporary menus
-	$tweet_counter = 0;
-
-	%dm_store_hash = ();
-	$dm_counter = 0;
-
-	$in_reply_to = 0;
-	$expected_tweet_ref = undef;
-}
-
-# track tag management subroutines
-
-# run when a string is passed
-sub tracktags_makearray {
-	@tracktags = ();
-	$track =~ s/^'//; $track =~ s/'$//;
-	if (!length($track)) {
-		@trackstrings = ();
-		return;
-	}
-	my $k;
-	my $l = '';
-	my $q = 0;
-	my %w;
-	my (@ptags) = split(/\s+/, $track);
-
-	# filter duplicates and merge quoted strings
-	foreach $k (@ptags) {
-		if ($q && $k =~ /"$/) { # this has to be first
-			$l .= " $k";
-			$q = 0;
-		} elsif ($k =~ /^"/ || $q) {
-			$l .= (length($l)) ? " $k" : $k;
-			$q = 1;
-			next;
-		} else {
-			$l = $k;
-		}
-			
-		if ($w{$l}) {
-			print $stdout
-			"-- warning: dropping duplicate track term \"$l\"\n";
-		} elsif (uc($l) eq 'OR' || uc($l) eq 'AND') {
-			print $stdout
-			"-- warning: dropping unnecessary logical op \"$l\"\n";
-		} else {
-			$w{$l} = 1;
-			push(@tracktags, $l);
-		}
-		$l = '';
-	}
-	print $stdout "-- warning: syntax error, missing quote?\n" if ($q);
-	$track = join(' ', @tracktags);
-	&compile_tracktags;
-}
-
-# run when urlifying $track
-sub tracktags_tqueryurlify {
-        my $value = shift;
-        $value =~ s/([^ a-z0-9A-Z_])/"%".unpack("H2",$1)/eg;
-        $value =~ s/\s/+/g;
-        $value = "q=$value" if ($value !~ /^q=/);
-        return $value;
-}
-	
-# run when array is altered (based on @kellyterryjones' code)
-sub compile_tracktags {
-	@trackstrings = ();
-	return if (!scalar(@tracktags));
-
-	my $k;
-	my $l = '';
-	my @jtags = map { # don't alter @tracktags, and support UTF-8
-		$j=$_; $j=~s/([^0-9a-zA-Z_])/&uhex($1)/eg; $j;
-	} @tracktags;
-	# need to make 140 character pieces
-	TAGBAG: foreach $k (@jtags) {
-		if (length($k) > 130) { # I mean, really
-			print $stdout
-				"-- warning: track tag \"$k\" is TOO LONG\n";
-			next TAGBAG;
-		}
-		if (length($l)+length($k) > 130) { # reasonable safety
-			push(@trackstrings, $l);
-			$l = '';
-		}
-		$l = (length($l)) ? "${l}+OR+${k}" : "q=${k}";
-	}
-	push(@trackstrings, $l) if (length($l));
-}
-
-# set up track tags
-if (length($tquery) && $tquery ne '0') {
-        my $xtquery = &tracktags_tqueryurlify($tquery);
-        die("** custom tquery is over 140 length: $xtquery\n")
-                if (length($xtquery) > 139);
-        @trackstrings = ($xtquery);
-} else {
-        &tracktags_makearray;
-}
-
-# compile filter
-sub filter_compile {
-	undef %filter_attribs;
-	undef $filter_c;
-	if ($filter) {
-		$filter =~ s/^['"]//;
-		$filter =~ s/['"]$//;
-		# note attributes
-		$filter_attribs{$1}++ while ($filter =~ s/^([a-z]+),//);
-		my $b = <<"EOF";
-		\$filter_c = sub {
-			local \$_ = shift;
-			return ($filter);
-		};
-EOF
-		#print $b;
-		eval $b;
-		if (!defined($filter_c)) {
-			print $stdout ("** syntax error in your filter: $@\n");
-			return 0;
-		}
-	}
-	return 1;
-}
-exit(1) if (!&filter_compile);
-
-# notifications compiler
-sub notify_compile {
-	if ($notifies) {
-		my $w;
-
-		undef %notify_list;
-		foreach $w (split(/,/, $notifies)) {
-			$notify_list{$w} = 1;
+			$wraptime = sub {
+				my $time = str2time(shift);
+				my $stime = time2str($timestamp, $time);
+				return ($time, $stime);
+			};
 		}
 	}
 }
-&notify_compile;
-
-sub end_me { exit; } # which falls through to ...
 END {
 	&killkid unless ($in_backticks); # this is disgusting
 }
-sub generate_otabcomp {
-	if (scalar(@j = keys(%readline_completion))) {
-		# print optimized readline. include all that we
-		# manually specified, plus/including top @s, total 10.
-		@keys = sort { $readline_completion{$b} <=>
-			$readline_completion{$a} } @j;
-		$factor = $readline_completion{$keys[0]};
-		foreach(keys %original_readline) {
-			$readline_completion{$_} += $factor;
-		}
-		print $stdout "*** optimized readline:\n";
-		@keys = sort { $readline_completion{$b} <=>
-			$readline_completion{$a} } keys
-				%readline_completion;
-		@keys = @keys[0..14] if (scalar(@keys) > 15);
-		print $stdout "-readline=\"@keys\"\n";
-	}
-}
-sub killkid {
-	if ($child) {
-		print $stdout "\n\ncleaning up.\n";
-		if (length($track)) {
-			print $stdout "*** you were tracking:\n";
-			print $stdout "*** -track='$track'\n";
-		}
-		&generate_otabcomp;
-		kill 9, $child;
-	}
-	#print $stdout "done.\n";
-	exit;
+
+#### COMMON STARTUP ####
+
+# if we requested POSIX signals, or we NEED posix signals (5.14+), we
+# must check if we have POSIX signals actually
+if ($signals_use_posix) {
+	eval 'use POSIX';
+	# God help the system that doesn't have SIGTERM
+	$j = eval 'return POSIX::SIGTERM' ;
+	die(<<"EOF") if (!(0+$j));
+*** death permeates me ***
+your configuration requires using POSIX signalling (either Perl 5.14+ or
+you specifically asked with -signals_use_posix). however, either you don't
+have POSIX.pm, or it doesn't work. 
+
+TTYtter requires 'unsafe' Perl signals (which are of course for its
+purposes perfectly safe). unfortunately, due to Perl bug 92246 5.14+ must
+use POSIX.pm, or have the switch set before starting TTYtter. run one of
+ 
+export PERL_SIGNALS=unsafe # sh, bash, ksh, etc.
+setenv PERL_SIGNALS unsafe # csh, tcsh, etc.
+ 
+and restart TTYtter, or use Perl 5.12 or earlier (without specifying
+-signals_use_posix).
+EOF
 }
 
-# interpret script at this level
+# do we have POSIX::Termios? (usually we do)
+eval 'use POSIX; $termios = new POSIX::Termios;';
+print $stdout "-- termios test: $termios\n" if ($verbose);
+
+# try to get signal numbers for SIGUSR1/USR2 from POSIX. use 30/31 if failed.
+eval 'use POSIX; $SIGUSR1 = POSIX::SIGUSR1; $SIGUSR2 = POSIX::SIGUSR2';
+$SIGUSR1 ||= 30;
+$SIGUSR2 ||= 31;
+	
+# wrap warning
+die(
+"** dude, what the hell kind of terminal can't handle a 5 character line?\n")
+	if ($wrap > 1 && $wrap < 5);
+print $stdout "** warning: prompts not wrapped for wrap < 70\n"
+	if ($wrap > 1 && $wrap < 70);
+
+# reject stupid combinations
+die("you can't use automatic ratelimits with -noratelimit.\nuse -pause=#sec\n")
+	if ($noratelimit && $pause eq 'auto');
+die("you can't use -synch with -script or -daemon.\n")
+	if ($synch && ($script || $daemon));
+die("-script and -daemon cannot be used together.\n")
+	if ($script && $daemon);
+
+# set up menu codes and caches
+$is_background = 0;
+$alphabet = "abcdefghijkLmnopqrstuvwxyz";
+%store_hash = ();
+$mini_split = 250; # i.e., 10 tweets for the mini-menu (/th)
+# leaving 50 tweets for the foreground temporary menus
+$tweet_counter = 0;
+%dm_store_hash = ();
+$dm_counter = 0;
+%id_cache = ();
+%filter_next = ();
+
+# set up threading management
+$in_reply_to = 0;
+$expected_tweet_ref = undef;
+
+# interpret -script at this level
 if ($script) {
 	$noansi = $noprompt = 1;
 	$silent = ($verbose) ? 0 : 1;
 	$pause = $vcheck = $slowpost = $verify = 0;
 }
 
-die("you can't use automatic ratelimits with -noratelimit.\nuse -pause=#sec\n")
-	if ($noratelimit && $pause eq 'auto');
 
-# validate notify method
-# we can't do this in BEGIN, because it may not be instantiated yet.
+### now instantiate the TTYtter dynamic API ###
+### based off the defaults later in script. ####
 
-if (length($notifytype) && $notifytype ne '0' &&
-		$notifytype ne '1' && !$status) {
-	$notifytype="notifier_${notifytype}";
-	eval 'return &$notifytype(undef)' ||
-		die("** invalid notification framework $notifytype: $@\n");
-        # warning if someone didn't tell us what notifies they wanted.
-        warn "-- warning: you specified -notifytype, but no -notifies\n"
-                if (!$silent && !length($notifies));
+# first we need to load any extensions specified by -exts.
+if (length($exts) && $exts ne '0') {
+	$multi_module_mode = -1; # mark as loader stage
 
+	print "** attempting to load extensions\n" unless ($silent);
+	# unescape \,
+	$j=0; $xstring = "ESCAPED_STRING";
+	while($exts =~ /$xstring$j/) { $j++; }
+	$xstring .= $j;
+	$exts =~ s/\\,/$xstring/g;
+	foreach $file (split(/,/, $exts)) {
+#TODO
+# wildcards?
+		$file =~ s/$xstring/,/g;
+		print "** loading $file\n" unless ($silent);
+
+		die("** sorry, you cannot load the same extension twice.\n")
+			if ($master_store->{$file}->{'loaded'});
+
+		# prepare its working space in $store and load the module
+		$master_store->{$file} = { 'loaded' => 1 };
+		$store = \%{ $master_store->{$file} };
+		$EM_DONT_CARE = 0;
+		$EM_SCRIPT_ON = 1;
+		$EM_SCRIPT_OFF = -1;
+		$extension_mode = $EM_DONT_CARE;
+		die("** file not found: $!\n") if (! -r "$file");
+		require $file; # and die if bad
+		die("** failed to load: $@\n") if ($@);
+		die("** consistency failure: reference failure\n")
+			if (!$store->{'loaded'});
+
+		# check type of extension (interactive or non-interactive). if
+		# we are in the wrong mode, bail out.
+		if ($extension_mode) {
+			die(
+"** this extension requires -script. this may conflict with other extensions\n".
+"   you are loading, which may have their own requirements.\n")
+			if ($extension_mode == $EM_SCRIPT_ON && !$script);
+			die(
+"** this extension cannot work with -script. this may conflict with other\n".
+"   extensions you are loading, which may have their own requirements.\n")
+			if ($extension_mode == $EM_SCRIPT_OFF && $script);
+		}
+
+		# pick off all the subroutine references it makes for storage
+		# in an array to iterate and chain over later.
+
+		# these methods are multi-module safe
+		foreach $arry (qw(
+			handle exception tweettype conclude dmhandle dmconclude
+			heartbeat precommand prepost postpost addaction
+			listhandle userhandle shutdown)) {
+			if (defined($$arry)) {
+				$aarry = "m_$arry";
+				push(@$aarry, [ $file, $$arry ]);
+				undef $$arry;
+			}
+		}
+		# these methods are NOT multi-module safe
+		# if a extension already hooked one of
+		# these and another extension tries to hook it, fatal error.
+		foreach $arry (qw(
+			getpassword prompt main autocompletion)) {
+			if (defined($$arry)) {
+				$sarry = "l_$arry";
+				if (defined($$sarry)) {
+					die(
+"** double hook of unsafe method \"$arry\" -- you cannot use this extension\n".
+"   with the other extensions you are loading. see the documentation.\n");
+				}
+				$$sarry = $$arry;
+				undef $$arry;
+			}
+		}
+	}
+	# success! enable multi-module support in the TTYtter API and then
+	# dispatch calls through the multi-module system instead.
+	$multi_module_mode = 1; # mark as completed loader
+
+	$handle = \&multihandle;
+	$exception = \&multiexception;
+	$tweettype = \&multitweettype;
+	$conclude = \&multiconclude;
+	$dmhandle = \&multidmhandle;
+	$dmconclude = \&multidmconclude;
+	$heartbeat = \&multiheartbeat;
+	$precommand = \&multiprecommand;
+	$prepost = \&multiprepost;
+	$postpost = \&multipostpost;
+	$addaction = \&multiaddaction;
+	$shutdown = \&multishutdown;
+	$userhandle = \&multiuserhandle;
+	$listhandle = \&multilisthandle;
 } else {
-	undef $notifytype;
+	# the old API single-end-point system
+
+	$multi_module_mode = 0; # not executing multi module endpoints
+
+	$handle = \&defaulthandle;
+	$exception = \&defaultexception;
+	$tweettype = \&defaulttweettype;
+	$conclude = \&defaultconclude;
+	$dmhandle = \&defaultdmhandle;
+	$dmconclude = \&defaultdmconclude;
+	$heartbeat = \&defaultheartbeat;
+	$precommand = \&defaultprecommand;
+	$prepost = \&defaultprepost;
+	$postpost = \&defaultpostpost;
+	$addaction = \&defaultaddaction;
+	$shutdown = \&defaultshutdown;
+	$userhandle = \&defaultuserhandle;
+	$listhandle = \&defaultlisthandle;
 }
 
-# dup $stdout for benefit of various other scripts
-# after this point, die() will cause problems
+# unsafe methods use the single-end-point
+$prompt = $l_prompt || \&defaultprompt;
+$main = $l_main || \&defaultmain;
+$getpassword = $l_getpassword || \&defaultgetpassword;
+
+# $autocompletion is special:
 if ($termrl) {
-	# this is mostly for 5.005 which doesn't have three-item open()
-	eval 'open(DUPSTDOUT,">&", $stdout); return 1;' || do {
-		warn("** warning: could not dup STDOUT: $!\n");
-	};
-	warn(<<"EOF") if ($] < 5.006);
-*************************************************
-** -readline is not supported on Perls < 5.6.0 **
-** your terminal may not display correctly!!!! **
-*************************************************
-EOF
+	$termrl->Attribs()->{'completion_function'} =
+		$l_autocompletion || \&defaultautocompletion;
+}
+
+# fetch_id is based off last_id, if an extension set it
+$fetch_id = $last_id || 0;
+
+# validate the notify method the user chose, if any.
+# we can't do this in BEGIN, because it may not be instantiated yet,
+# and we have to do it after loading modules because it might be in one.
+@notifytypes = ();
+if (length($notifytype) && $notifytype ne '0' &&
+		$notifytype ne '1' && !$status) {
+	# NOT $script! scripts have a use case for notifiers!
+
+	%dupenet = ();
+	foreach $nt (split(/\s*,\s*/, $notifytype)) {
+		$fnt="notifier_${nt}";
+		(warn("** duplicate notification $nt was ignored\n"), next)
+			if ($dupenet{$fnt});
+		eval 'return &$fnt(undef)' ||
+			die("** invalid notification framework $nt: $@\n");
+		$dupenet{$fnt}=1;
+	}
+	@notifytypes = keys %dupenet;
+	$notifytype = join(',', @notifytypes);
+	# warning if someone didn't tell us what notifies they wanted.
+	warn "-- warning: you specified -notifytype, but no -notifies\n"
+		if (!$silent && !length($notifies));
+}
+
+# set up track tags
+if (length($tquery) && $tquery ne '0') {
+	my $xtquery = &tracktags_tqueryurlify($tquery);
+	die("** custom tquery is over 140 length: $xtquery\n")
+		if (length($xtquery) > 139);
+	@trackstrings = ($xtquery);
 } else {
+	&tracktags_makearray;
+}
+
+# compile filter
+exit(1) if (!&filter_compile);
+
+# compile lists
+exit(1) if (!&list_compile);
+
+# finally, compile notifies. we do this regardless of notifytype, so that
+# an extension can look at it if it wants to.
+&notify_compile;
+
+# check that we are using a sensible authtype, based on our guessed user agent
+$authtype ||= "oauth";
+die("** supported authtypes are basic, oauth and xauth only.\n")
+if ($authtype ne 'basic' && $authtype ne 'xauth' && $authtype ne 'oauth');
+if ($authtype eq 'xauth' && !$anonymous) {
+	if (!$ssl && $apibase !~ /^https/i) {
+		print $stdout
+"** xAuth requires -ssl. specifying this for you, or use -authtype=basic.\n";
+		$ssl = 1;
+	}
+}
+
+if ($termrl) {
+	$streamout = $stdout; # this is just simpler instead of dupping
+        warn(<<"EOF") if ($] < 5.006);
+***********************************************************
+** -readline may not function correctly on Perls < 5.6.0 **
+***********************************************************
+EOF
+	print $stdout "-- readline using ".$termrl->ReadLine."\n";
+} else {
+	# dup $stdout for benefit of various other scripts
 	open(DUPSTDOUT, ">&STDOUT") ||
 		warn("** warning: could not dup $stdout: $!\n");
+	binmode(DUPSTDOUT, ":utf8") unless ($seven);
+	$streamout = \*DUPSTDOUT;
 }
 if ($silent) {
 	close($stdout);
 	open($stdout, ">>/dev/null"); # KLUUUUUUUDGE
 }
-binmode(DUPSTDOUT, ":utf8") unless ($seven);
+
+# after this point, die() may cause problems
 
 # initialize our route back out so background can talk to foreground
 pipe(W, P) || die("pipe() error [or your Perl doesn't support it]: $!\n");
@@ -416,46 +601,88 @@ select(P); $|++;
 binmode(P, ":utf8") unless ($seven);
 binmode(W, ":utf8") unless ($seven);
 
-# defaults
+# default command line options
+
 $anonymous ||= 0;
 undef $user if ($anonymous);
-if ($ssl) {
-	print $stdout "-- using SSL for default URLs.\n";
-}
+print $stdout "-- using SSL for default URLs.\n" if ($ssl);
 $http_proto = ($ssl) ? 'https' : 'http';
 
-$apibase ||= "${http_proto}://twitter.com";
+$lat ||= undef;
+$long ||= undef;
+$location ||= 0;
+$linelength ||= 140;
+$oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
+# this needs to be AFTER oauthbase so that apibase can set oauthbase.
+$apibase ||= "${http_proto}://api.twitter.com/1";
+$nonewrts ||= 0;
+# special case: if we explicitly refuse backload, don't load initially.
+$backload = 30 if (!defined($backload)); # zero is valid!
+$dont_refresh_first_time = 1 if (!$backload);
+$searchhits ||= 20;
 $url ||= ($anonymous)
 	? "${apibase}/statuses/public_timeline.json"
-	: "${apibase}/statuses/friends_timeline.json";
-$rurl ||= "${apibase}/statuses/mentions.json";
-$uurl ||= "${apibase}/statuses/user_timeline";
-$wurl ||= "${apibase}/users/show";
+	: ($nonewrts)
+	?  "${apibase}/statuses/friends_timeline.json"
+	: "${apibase}/statuses/home_timeline.json";
+
+$oauthurl ||= "${oauthbase}/oauth/request_token";
+$oauthauthurl ||= "${oauthbase}/oauth/authorize";
+$oauthaccurl ||= "${oauthbase}/oauth/access_token";
+$xauthurl ||= $oauthaccurl;
+
+$credurl ||= "${apibase}/account/verify_credentials.json";
 $update ||= "${apibase}/statuses/update.json";
-$dmurl ||= "${apibase}/direct_messages.json";
-$frurl ||= "${apibase}/friendships/exists.json";
-$rlurl ||= "${apibase}/account/rate_limit_status.json";
+$rurl ||= "${apibase}/statuses/mentions.json";
+$uurl ||= "${apibase}/statuses/user_timeline.json";
 $idurl ||= "${apibase}/statuses/show";
 $delurl ||= "${apibase}/statuses/destroy";
+
+$rturl ||= "${apibase}/statuses/retweet";
+$rtsbyurl ||= "${apibase}/statuses/%I/retweeted_by.json";
+$rtsofmeurl ||= "${apibase}/statuses/retweets_of_me.json";
+
+$wurl ||= "${apibase}/users/show.json";
+
+$frurl ||= "${apibase}/friendships/exists.json";
+$followurl ||= "${apibase}/friendships/create";
+$leaveurl ||= "${apibase}/friendships/destroy";
+$blockurl ||= "${apibase}/blocks/create.json";
+$blockdelurl ||= "${apibase}/blocks/destroy.json";
+$friendsurl ||= "${apibase}/statuses/friends.json";
+$followersurl ||= "${apibase}/statuses/followers.json";
+
+$rlurl ||= "${apibase}/account/rate_limit_status.json";
+
+$dmurl ||= "${apibase}/direct_messages.json";
+$dmsenturl ||= "${apibase}/direct_messages/sent.json";
+$dmupdate ||= "${apibase}/direct_messages/new.json";
 $dmdelurl ||= "${apibase}/direct_messages/destroy";
-$myfavsurl ||= "${apibase}/favorites.json";
+$dmidurl ||= "${apibase}/direct_messages/show";
+
 $favsurl ||= "${apibase}/favorites";
+$myfavsurl ||= "${apibase}/favorites.json";
 $favurl ||= "${apibase}/favorites/create";
 $favdelurl ||= "${apibase}/favorites/destroy";
-$slowpost ||= 0;
 
-#$shorturl ||= "http://bit.ly/api?url=";
-$shorturl ||= "http://is.gd/api.php?longurl=";
-# figure out the domain to stop shortener loops
-sub generate_shortdomain {
-	($shorturl =~ m#^(http://[^/]+/)#) && ($shorturldomain = $1);
-	print $stdout "-- warning: couldn't parse shortener service\n"
-		if (!length($shorturldomain));
-}
-&generate_shortdomain;
+$modifyliurl ||= "${apibase}/%U/lists/%L.json"; # also for DELETE
+$adduliurl ||= "${apibase}/%U/%L/members/create_all.json";
+$getliurl ||= "${apibase}/%U/%L/members.json"; # also for DELETE
+$getlisurl ||= "${apibase}/%U/lists.json"; # also for POST and DELETE
+$getuliurl ||= "${apibase}/%U/lists/memberships.json";
+$getufliurl ||= "${apibase}/%U/lists/subscriptions.json"; # POST and DELETE too
+$getfliurl ||= "${apibase}/%U/%L/subscribers.json"; # POST and DELETE too
+$statusliurl ||= "${apibase}/%U/lists/%L/statuses.json";
 
 $queryurl ||= "http://search.twitter.com/search.json";
-$trendurl ||= "http://search.twitter.com/trends/current.json";
+$trendurl ||= "http://api.twitter.com/1/trends/daily.json";
+
+# pick ONE!
+#$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
+$shorturl ||= "http://is.gd/api.php?longurl=";
+
+# figure out the domain to stop shortener loops
+&generate_shortdomain;
 
 $pause = (($anonymous) ? 120 : "auto") if (!defined $pause);
 	# NOT ||= ... zero is a VALID value!
@@ -465,17 +692,11 @@ $urlopen ||= 'echo %U';
 $hold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
+undef $shadow_history;
 $timestamp ||= 0;
 $noprompt ||= 0;
+$slowpost ||= 0;
 $twarg ||= undef;
-
-$colourprompt ||= "CYAN";
-$colourme ||= "YELLOW";
-$colourdm ||= "GREEN";
-$colourreply ||= "RED";
-$colourwarn ||= "MAGENTA";
-$coloursearch ||= "CYAN";
-$colourdefault ||= "OFF";
 
 $verbose ||= $superverbose;
 $dmpause = 4 if (!defined $dmpause); # NOT ||= ... zero is a VALID value!
@@ -484,10 +705,28 @@ $dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
-$whoami = (split(/\:/, $user, 2))[0] unless ($anonymous);
+
+# synch overrides these options.
+if ($synch) {
+	$pause = 0;
+	$dmpause = ($dmpause) ? 1 : 0;
+}
 
 $dmcount = $dmpause;
 $lastshort = undef;
+
+# ANSI sequences
+$colourprompt ||= "CYAN";
+$colourme ||= "YELLOW";
+$colourdm ||= "GREEN";
+$colourreply ||= "RED";
+$colourwarn ||= "MAGENTA";
+$coloursearch ||= "CYAN";
+$colourlist ||= "OFF";
+$colourdefault ||= "OFF";
+$ESC = pack("C", 27);
+$BEL = pack("C", 7);
+&generate_ansi;
 
 # to force unambiguous bareword interpretation
 $true = 'true';
@@ -497,284 +736,9 @@ sub false { return 'false'; }
 $null = undef;
 sub null { return undef; }
 
-# ANSI sequences
-$ESC = pack("C", 27);
-$BEL = pack("C", 7);
-sub generate_ansi {
-	my $k;
-
-	$BLUE = ($ansi) ? "${ESC}[34;1m" : '';
-	$RED = ($ansi) ? "${ESC}[31;1m" : '';
-	$GREEN = ($ansi) ? "${ESC}[32;1m" : '';
-	$YELLOW = ($ansi) ? "${ESC}[33m" : '';
-	$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
-	$CYAN = ($ansi) ? "${ESC}[36m" : '';
-
-	$EM = ($ansi) ? "${ESC}[1m" : '';
-	$UNDER = ($ansi) ? "${ESC}[4m" : '';
-	$OFF = ($ansi) ? "${ESC}[0m" : '';
-
-	foreach $k (qw(prompt me dm reply warn search default)) {
-		${"colour$k"} = uc(${"colour$k"});
-		if (!defined($${"colour$k"})) {
-			print $stdout
-		"-- warning: bogus colour '".${"colour$k"}."'\n";
-		} else {
-			eval("\$CC$k = \$".${"colour$k"});
-		}
-	}
-}
-&generate_ansi;
-
-# default exposed methods
-# don't change these here. instead, use -lib=yourlibrary.pl and set them there.
-# note that these are all anonymous subroutine references.
-# anything you don't define is overwritten by the defaults.
-# it's better'n'superclasses.
-
-sub defaultexception {
-	shift;
-	print $stdout "${MAGENTA}@_${OFF}";
-	$laststatus = 1;
-}
-$exception ||= \&defaultexception;
-sub defaulthandle {
-	my $tweet_ref = shift;
-	my $class = shift;
-	my $dclass = ($verbose) ? "{$class,$tweet_ref->{'id'}} " :  '';
-	my $menu_select = $tweet_ref->{'menu_select'};
-	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
-	my $tweet = &descape($tweet_ref->{'text'});
-	my $stweet = &standardtweet($tweet_ref);
-
-	$menu_select = (length($menu_select) && !$script)
-		? "${menu_select}> " : '';
-	if ($silent) {
-		print DUPSTDOUT $menu_select . $dclass . $stweet;
-	} else {
-		print $stdout $menu_select . $dclass . $stweet;
-	}
-	unless (length($class) || !$last_id) { # interactive? first time?
-		$class = &$tweettype($tweet_ref, $sn, $tweet);
-		&$notifytype($class, &standardtweet($tweet_ref, 1), $tweet_ref)
-			if ($notify_list{$class} && $notifytype);
-	}
-	return 1;
-}
-
-sub wraptime {
-	my $time = shift;
-	my $ts = $time;
-	if ($mtimestamp) {
-		# avoid precompiling these in case .pm not present
-		eval '$time = str2time($time);' ||
-			die("str2time failed: $time $@ $!\n");
-		eval '$ts = time2str($timestamp, $time);' ||
-			die("time2str failed: $timestamp $time $@\n");
-	}
-	return ($time, $ts);
-}
-
-sub standardtweet {
-	my $ref = shift;
-	my $nocolour = shift;
-
-	my $sn = &descape($ref->{'user'}->{'screen_name'});
-	my $tweet = &descape($ref->{'text'});
-	my $colour;
-	my $g;
-	my $h;
-
-	# wordwrap really ruins our day here, thanks a lot, @augmentedfourth
-	# have to insinuate the ansi sequences after the string is wordwrapped
-
-	$g = $colour = ${'CC' . &$tweettype($ref, $sn, $tweet) }
-		unless ($nocolour);
-	$colour = $OFF . $colour
-		unless ($nocolour);
-
-	$sn = "\@$sn" if ($ref->{'in_reply_to_status_id'} > 0);
-	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
-	$tweet = "<$sn> $tweet";
-	# br3nda's modified timestamp patch
-	if ($timestamp) {
-		my ($time, $ts) = &wraptime($ref->{'created_at'});
-		$tweet = "[$ts] $tweet";
-	}
-	
-	# pull it all together
-	$tweet = &wwrap($tweet, ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0)
-		if ($wrap); # remember to account for prompt length on #1
-	$tweet =~ s/^([^<]*)<([^>]+)>/${g}\1<${EM}\2${colour}>/
-		unless ($nocolour);
-	$tweet =~ s/\n*$//;
-	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
-
-	# highlight anything that we have in track
-	if(scalar(@tracktags)) { # I'm paranoid
-		foreach $h (@tracktags) {
-			$h =~ s/^"//; $h =~ s/"$//; # just in case
-$tweet =~ s/(^|[^a-zA-Z0-9])($h)([^a-zA-Z0-9]|$)/\1${EM}\2${colour}\3/ig
-			unless ($nocolour);
-		}
-	}
-
-	# smb's underline/bold patch goes on last
-	$tweet =~ s/(^|[^a-zA-Z0-9_])\@(\w+)/\1\@${UNDER}\2${colour}/g
-		unless ($nocolour);
-
-	return $tweet;
-}
-$handle ||= \&defaulthandle;
-
-#TODO
-# REMOVE FOR 1.0.0
-sub defaultchoosecolour {
-	die("defaultchoosecolour is deprecated as of 0.9.7\nDON'T USE.\n");
-}
-$choosecolour ||= \&defaultchoosecolour;
-
-sub defaulttweettype {
-	my $ref = shift;
-	my $sn = shift;
-	my $tweet = shift;
-
-	# br3nda's and smb's modified colour patch
-	unless ($anonymous) {
-		if ($sn eq $whoami) {
-			# if it's me speaking, colour the line yellow
-			return 'me';
-		} elsif ($tweet =~ /\@$whoami/i) {
-			# if I'm in the tweet, colour red
-			return 'reply';
-		} 
-	}
-	if ($ref->{'class'} eq 'search') { # anonymous allows this too
-		# if this is a search result, colour cyan
-		return 'search';
-	}
-	return 'default';
-}
-$tweettype ||= \&defaulttweettype;
-
-sub defaultconclude {
-	if ($filtered && $filter_attribs{'count'}) {
-		print $stdout "-- (filtered $filtered tweets)\n";
-		$filtered = 0;
-	}
-}
-$conclude ||= \&defaultconclude;
-
-sub defaultdmhandle {
-	my $dm_ref = shift;
-	if ($silent) {
-		print DUPSTDOUT &standarddm($dm_ref);
-	} else {
-		print $stdout &standarddm($dm_ref);
-	}
-	&$notifytype('DM', &standarddm($dm_ref, 1), $dm_ref)
-		if ($notify_list{'dm'} && $last_dm);
-	return 1;
-}
-sub standarddm {
-	my $ref = shift;
-	my $nocolour = shift;
-
-	my ($time, $ts) = &wraptime($ref->{'created_at'});
-	my $text = &descape($ref->{'text'});
-	my $g = &wwrap("[DM d$ref->{'menu_select'}][".
-		&descape($ref->{'sender'}->{'screen_name'}) .
-		"/$ts] $text", ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0);
-
-	$g =~ s/^\[DM ([^\/]+)\//${CCdm}[DM ${EM}\1${OFF}${CCdm}\//
-		unless ($nocolour);
-	$g =~ s/\n*$//;
-	$g .= ($nocolour) ? "\n" : "$OFF\n";
-	$g =~ s/(^|[^a-zA-Z0-9_])\@(\w+)/\1\@${UNDER}\2${OFF}${CCdm}/g
-		unless ($nocolour);
-	return $g;
-}
-$dmhandle ||= \&defaultdmhandle;
-
-sub defaultdmconclude { ; }
-$dmconclude ||= \&defaultdmconclude;
-
-sub defaultheartbeat { ; }
-$heartbeat ||= \&defaultheartbeat;
-
-sub defaultprecommand { return ("@_"); }
-$precommand ||= \&defaultprecommand;
-
-sub defaultprepost { return ("@_"); }
-$prepost ||= \&defaultprepost;
-
-sub defaultpostpost {
-	my $line = shift;
-	return if (!$termrl);
-
-	# populate %readline_completion if readline is on
-	while($line =~ s/^\@(\w+)\s+//) {
-		$readline_completion{'@'.$1}++;
-	}
-	if ($line =~ /^[dD]\s+(\w+)\s+/) {
-		$readline_completion{'@'.$1}++;
-	}
-}
-$postpost ||= \&defaultpostpost;
-
-sub defaultautocompletion {
-	my ($text, $line, $start) = (@_);
-	my @proband;
-	my @rlkeys;
-
-	# handle / completion
-	if ($start == 0 && $text =~ m#^/#) {
-		return grep(/^$text/i, '/history',
-			'/print', '/quit', '/bye', '/again',
-			'/wagain', '/whois', '/thump', '/dm',
-			'/refresh', '/dmagain', '/set', '/help',
-			'/reply', '/url', '/thread',
-			'/replies', '/ruler', '/exit', '/me',
-			'/verbose', '/short');
-	}
-	@rlkeys = keys(%readline_completion);
-
-	# handle @ completion. this works slightly weird because
-	# readline hands us the string WITHOUT the @, so we have to
-	# test somewhat blindly. this works even if a future readline
-	# DOES give us the word with @. also handles D, /wa, /wagain,
-	# /a, /again, etc.
-	if (($line =~ m#^(D|/wa|/wagain|/a|/again) #i) ||
-		($start == 1 && substr($line, 0, 1) eq '@') ||
-		# this code is needed to prevent inline @ from flipping out
-		($start >= 1 && substr($line, ($start-2), 2) eq ' @')) {
-		@proband = grep(/^\@$text/i, @rlkeys);
-		if (scalar(@proband)) {
-			@proband = map { s/^\@//;$_ } @proband;
-			return @proband;
-		}
-	}
-	# definites that are left over, including @ if it were included
-	if(scalar(@proband = grep(/^$text/i, @rlkeys))) {
-		return @proband;
-	}
-
-	# heuristics
-	# URL completion (this doesn't always work of course)
-	if ($text =~ m#https?://#) {
-		return (&urlshorten($text) || $text);
-	}
-
-	# "I got nothing."
-	return ();
-}
-if ($termrl) {
-	$termrl->Attribs()->{'completion_function'} =
-		($autocompletion) ? $autocompletion : \&defaultautocompletion;
-}
-
 select($stdout); $|++;
 
+# figure out what our user agent should be
 if ($lynx) {
 	if (length($lynx) > 1 && -x "/$lynx") {
 		$wend = $lynx;
@@ -804,192 +768,472 @@ if ($lynx) {
 }
 $baseagent = $wend;
 
-# this is where OAuth will live when that support is completed.
-sub defaultauthenticate {
-	my @foo;
-	my $pass;
+# whoops, no Lynx here if we are not using Basic Auth
+	die(
+"sorry, OAuth and xAuth are not currently supported with Lynx.\n".
+"you must use SSL cURL, or specify -authtype=basic.\n")
+		if ($lynx && $authtype ne 'basic' && !$anonymous);
 
-	return undef if ($anonymous);
-	@foo = split(/:/, $user, 2);
-	$whoami = $foo[0];
-	die("choose -user=username[:password], or -anonymous.\n")
-		if (!length($whoami) || $whoami eq '1');
-	$pass = $foo[1];
-	if (!length($pass)) {
-		# original idea by @jcscoobyrs, heavily modified
-		my $k;
-		my $l;
+# create and cache the logic for our selected user agent
+if ($lynx) {
+	$simple_agent = "$baseagent -nostatus -source";
 
-		$l = "no termios; password WILL";
-		if ($termios) {
-			$termios->getattr(fileno($stdin));
-			$k = $termios->getlflag;
-			$termios->setlflag($k ^ &POSIX::ECHO);
-			$termios->setattr(fileno($stdin));
-			$l = "password WILL NOT";
-		}
-		print $stdout "enter password for $whoami ($l be echoed): ";
-		chomp($pass = <$stdin>);
-		if ($termios) {
-			print $stdout "\n";
-			$termios->setlflag($k);
-			$termios->setattr(fileno($stdin));
-		}
-	}
-	die("a password must be specified.\n") if (!length($pass));
-	return ($lynx) ? ("-auth=$whoami:$pass") :
-		($curl) ? ("-u", "$whoami:$pass") : # no --basic now (ktj)
-		die("authenticating for an unknown browser: wtf\n");
-}
-$authenticate ||= \&defaultauthenticate;
+	@wend = ('-nostatus');
+	@wind = (@wend, '-source'); # GET agent
+	@wend = (@wend, '-post_data'); # POST agent
+	# we don't need to have the request signed by Lynx right now;
+	# it doesn't know how to pass custom headers. so this is simpler.
+	$stringify_args = sub {
+		my $basecom = shift;
+		my $resource = shift;
+		my $data = shift;
+		my $dont_do_auth = shift;
+		my $k = join("\n", @_);
 
-# authenticate sets $whoami, sphincter says $what
-sub update_authenticationheaders {
-#TODO
-# needs to stop asking for password all the damn time when not given
-	(@auth) = ($anonymous) ? "" : &$authenticate;
-	if ($lynx) {
-		$weld = "$baseagent -nostatus -source";
+		# if resource is an arrayref, then it's a GET with URL
+		# and args (mostly generated by &grabjson)
+		$resource = join('?', @{ $resource })
+			if (ref($resource) eq 'ARRAY');
+		die("wow, we have a bug: Lynx only works with Basic Auth\n")
+			if ($authtype ne 'basic' && !$dont_do_auth);
+		$k = "-auth=".$mytoken.':'.$mytokensecret."\n".$k
+			unless ($dont_do_auth);
+		$k .= "\n";
+		$basecom = "$basecom \"$resource\" -";
+		return ($basecom, $k, $data);
+	};
+} else {
+	$simple_agent = "$baseagent -s -m 20";
 
-		@wend = ('-nostatus');
-		@weld = (@wend, '-source');
-		@wend = (@wend, @auth);
-		@wand = (@wend, '-source');
-		@wind = (@wand);
-		@wend = (@wend, '-post_data');
-		$stringify_args = sub {
-			my $basecom = shift;
-			my $resource = shift;
-			my $data = shift;
-			my @k = join("\n", @_);
+	@wend = ('-s', '-m', '20', '-H', 'Expect:');
+	@wind = @wend;
+	$stringify_args = sub {
+		my $basecom = shift;
+		my $resource = shift;
+		my $data = shift;
+		my $dont_do_auth = shift;
+		my $p;
+		my $l = '';
 
-			$basecom = "$basecom \"$resource\" -";
-			return ($basecom, "@k", $data);
-		};
-	} else {
-		$weld = "$baseagent -s -m 13 -f";
-
-		@wend = ('-s', '-m', '13', '-f');
-		@weld = @wend;
-		@wend = (@wend, @auth);
-		@wand = (@wend, '-f');
-		@wind = @wend;
-		$stringify_args = sub {
-			my $basecom = shift;
-			my $resource = shift;
-			my $data = shift;
-			my $p;
-			my $l = '';
-
-			foreach $p (@_) {
-				if ($p =~ /^-/) {
-					$l .= "\n" if (length($l));
-					$l .= "$p ";
-					next;
-				}
-				$l .= $p;
+		foreach $p (@_) {
+			if ($p =~ /^-/) {
+				$l .= "\n" if (length($l));
+				$l .= "$p ";
+				next;
 			}
-			$l .= "\nurl = \"$resource\"\n";
-			$l .= "data = \"$data\"\n" if length($data);
-			return ("$basecom -K -", $l, undef);
-		};
-	}
+			$l .= $p;
+		}
+		$l .= "\n";
+
+		# sign our request (Basic Auth or oAuth)
+		unless ($dont_do_auth) {
+			if ($authtype eq 'basic') {
+				$l .= "-u ".$mytoken.":".$mytokensecret."\n";
+			} else {
+				my $nonce;
+				my $timestamp;
+				my $sig;
+				my $verifier = '';
+				my $header;
+				my $ttoken = (length($mytoken) ?
+					(' oauth_token=\\"'.$mytoken.'\\",') :
+						'');
+
+				($timestamp, $nonce, $sig, $verifier) =
+					&signrequest($resource, $data);
+				$header = <<"EOF";
+-H "Authorization: OAuth oauth_nonce=\\"$nonce\\", oauth_signature_method=\\"HMAC-SHA1\\", oauth_timestamp=\\"$timestamp\\", oauth_consumer_key=\\"$oauthkey\\", oauth_signature=\\"$sig\\",${ttoken}${verifier} oauth_version=\\"1.0\\""
+EOF
+				print $stdout $header if ($superverbose);
+				$l .= $header;
+			}
+		}
+
+		# if resource is an arrayref, then it's a GET with URL
+		# and args (mostly generated by &grabjson)
+		$resource = join('?', @{ $resource })
+			if (ref($resource) eq 'ARRAY');
+		$l .= "url = \"$resource\"\n";
+		$l .= "data = \"$data\"\n" if length($data);
+		return ("$basecom -K -", $l, undef);
+	};
 }
-&update_authenticationheaders;
 
 # update check
-sub updatecheck {
-	my $vcheck_url =
-		"http://www.floodgap.com/software/ttytter/00current.txt";
-	my $vs;
-	my $tverify;
-	my $inversion;
-	my $vittles;
-	my $maj;
-	my $min;
-
-	print $stdout "-- checking version at $vcheck_url\n";
-	chomp($vs = `$weld $vcheck_url`);
-	($tverify, $inversion, $vittles) = split(/;/, $vs, 3);
-	if ($tverify ne 'ttytter') {
-		$vs = "-- warning: unable to verify version\n";
-	} else {
-		($inversion =~/^(\d+\.\d+)\.(\d+)$/) && ($maj = 0+$1,
-			$min = 0+$2);
-		if (0+$TTYtter_VERSION < $maj ||
-				(0+$TTYtter_VERSION == $maj &&
-				 $TTYtter_PATCH_VERSION < $min)) {
-			$vs =
-	"** NEWER TTYtter VERSION NOW AVAILABLE: $inversion **\n";
-		} elsif (0+$TTYtter_VERSION > $maj ||
-				(0+$TTYtter_VERSION == $maj &&
-				 $TTYtter_PATCH_VERSION > $min)) {
-			$vs = 
-	"** REMINDER: you are using a beta or unofficial release\n";
-		} else {
-			$vs =
-	"-- your version of TTYtter is up to date ($inversion)\n";
-		}
-	}
-	$vs .= "** TTYtter NOTICE: $vittles\n" if (length($vittles));
-	return $vs;
-}
 if ($vcheck && !length($status)) {
-	$vs = &updatecheck;
+	$vs = &updatecheck(0);
 } else {
 	$vs =
-	"-- no version check performed (use -vcheck to check on startup)\n"
+"-- no version check performed (use /vcheck, or -vcheck to check on startup)\n"
 	unless ($script || $status);
 }
 print $stdout $vs; # and then again when client starts up
 
-# initial login tests and command line controls
+## make sure we have all the authentication pieces we need for the
+## chosen method (authtoken handles this for Basic Auth and xAuth;
+## this is where we validate OAuth)
 
+# if we use OAuth, then don't use any Basic Auth credentials we gave
+# unless we specifically say -authtype=basic or xauth
+if ($authtype eq 'oauth' && length($user)) {
+	print "** warning: -user is ignored when -authtype=oauth (default)\n";
+	$user = undef;
+}
+$whoami = (split(/\:/, $user, 2))[0] unless ($anonymous || !length($user));
+
+# yes, this is plaintext. obfuscation would be ludicrously easy to crack,
+# and there is no way to hide them effectively or fully in a Perl script.
+# so be a good neighbour and leave this the fark alone, okay? stealing
+# credentials is mean and inconvenient to users. this is blessed by
+# arrangement with Twitter. don't be a d*ck. thanks for your cooperation.
+$oauthkey = (!length($oauthkey) || $oauthkey eq 'X') ?
+	"XtbRXaQpPdfssFwdUmeYw" : $oauthkey;
+$oauthsecret = (!length($oauthsecret) || $oauthsecret eq 'X') ?
+	"csmjfTQPE8ZZ5wWuzgPJPOBR9dyvOBEtHT5cJeVVmAA" : $oauthsecret;
+
+unless ($anonymous) {
+# if we are using Basic Auth or xAuth, ignore any user token we may have in
+# our keyfile
+if ($authtype eq 'basic' || $authtype eq 'xauth') {
+	$tokenkey = undef;
+	$tokensecret = undef;
+}
+# but if we are using OAuth, we can request one, unless we are in script
+elsif ($authtype eq 'oauth' && (!length($keyf) || $oauthwizard)) {
+	if (length($oauthkey) && length($oauthsecret) && 
+			!length($tokenkey) && !length($tokensecret)) {
+		# we have a key, we don't have the user token
+		# but we can't get that with -script
+		if ($script) {
+			print $streamout <<"EOF";
+AUTHENTICATION FAILURE
+YOU NEED TO GET AN OAuth KEY, or use -authtype=basic
+(run TTYtter without -script or -runcommand for help)
+EOF
+			exit;
+		}
+		# run the wizard, which writes a keyfile for us
+		$keyf ||= $attempted_keyf;
+		print $stdout <<"EOF";
+
++----------------------------------------------------------------------------+
+|| WELCOME TO TTYtter: Authorize TTYtter by signing into Twitter with OAuth ||
++----------------------------------------------------------------------------+
+Looks like you're starting TTYtter for the first time, and/or creating a
+keyfile. Welcome to the most user-hostile, highly obfuscated, spaghetti code
+infested and obscenely obscure Twitter client that's out there. You'll love it.
+
+TTYtter generates a keyfile that contains credentials for you, including your
+access tokens. This needs to be done JUST ONCE. You can take this keyfile with
+you to other systems. If you revoke TTYtter's access, you must remove the
+keyfile and start again with a new token. You need to do this once per account
+you use with TTYtter; only one account token can be stored per keyfile. If you
+have multiple accounts, use -keyf=... to specify different keyfiles. KEEP THESE
+FILES SECRET.
+
+** This wizard will overwrite $keyf
+Press RETURN/ENTER to continue or CTRL-C NOW! to abort.
+EOF
+		$j = <STDIN>;
+		print $stdout "\nRequest from $oauthurl ...";
+		($tokenkey, $tokensecret) = &tryhardfortoken($oauthurl,
+			"oauth_callback=oob");
+		$mytoken = $tokenkey;
+		$mytokensecret = $tokensecret; # needs to be in both places
+		# kludge in case user does not specify SSL and this is
+		# Twitter: we know Twitter supports SSL
+		($oauthauthurl =~ /twitter/) &&
+			($oauthauthurl =~ s/^http:/https:/);
+		print $stdout <<"EOF";
+
+1. Visit, in your browser, ALL ON ONE LINE,
+
+${oauthauthurl}?oauth_token=$mytoken
+
+2. If you are not already signed in, fill in your username and password.
+
+3. Verify that TTYtter is the requesting application, and that its permissions
+are as you expect (read your timeline, see who you follow and follow new
+people, update your profile, post tweets on your behalf and access your
+direct messages). IF THIS IS NOT CORRECT, PRESS CTRL-C NOW!
+
+4. Click Authorize app.
+
+5. A PIN will appear. Enter it below.
+
+EOF
+		$j = '';
+		while(!(0+$j)) {
+			print $stdout "Enter PIN> ";
+			chomp($j = <STDIN>);
+		}
+		print $stdout "\nRequest from $oauthaccurl ...";
+		($tokenkey, $tokensecret) = &tryhardfortoken($oauthaccurl,
+			"oauth_verifier=$j");
+
+		$oauthkey = "X";
+		$oauthsecret = "X";
+		open(W, ">$keyf") ||
+			die("Failed to write keyfile $keyf: $!\n");
+		print W <<"EOF";
+ck=${oauthkey}&cs=${oauthsecret}&at=${tokenkey}&ats=${tokensecret}
+EOF
+		close(W);
+		chmod(0600, $keyf) || print $stdout
+		"Warning: could not change permissions on $keyf : $!\n";
+		print $stdout <<"EOF";
+Written keyfile $keyf
+
+Now, restart TTYtter to use this keyfile.
+(To choose between multiple keyfiles other than the default .ttytterkey,
+ tell TTYtter where the key is using -keyf=... .)
+
+EOF
+		exit;
+	}
+	# if we get three of the four, this must have been command line
+	if (length($oauthkey) && length($oauthsecret) && 
+			(!length($tokenkey) || !length($tokensecret))) {
+		my $error = undef;
+		my $k;
+		foreach $k (qw(oauthkey oauthsecret tokenkey tokensecret)) {
+			$error .= "** you need to specify -$k\n"
+				if (!length($$k));
+		}
+		if (length($error)) {
+			print $streamout <<"EOF";
+
+you are missing portions of the OAuth sequence. either create a keyfile
+and point to it with -keyf=... or add these missing pieces:
+$error
+then restart TTYtter, or use -authtype=basic, or =xauth for supported keys.
+EOF
+			exit;
+		}
+	}
+} elsif ($retoke && length($keyf)) {
+	# start the "re-toke" wizard to convert DM-less cloned app keys.
+	# dup STDIN for systems that can only "close" it once
+	open(STDIN2, "<&STDIN") || die("couldn't dup STDIN: $!\n");
+	print $stdout <<"EOF";
+
++-------------------------------------------------------------------------+
+|| The Re-Toke Wizard: Generate a new TTYtter keyfile for your app/token ||
++-------------------------------------------------------------------------+
+Twitter is requiring tokens to now have specific permissions to READ
+direct messages. This will be enforced by 1 July 2011. If you find you are
+unable to READ direct messages, you will need this wizard. DO NOT use this
+wizard if you are NOT using a cloned app key (1.2 and on) -- use -oauthwizard.
+
+This wizard will create a new keyfile for you from your app/user keys/tokens.
+You do NOT need this wizard if you are using TTYtter for a purpose that does
+not require direct message access. For example, if TTYtter is acting as
+your command line posting agent, or you are only using it to read your
+timeline, you do NOT need a new token. You also do not need a new token to
+SEND a direct message, only to READ ones this account has received.
+
+You SHOULD NOT need this wizard if your app key was cloned after 1 June 2011.
+However, you can still use it if you experience this specific issue with DMs,
+or need to rebuild your keyfile for any other reason.
+
+** This wizard will overwrite the key at $keyf
+** To change this, restart TTYtter with -retoke -keyf=/path/to/keyfile
+Press RETURN/ENTER to continue, or CTRL-C NOW! to abort.
+EOF
+
+	$j = <STDIN>;
+	print $stdout <<"EOF";
+
+First: let's get your API key, consumer key and consumer secret.
+Start your browser.
+1. Log into https://twitter.com/ with your desired account.
+2. Go to this URL. You must be logged into Twitter FIRST!
+
+https://dev.twitter.com/apps
+
+3. Click the TTYtter cloned app key you need to regenerate or upgrade.
+4. Click Edit Application Settings.
+5. Make sure Read, Write & Private Message is selected, and click the
+   "Save application" button.
+6. Select All (CTRL/Command-A) on the next screen, copy (CTRL/Command-C) it,
+   and paste (CTRL/Command-V) it into this window. (You can also cut and
+   paste a smaller section if I can't understand your browser's layout.)
+7. Press ENTER/RETURN and CTRL-D when you have pasted the window contents.
+EOF
+
+	$q = $/;
+	PASTE1LOOP: for(;;) {
+		print $stdout <<"EOF";
+
+-- Press ENTER and CTRL-D AFTER you have pasted the window contents! ---------
+Go ahead:
+EOF
+		undef $/;
+		$j = <STDIN2>;
+		print $stdout <<"EOF";
+
+-- EOF -----------------------------------------------------------------------
+Processing ...
+
+EOF
+		$j =~ s/[\r\n]/ /sg;
+
+		# process this. as a checksum, API key should == consumer key.
+		$ck = '';
+		$cs = '';
+		($j =~ /Consumer key\s+([-a-zA-Z0-9_]{10,})\s+/) && ($ck = $1);
+		($j =~ /Consumer secret\s+([-a-zA-Z0-9_]{10,})\s+/) &&
+			($cs = $1);
+
+		if (!length($ck) || !length($cs)) {
+			# escape hatch
+			print $stdout <<"EOF";
+Something's wrong: I could not find your consumer key or consumer
+secret in that text. If this was a misfired paste, please restart the wizard.
+Otherwise, bug me at \@ttytter or ckaiser\@floodgap.com. Please don't send
+keys or secrets to either address.
+
+EOF
+			exit;
+		}
+		last PASTE1LOOP;
+	}
+	# this part is similar to the retoke.
+	$oauthkey = $ck;
+	$oauthsecret = $cs;
+	print $stdout "\nI'm testing this key to see if it works.\n";
+	print $stdout "Request from $oauthurl ...";
+	($tokenkey, $tokensecret) = &tryhardfortoken($oauthurl,
+		"oauth_callback=oob");
+	$mytoken = $tokenkey;
+	$mytokensecret = $tokensecret;
+	# kludge in case user does not specify SSL and this is
+	# Twitter: we know Twitter supports SSL
+	($oauthauthurl =~ /twitter/) && ($oauthauthurl =~ s/^http:/https:/);
+	$/ = $q;
+	print $stdout <<"EOF";
+
+Okay, your consumer key is ==> $ck
+ and your consumer secret  ==> $cs
+
+IF THIS IS WRONG, PRESS CTRL-C NOW AND RESTART THE WIZARD!
+
+Now we will verify your Imperial battle station is fully operational by
+signing in with OAuth.
+
+1. Visit, in your browser, ALL ON ONE LINE (you should still be logged in),
+
+${oauthauthurl}?oauth_token=$mytoken
+
+2. Verify that your app is the requesting application, and that its permissions
+are as you expect (read your timeline, see who you follow and follow new
+people, update your profile, post tweets on your behalf and access your
+direct messages). IF THIS IS NOT CORRECT, PRESS CTRL-C NOW!
+
+3. Click Authorize app.
+
+4. A PIN will appear. Enter it below.
+
+EOF
+	print $stdout "Enter PIN> ";
+	chomp($j = <STDIN>);
+	print $stdout "\nRequest from $oauthaccurl ...";
+	($at, $ats) = &tryhardfortoken($oauthaccurl, "oauth_verifier=$j");
+
+	print $stdout <<"EOF";
+
+Consumer key =========> $ck
+Consumer secret ======> $cs
+Access token =========> $at
+Access token secret ==> $ats
+
+EOF
+	open(W, ">$keyf") || (print $stdout ("Unable to write to $keyf: $!\n"),
+			exit);
+	print W "ck=$ck&cs=$cs&at=$at&ats=$ats\n";
+	close(W);
+	chmod(0600, $keyf) || print $stdout
+"Warning: could not change permissions on $keyf : $!\n";
+	print $stdout "Keys written to regenerated keyfile $keyf\n";
+	print $stdout "Now restart TTYtter.\n";	
+	exit;
+}
+
+# now, get a token (either from Basic Auth, the keyfile, OAuth, or xAuth)
+($mytoken, $mytokensecret) = &authtoken;
+} # unless anonymous
+
+# initial login tests and command line controls
+if ($statusurl) {
+	$shorstatusturl = &urlshorten($statusurl);
+	$status = ((length($status)) ? "$status " : "") . $shorstatusturl;
+}
 $phase = 0;
-#TODO
-# rework this for 1.0.0
 $didhold = $hold;
-$hold = -1 if ($hold == 1);
+$hold = -1 if ($hold == 1 && !$script);
+$credentials = '';
+$status = pack("U0C*", unpack("C*", $status))
+	unless ($seven || !length($status) || $LANG =~ /8859/); # kludgy also
+if ($status eq '-' && !$oldstatus) {
+	chomp(@status = <STDIN>);
+	$status = join("\n", @status);
+}
 for(;;) {
 	$rv = 0;
 	die(
 	"sorry, you can't tweet anonymously. use an authenticated username.\n")
 		if ($anonymous && length($status));
 	die(
-"sorry, status too long: reduce by @{[ &ulength($status)-140 ]} bytes, ".
+"sorry, status too long: reduce by @{[ length($status)-$linelength ]} chars, ".
 "or use -autosplit={word,char,cut}.\n")
-		if (&ulength($status) > 140 && !$autosplit);
-	($status, $next) = &usplit($status, ($autosplit eq 'char' ||
+		if (length($status) > $linelength && !$autosplit);
+	($status, $next) = &csplit($status, ($autosplit eq 'char' ||
 			$autosplit eq 'cut') ? 1 : 0)
 		if (!length($next));
 	if ($autosplit eq 'cut' && length($next)) {
-		print "-- warning: input autotrimmed to 140 bytes\n";
+		print "-- warning: input autotrimmed to $linelength bytes\n";
 		$next = "";
 	}
-	if (length($status) && $phase) {
+	if (!$anonymous && !length($whoami) && !length($status)) {
+		# we must be using OAuth tokens without xAuth. we'll need
+		# to get our screen name from Twitter. we DON'T need this
+		# if we're just posting with -status.
+		print "(checking credentials) "; $data =
+		$credentials = &backticks($baseagent, '/dev/null', undef,
+			$credurl, undef, $anonymous, @wind);
+		$rv = $? || &is_fail_whale($data) || &is_json_error($data);
+	}
+	if (!$rv && length($status) && $phase) {
 		print "post attempt "; $rv = &updatest($status, 0);
 	} else {
-		print "test-login "; 
-		$data = &backticks($baseagent, '/dev/null', undef,
-					$url, undef, @wind);
-		$rv = $?;
+		unless ($rv) {
+			print "test-login "; 
+			$data = &backticks($baseagent, '/dev/null', undef,
+					$url, undef, $anonymous, @wind);
+			$rv = $?;
+		}
 	}
-	if ($rv) {
-		$x = $rv >> 8;
-		print "FAILED. ($x) bad password, login or URL? server down?\n";
+	if ($rv || &is_fail_whale($data) || &is_json_error($data)) {
+		if (&is_fail_whale($data)) {
+			print "FAILED -- Fail Whale detected\n";
+		} elsif ($x = &is_json_error($data)) {
+			print "FAILED!\n*** server reports: \"$x\"\n";
+			print "check your password or configuration.\n";
+		} else {
+			$x = $rv >> 8;
+			print
+		"FAILED. ($x) bad password, login or URL? server down?\n";
+		}
 		print "access failure on: ";
 		print (($phase) ? $update : $url);
 		print "\n";
-		print "--- data received ---\n$data\n--- data received ---\n"
+		print
+	"--- data received ($hold) ---\n$data\n--- data received ($hold) ---\n"
 			if ($superverbose);
-#TODO
-# rework for 1.0:
-# 0.9: for compatibility, 1 = infinite
-# 1.0: cycle count is exact if -script, else 0.9 behaviour?
-		if (--$hold) {
+		if ($hold && --$hold) {
 			print
-			"trying again in 2 minutes, or kill process now.\n\n";
-			sleep 120;
+			"trying again in 1 minute, or kill process now.\n\n";
+			sleep 60;
 			next;
 		}
 		if ($didhold) {
@@ -1015,8 +1259,20 @@ for(;;) {
 }
 print "SUCCEEDED!\n";
 exit(0) if (length($status));
+&sigify(sub { ; }, qw(USR1));
+if (length($credentials)) {
+	print "-- processing credentials: ";
+	$my_json_ref = &parsejson($credentials);
+	$whoami = $my_json_ref->{'screen_name'};
+	if (!length($whoami)) {
+		print "FAILED!\nis your account suspended, or wrong token?\n";
+		exit;
+	}
+	print "logged in as $whoami\n";
+	$credlog = "-- you are logged in as $whoami\n";
+}
 
-# daemon mode
+#### BOT/DAEMON MODE STARTUP ####
 
 $last_rate_limit = undef;
 $rate_limit_left = undef;
@@ -1041,37 +1297,43 @@ if ($daemon) {
 		# simpler one.
 		$parent = 0;
 		$dmcount = 1 if ($dmpause); # force fetch
+		$is_background = 1;
 		for(;;) {
 			&$heartbeat;
 			&update_effpause;
-			&refresh(0);
+			if ($dont_refresh_first_time) {
+				$dont_refresh_first_time = 0;
+			} else {
+				&refresh(0);
+			}
 			if ($dmpause) {
 				if (!--$dmcount) {
 					&dmrefresh(0);
 					$dmcount = $dmpause;
 				}
 			}
-			sleep ($effpause || $pause || 60);
+			sleep ($effpause || 0+$pause || 60);
 		 }
 	}
 	die("uncaught fork() exception\n");
 }
 
-# interactive mode
+#### INTERACTIVE MODE and CONSOLE STARTUP ####
 
-print <<"EOF";
+unless ($simplestart) {
+	print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-        ${EM}TTYtter ${TTYtter_VERSION}.${TTYtter_PATCH_VERSION} (c)2010 cameron kaiser${OFF}                 @             @
+         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2011 cameron kaiser${OFF}                @             @
 EOF
-$e = <<'EOF';
+	$e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
        ${EM}http://www.floodgap.com/software/ttytter/${OFF}            ${GREEN}a==:${OFF}  ooo
                                                             ${GREEN}.++o++.${OFF} ${GREEN}..o**O${OFF}
   freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
         http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
                                                                    #+$$AB=.
-         ${EM}tweet me: http://twitter.com/ttytter${OFF}                   #;;${YELLOW}ooo${OFF};;
+         ${EM}tweet me: http://twitter.com/ttytter${OFF}                      #;;${YELLOW}ooo${OFF};;
             ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
 ######################################################           ,$B.${RED}*o***${OFF} O$,
 #                                                                a=o${RED}$*O*O*$${OFF}o=a
@@ -1080,13 +1342,29 @@ $e = <<'EOF';
 # starting background monitoring process.                           @=@ @=@
 #
 EOF
-$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
+	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
+} else {
+	print <<"EOF";
+TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2011 cameron kaiser
+all rights reserved. freeware under the floodgap free software license.
+http://www.floodgap.com/software/ffsl/
+
+tweet me: http://twitter.com/ttytter * tell me: ckaiser\@floodgap.com
+type /help for commands or /quit to quit.
+starting background monitoring process.
+
+EOF
+}
 if ($superverbose) {
 	print $stdout "-- OMGSUPERVERBOSITYSPAM enabled.\n\n";
 } else {
 	print $stdout "-- verbosity enabled.\n\n" if ($verbose);
 }
 sleep 3 unless ($silent);
+
+# these three functions are outside of the usual API assertions for clarity.
+# they represent the main loop, which by default is the interactive console.
+# the main loop can be redefined.
 
 sub defaultprompt {
 	my $rv = ($noprompt) ? "" : "TTYtter> ";
@@ -1095,30 +1373,115 @@ sub defaultprompt {
 	$wrapseq = 0;
 	print $stdout "${CCprompt}$rv${OFF}" unless ($termrl);
 }
-$prompt ||= \&defaultprompt;
-
 sub defaultaddaction { return 0; }
-$addaction ||= \&defaultaddaction;
-
-sub defaultconsole {
+sub defaultmain {
+	if (length($runcommand)) {
+		&prinput($runcommand);
+		&sync_n_quit;
+	}
 	@history = ();
+	print C "rsga---------------\n";
+	$dont_use_counter = $nocounter;
+	eval '$termrl->hook_no_counter';
 	if ($termrl) {
 		while(defined ($_ = $termrl->readline((&$prompt(1))[0]))) {
+			kill $SIGUSR1, $child; # suppress output
 			$rv = &prinput($_);
-			last if ($rv);
+			kill $SIGUSR2, $child; # resume output
+			last if ($rv < 0);
+			&sync_console unless (!$rv || !$synch);
+			if ($dont_use_counter ne $nocounter) {
+				# only if we have to -- this is expensive
+				$dont_use_counter = $nocounter;
+				eval '$termrl->hook_no_counter'
+			}
 		}
 	} else {
 		&$prompt;
 		while(<>) { #not stdin so we can read from script files
-			$rv = &prinput($_);
-			last if ($rv);
+			kill $SIGUSR1, $child; # suppress output
+			$rv = &prinput(&uforcemulti($_));
+			kill $SIGUSR2, $child; # resume output
+			last if ($rv < 0);
+			&sync_console unless (!$rv || !$synch);
 			&$prompt;
 		}
+		&sync_n_quit if ($script);
 	}
 }
 
-$console ||= \&defaultconsole;
+&sigify(\&end_me, qw(PIPE BREAK INT));
+&sigify(\&repaint, qw(USR1 PWR XCPU));
+sub sigify {
+	# this routine abstracts setting signals to a subroutine reference.
+	# check and see if we have to use POSIX.pm (Perl 5.14+) or we can
+	# still use $SIG for proper signalling. We prefer the latter, but
+	# must support the former.
+	my $subref = shift;
+	my $k;
 
+	if ($signals_use_posix) {
+		my @w;
+		my $sigaction = POSIX::SigAction->new($subref);
+		while ($k = shift) {
+			my $e = &posix_signal_of($k);
+			# some signals may not exist on all systems.
+			next if (!(0+$e));
+			POSIX::sigaction($e, $sigaction)
+				|| die("sigaction failure: $! $@\n");
+		}
+	} else {
+		while ($k = shift) { $SIG{$k} = $subref; }
+	}
+}
+sub posix_signal_of {
+	die("never call posix_signal_of if signals_use_posix is false\n")
+		if (!$signals_use_posix);
+
+	# this assumes that POSIX::SIG* returns a scalar int value.
+	# not all signals exist on all systems. this ensures zeroes are
+	# returned for locally bogus ones.
+	return 0+(eval("return POSIX::SIG".shift));
+}
+
+sub send_repaint {
+	unless ($wrapseq){
+		return;
+	}
+	$wrapseq = 0;
+	return if ($daemon);
+	if ($child) {
+		# we are the parent, call our repaint
+		&repaint;
+	} else {
+		# we are not the parent, call the parent to repaint itself
+		kill $SIGUSR1, $parent;
+	}
+}
+sub repaint {
+	# try to speed this up, since we do it a lot.
+	$wrapseq = 0;
+	return &$repaintcache if ($repaintcache) ;
+
+	# cache our repaint function (no-op or redisplay)
+	$repaintcache = sub { ; }; # no-op
+	return unless ($termrl &&
+		($termrl->Features()->{'canRepaint'} || $readlinerepaint));
+	return if ($daemon);
+	$termrl->redisplay; $repaintcache = sub { $termrl->redisplay; };
+}
+sub send_removereadline {
+	# this just stubs into its own removereadline
+	return &$removereadlinecache if ($removereadlinecache);
+
+	$removereadlinecache = sub { ; };
+	return unless ($termrl && $termrl->Features()->{'canRemoveReadline'});
+	return if ($daemon);
+	$termrl->removereadline;
+	$removereadlinecache = sub { $termrl->removereadline; };
+}
+
+# start the background process
 # this has to be last or the background process can't see the full API
 if ($child = open(C, "|-")) {
 	close(P);
@@ -1127,14 +1490,25 @@ if ($child = open(C, "|-")) {
 	close(W);
 	goto MONITOR;
 }
-$SIG{'PIPE'} = $SIG{'BREAK'} = $SIG{'INT'} = \&end_me;
+eval'$termrl->hook_background_control' if ($termrl);
 select(C); $|++; select($stdout);
 
-&$console;
+# handshake for synchronicity mode, if we want it.
+if ($synch) {
+	# we will get two replies for this.
+	print C "synm---------------\n";
+	&thump;
+	# the second will be cleared by the console
+}
+
+# start the 
+&$main;
+# loop until we quit and then we'll
+&sync_n_quit if ($script);
+# else
 exit;
 
-# for future expansion: this is the declared API callable method
-sub ucommand { &prinput(@_); }
+#### command processor ####
 
 sub prinput {
 	my $i;
@@ -1143,7 +1517,7 @@ sub prinput {
 	# validate this string if we are in UTF-8 mode
 	unless ($seven) {
 		$probe = $_;
-		eval 'utf8::encode($probe);';
+		&$utf8_encode($probe);
 		die("utf8 doesn't work right in this perl. run with -seven.\n")
 			if (&ulength($probe) < length($_));
 			# should be at least as big
@@ -1170,16 +1544,16 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	}
 
 	if (/^$/) {
-		return 0;
+		return 1;
 	}
 
 	if (!$slowpost && !$verify && # we assume you know what you're doing!
 		($_ eq 'h' || $_ eq 'help' || $_ eq 'quit' || $_ eq 'q' ||
-			/^TTYtter>/ ||
-			$_ eq 'exit')) {
+			/^TTYtter>/ || $_ eq 'ls' || $_ eq '?' ||
+			m#^help /# || $_ eq 'exit')) {
 		
 		&add_history($_);
-		unless ($_ eq 'exit' || /^TTYtter>/) {
+		unless ($_ eq 'exit' || /^TTYtter>/ || $_ eq 'ls') {
 			print $stdout "*** did you mean /$_ ?\n";
 			print $stdout
 				"*** to send this as a command, type /%%\n";
@@ -1206,19 +1580,21 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		return 0;
 	}
 
-	# handle history substitution (including /%%, %%--, etc.)
+	# handle history substitution (including /%%, %%--, %%*, etc.)
 	$i = 0; # flag
 
-	if (/^\%(\%|-\d+)(--|-\d+)?/) {
-		($i, $proband, $r, $s) = &sub_helper($1, $2);
+	if (/^\%(\%|-\d+)(--|-\d+|\*)?/) {
+		($i, $proband, $r, $s) = &sub_helper($1, $2, $_);
 		return 0 if (!$i);
 
+		$s = quotemeta($s);
 		s/^\%${r}${s}/$proband/;
 	}
-	if (/[^\\]\%(\%|-\d+)(--|-\d+)?$/) {
-		($i, $proband, $r, $s) = &sub_helper($1, $2);
+	if (/[^\\]\%(\%|-\d+)(--|-\d+|\*)?$/) {
+		($i, $proband, $r, $s) = &sub_helper($1, $2, $_);
 		return 0 if (!$i);
 
+		$s = quotemeta($s);
 		s/\%${r}${s}$/$proband/;
 	}
 	# handle variables second, in case they got in history somehow ...
@@ -1230,7 +1606,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	if ($i) {
 		print $stdout "(expanded to \"$_\")\n" ;
-		$in_reply_to = $expected_tweet_ref->{'id'} || 0
+		$in_reply_to = $expected_tweet_ref->{'id_str'} || 0
 			if (defined $expected_tweet_ref &&
 				ref($expected_tweet_ref) eq 'HASH');
 	} else {
@@ -1240,59 +1616,109 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	return 0 unless length; # actually possible to happen
 				# with control char filters and history.
 
+	&add_history($_);
+	$shadow_history = $_;
+
 	# handle history display
 	if ($_ eq '/history' || $_ eq '/h') {
-		@history = (($_, @history)[0..&min(scalar(@history),
-			$maxhist)]) if ($termrl); # this is fricking gross.
 		for ($i = scalar(@history); $i >= 1; $i--) {
 			print $stdout "\t$i\t$history[($i-1)]\n";
 		}
 		return 0;
 	}	
 
-	&add_history($_);
-
 	my $slash_first = ($_ =~ m#^/#);
 
 	return -1 if ($_ eq '/quit' || $_ eq '/q' || $_ eq '/bye' ||
 			$_ eq '/exit');
 
-	return 0 if (&$addaction($_));
+	return 0 if (scalar(&$addaction($_)));
 
 	# add commands here
 
-#TODO
-# expand into a DMdumper sometime
-	if (m#^/zipet (...)#) {
-		$k = &get_dm($1);
-		warn "$k->{'sender'}->{'screen_name'} said $k->{'text'}\n";
-		return 0;
-	}
-
-	if (m#^/du(mp)? ([a-zA-Z][0-9])$#) {
+	if (m#^/du(mp)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
 		my $tweet = &get_tweet($code);
 		my $k;
 		my $sn;
 		my $id;
+		my @superfields = (
+			[ "user", "screen_name" ], # must always be first
+			[ "retweeted_status", "id_str" ],
+			[ "user", "geo_enabled" ],
+			[ "tag", "type" ],
+			[ "tag", "payload" ],
+		);
+		my $superfield;
 
 		if (!defined($tweet)) {
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		print $stdout "user->screen_name       " .
-			($sn = &descape($tweet->{'user'}->{'screen_name'}))
-			 . "\n";
+	
+		foreach $superfield (@superfields) {
+			my $sfn = join('->', @{ $superfield });
+			my $sfk = "{'" . join("'}->{'", @{ $superfield }) .
+				"'}";
+			my $sfv;
+			eval "\$sfv = &descape(\$tweet->$sfk);";
+			print $stdout
+				substr("$sfn                          ", 0, 25).
+				" $sfv\n";
+			$sn = $sfv if (!length($sn) && length($sfv));
+		}
+		# geo is special
+		print $stdout "geo->coordinates          (" .
+			join(', ', @{ $tweet->{'geo'}->{'coordinates'} })
+			. ")\n";
 		foreach $k (sort keys %{ $tweet }) {
 			next if (ref($tweet->{$k}));
 			print $stdout
-				substr("$k                        ", 0, 23) .
+				substr("$k                          ", 0, 25) .
 					" " . &descape($tweet->{$k}) . "\n";
 		}
 		# include a URL to the tweet per @augmentedfourth
-		$urlshort = "http://twitter.com/$sn/statuses/$tweet->{'id'}";
+		$urlshort =
+		"${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
 		print $stdout
 			"-- %URL% is now $urlshort (/short to shorten)\n";
+		return 0;
+	}
+
+	# should we go get the DM from the server? maybe in the future.
+	if (m#^/du(mp)? ([dD][a-zA-Z][0-9])$#) {
+		my $code = lc($2);
+		my $dm = &get_dm($code);
+		my $k;
+		my $sn;
+		my $id;
+		my @superfields = (
+			[ "sender", "screen_name" ], # must always be first
+		);
+
+		if (!defined($dm)) {
+			print $stdout "-- no such DM (yet?): $code\n";
+			return 0;
+		}
+	
+		foreach $superfield (@superfields) {
+			my $sfn = join('->', @{ $superfield });
+			my $sfk = "{'" . join("'}->{'", @{ $superfield }) .
+				"'}";
+			my $sfv;
+			eval "\$sfv = &descape(\$dm->$sfk);";
+			print $stdout
+				substr("$sfn                          ", 0, 25).
+				" $sfv\n";
+			$sn = $sfv if (!length($sn) && length($sfv));
+		}
+
+		foreach $k (sort keys %{ $dm }) {
+			next if (ref($dm->{$k}));
+			print $stdout
+				substr("$k                          ", 0, 25) .
+					" " . &descape($dm->{$k}) . "\n";
+		}
 		return 0;
 	}
 
@@ -1305,7 +1731,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	# version check
 	if (m#^/v(ersion)?check$# || m#^/u(pdate)?check$#) {
-		print $stdout &updatecheck;
+		print $stdout &updatecheck(1);
 		return 0;
 	}
 
@@ -1315,9 +1741,11 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		print $stdout "*** assuming you meant %URL%: $_\n";
 		# and fall through to ...
 	}
-	if (m#^/sh(ort)? (https?://[^ ]+)#) {
-		print $stdout
-"*** shortened to: @{[ (&urlshorten($2) || 'FAILED -- %% to retry') ]}\n";
+	if (m#^/sh(ort)? (https?|gopher)(://[^ ]+)#) {
+		my $url = $2 . $3;
+		my $answer = (&urlshorten($url) || 'FAILED -- %% to retry');
+		print $stdout "*** shortened to: ";
+		print $streamout ($answer . "\n");
 		return 0;
 	}
 
@@ -1326,25 +1754,29 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		$_ = '/print rate_limit_rate';
 		# and fall through to ...
 	}
-	if (/^\/p(rint)? ?([^ ]*)/) {
-		$key = $2;
-		if (!length($key)) {
-			foreach $key (sort keys %opts_can_set) {
-				print $stdout "*** $key => $$key\n"
-					if (!$opts_secret{$key});
-			}
-		} elsif ($valid{$key}) {
+
+	if ($_ eq '/p' || $_ eq '/print') {
+		foreach $key (sort keys %opts_can_set) {
+			print $stdout "*** $key => $$key\n"
+				if (!$opts_secret{$key});
+		}
+		return 0;
+	}
+	if (/^\/p(rint)?\s+([^ ]+)/) {
+		my $key = $2;
+		if ($valid{$key} ||
+				$key eq 'effpause' ||
+				$key eq 'rate_limit_rate' ||
+				$key eq 'rate_limit_left') {
+			my $value = &getvariable($key);
 			print $stdout "*** ";
 			print $stdout "(read-only value) "
 				if (!$opts_can_set{$key});
-			print $stdout "$key => $$key\n";
-		} elsif ($key eq 'effpause' ||
-				$key eq 'rate_limit_rate' ||
-				$key eq 'rate_limit_left') {
-			print $stdout "*** (requesting read-only value)\n";
-			print C (substr("?$key                    ", 0, 19)
-					. "\n");
-			sleep 1;
+			print $stdout "$key => $value\n";
+
+		# I don't see a need for these in &getvariable, so they are
+		# not currently supported. whine if you disagree.
+
 		} elsif ($key eq 'tabcomp') {
 			if ($termrl) {
 				&generate_otabcomp;
@@ -1380,23 +1812,20 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	# search api integration (originally based on @kellyterryjones',
 	# @vielmetti's and @br3nda's patches)
-	if (/^\/se(arch)? (.+)\s*$/) {
-		my $kw = $2;
+	if (/^\/se(arch)?\s+(\+\d+\s+)?(.+)\s*$/) {
+		my $countmaybe = $2;
+		my $kw = $3;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		$countmaybe ||= $searchhits;
 		$kw =~ s/([^ a-z0-9A-Z_])/&uhex($1)/eg;
 		$kw =~ s/\s+/+/g;
 		$kw = "q=$kw" if ($kw !~ /^q=/);
-		$kw .= "&rpp=20";
+		$kw .= "&rpp=$countmaybe";
 
 		my $r = &grabjson("$queryurl?$kw", 0, 1);
 		if (defined($r) && ref($r) eq 'ARRAY' && scalar(@{ $r })) {
-			my ($crap, $art) = &tdisplay($r, 'search');
-			unless ($timestamp) {
-				my ($time, $ts1) = &wraptime(
-		$r->[(&min($print_max,scalar(@{ $r }))-1)]->{'created_at'});
-				my ($time, $ts2) =
-					&wraptime($art->{'created_at'});
-			print $stdout "-- results cover $ts1 thru $ts2\n";
-			}
+			&dt_tdisplay($r, 'search');
 		} else {
 			print $stdout "-- sorry, no results were found.\n";
 		}
@@ -1406,8 +1835,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	if ($_ eq '/notrack') { # special case
 		print $stdout "*** all tracking keywords cancelled\n";
 		$track = '';
-		&tracktags_makearray;
-		&synckey('track', '');
+		&setvariable('track', $track, 1);
 		return 0;
 	}
 	if (s/^\/troff\s+// && s/\s*// && length) {
@@ -1453,8 +1881,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		}
 		print $stdout "*** ok, filtered @{[ keys(%w) ]}\n";
 		$track = join(' ', @ptags);
-		&tracktags_makearray;
-		&synckey('track', $track);
+		&setvariable('track', $track, 1);
 		return 0;
 	}
 	if ($_ eq '/tre' || $_ eq '/trends') {
@@ -1468,13 +1895,19 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 			# this is moderate paranoia
-			foreach $i (keys %{ $t }) {
+			foreach $i (sort { $b cmp $a } keys %{ $t }) {
 				foreach $j (@{ $t->{$i} }) {		
 					my $k = &descape($j->{'query'});
-					print $stdout "/search $k\n";
+					my $l = ($k =~ /\sOR\s/) ? $k :
+						($k =~ /^"/) ? $k :
+						('"' . $k . '"');
+					print $stdout "/search $l\n";
 					$k =~ s/\sOR\s/ /g;
+					$k = '"' . $k . '"' if ($k =~ /\s/
+						&& $k !~ /^"/);
 					print $stdout "/tron $k\n";
 				}
+				last; # emulate old trends/current behaviour
 			}
 			print $stdout "${EM}<<< TRENDING TOPICS >>>${OFF}\n";
 		} else {
@@ -1495,66 +1928,170 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		# and fall through to set
 	}
 
-	# setter for internal value settings
-	if (/^\/s(et)? ([^ ]+) (.+)\s*$/) {
-		$key = $2;
-		$value = $3;
-		if ($key eq 'tquery' && $value eq '0') { # undo tqueries
-			$key = 'track';
-			$value = $track; # falls thru to sync
-			&tracktags_makearray;
+	# /listoff
+	if (s/^\/list?off\s+// && s/\s*$// && length) {
+		if (/,/ || /\s+/) {
+			print $stdout "-- one list at a time please\n";
+			return 0;
 		}
-		if ($opts_can_set{$key}) {
-			if (length($value) > 1023) {
-				# can't transmit this in a packet
-				print $stdout "*** value too long\n";
-			} elsif ($opts_boolean{$key} && $value ne '0' &&
-					$value ne '1') {
-				print $stdout "*** 0|1 only (boolean): $key\n";
-			} elsif ($opts_urls{$key} &&
-		$value !~ m#^(http|https|gopher)://#) {
-				print $stdout "*** must be valid URL: $key\n";
-			} else {
-				KEYAGAIN: $$key = $value;
-				print $stdout "*** changed: $key => $$key\n";
-
-				# handle special values
-				&generate_ansi if ($key eq 'ansi' ||
-					$key =~ /^colour/);
-				&generate_shortdomain if ($key eq 'shorturl');
-				&tracktags_makearray if ($key eq 'track');
-				&filter_compile if ($key eq 'filter');
-				&notify_compile if ($key eq 'notifies');
-
-				# transmit to background process sync-ed values
-				if ($opts_sync{$key}) {
-					&synckey($key, $value);
-				}
-				if ($key eq 'superverbose') {
-					if ($value eq '0') {
-						$key = 'verbose';
-						$value = $supreturnto;
-						goto KEYAGAIN;
-					}
-					$supreturnto = $verbose;
-				}
-			}
-		# virtual keys
-		} elsif ($key eq 'tquery') {
-			$value = &tracktags_tqueryurlify($value);
-			if (length($value) > 139) {
-				print $stdout
-			"*** custom query is too long (encoded: $value)\n";
-			} else {
-				&synckey($key, $value);
-			}
-		} elsif ($valid{$key}) {
+		if (!scalar(@listlist)) {
 			print $stdout
-			"*** read-only, must change on command line: $key\n";
+	"-- ok! that was easy! (you don't have any lists in your timeline)\n";
+			return 0;
+		}
+		my $w;
+		my $newlists = '';
+		my $didfilter = 0;
+		foreach $w (@listlist) {
+			my $x = join('/', @{ $w });
+			if ($x eq $_ || "$whoami$_" eq $x ||
+					"$whoami/$_" eq $x) {
+				print $stdout "*** ok, filtered $x\n";
+				$didfilter = 1;
+			} else {
+				$newlists .= (length($newlists)) ? ",$x"
+					: $x;
+			}
+		}
+		if ($didfilter) {
+			&setvariable('lists', $newlists, 1);
 		} else {
-			print $stdout
-			"*** not a valid option or setting: $key\n";
+			print $stdout "*** hmm, no such list? current value:\n";
+			print $stdout "*** lists => ",
+				&getvariable('lists'), "\n";
 		}
+		return 0;
+	}
+
+	# /liston
+	if (s/^\/list?on\s+// && s/\s*$// && length) {
+		if (/,/ || /\s+/) {
+			print $stdout "-- one list at a time please\n";
+			return 0;
+		}
+		my $uname;
+		my $lname;
+		if (m#/#) {
+			($uname, $lname) = split(m#/#, $_, 2);
+		} else {
+			$lname = $_;
+			$uname = '';
+		}
+		if (!length($uname) && $anonymous) {
+			print $stdout
+"-- you must specify a username for a list when anonymous.\n";
+			return 0;
+		}
+		$uname ||= $whoami;
+
+		# check the list validity
+		my $my_json_ref =
+		&grabjson(&liurltourl($statusliurl, $lname, $uname),
+			0, 0, 0);
+		if (!$my_json_ref || ref($my_json_ref) ne 'ARRAY') {
+			print $stdout
+			"*** list $uname/$lname seems bogus; not added\n";
+			return 0;
+		}
+
+		$_ = "/add lists $uname/$lname";
+		# fall through to add
+	}
+	if (s/^\/a(uto)?lists?\s+// && s/\s*$// && length) {
+		s/\s+/,/g if (!/,/);
+		print $stdout
+	"--- warning: lists aren't checked en masse; make sure they exist\n";
+		$_ = "/set lists $_";
+		# and fall through to set
+	}
+
+	# setter for internal value settings
+	# shortcut for boolean settings
+	if (/^\/s(et)? ([^ ]+)\s*$/) {
+		my $key = $2;
+		$_ = "/set $key 1"
+			if($opts_boolean{$key} && $opts_can_set{$key});
+		# fall through to three argument version
+	}
+	if (/^\/uns(et)? ([^ ]+)\s*$/) {
+		my $key = $2;
+		if ($opts_can_set{$key} && $opts_boolean{$key}) {
+			&setvariable($key, 0, 1);
+			return 0;
+		}
+		&setvariable($key, undef, 1);
+		return 0;
+	}
+	# stubs out to set variable
+	if (/^\/s(et)? ([^ ]+) (.+)\s*$/) {
+		my $key = $2;
+		my $value = $3;
+		&setvariable($key, $value, 1);
+		return 0;
+	}
+	# append to a variable (if not boolean)
+	if (/^\/ad(d)? ([^ ]+) (.+)\s*$/) {
+		my $key = $2;
+		my $value = $3;
+		if ($opts_boolean{$key}) {
+			print $stdout
+				"*** why are you appending to a boolean?\n";
+			return 0;
+		}
+		if (length(&getvariable($key))) {
+			$value = " $value" if ($opts_space_delimit{$key});
+			$value = ",$value" if ($opts_comma_delimit{$key});
+		}
+		&setvariable($key, &getvariable($key).$value, 1);
+		return 0;
+	}
+
+	# stackable settings
+	# shortcut for boolean settings (push only -- irrelevant for pad)
+	if (/^\/pu(sh)? ([^ ]+)\s*$/) {
+		my $key = $2;
+		$_ = "/push $key 1"
+			if($opts_boolean{$key} && $opts_can_set{$key});
+		# fall through to three argument version
+	}
+	# common code for set and append
+	if (/^\/(pu|push|pad|padd) ([^ ]+) (.+)\s*$/) {
+		my $comm = $1;
+		my $key = $2;
+		my $value = $3;
+		$comm = ($comm =~ /^pu/) ? "push" : "padd";
+		if ($opts_boolean{$key} && $comm eq 'padd') {
+			print $stdout
+				"*** why are you appending to a boolean?\n";
+			return 0;
+		}
+		my $old = &getvariable($key);
+		if (!defined($old) || !$opts_can_set{$key}) {
+			print $stdout
+				"*** setting is not stackable: $key\n";
+			return 0;
+		}
+		push(@{ $push_stack{$key} }, $old);
+		print $stdout "--- saved on stack for $key: $old\n";
+		if ($comm eq 'padd' && length($old)) {
+			$value = " $value" if ($opts_space_delimit{$key});
+			$value = ",$value" if ($opts_comma_delimit{$key});
+			$old .= $value;
+		} else {
+			$old = $value;
+		}
+		&setvariable($key, $old, 1);
+		return 0;
+	}
+	# we assume that if the setting is in the push stack, it's valid
+	if (/^\/pop ([^ ]+)\s*$/) {
+		my $key = $1;
+		if (!scalar(@{ $push_stack{$key} })) {
+			print $stdout
+				"*** setting is not stacked: $key\n";
+			return 0;
+		}
+		&setvariable($key, pop(@{ $push_stack{$key} }), 1);
 		return 0;
 	}
 
@@ -1588,31 +2125,25 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
                                ,+o$OO=.+aA#####Oa;.*OO$o+.
    /dm and /dmagain for DMs.   +Ba::;oaa*$Aa=aA$*aa=;::$B:
                                  ,===O@BOOOOOOOOO#@$===,
-   /replies                          o@BOOOOOOOOO#@+
-      shows replies and mentions.    o@BOB@B$B@BO#@+    
-                                     o@*.a@o a@o.$@+     
-   /quit resumes your boring life.   o@B$B@o a@A$#@+  
+   /replies                          o@BOOOOOOOOO#@+     ==================
+      shows replies and mentions.    o@BOB@B$B@BO#@+     USE + FOR A COUNT:
+                                     o@*.a@o a@o.$@+ /re +30 => last 30 replies
+   /quit resumes your boring life.   o@B$B@o a@A$#@+ ========================== 
 EOF
-		if ($termrl) {
-			$termrl->readline("PRESS RETURN/ENTER> ");
-		} else {
-			print "PRESS RETURN/ENTER> ";
-			$j = <$stdin>;
-		}
+		&linein("PRESS RETURN/ENTER>");
 		print <<"EOF";
 
 +- MORE COMMANDS -+  -=-=- USER STUFF -=-=-
 |                 |  /whois username            displays info about username
 | See the TTYtter |  /again username            views their most recent tweets
 |  home page for  |  /wagain username           combines them all
-|  complete list  |  
-|                 |  you can also FOLLOW or LEAVE a username (no slash) 
-+-----------------+  or send them a DM via D username message (no slash)
-
+|  complete list  |  /follow username           follow a username
+|                 |  /leave username            stop following a username
++-----------------+  /dm username message       send a username a DM
 +--- TWEET AND DM SELECTION -------------------------------------------------+
-| all DMs and tweets have a menu code (letter + number, d for DMs). example: |
+| all DMs and tweets have menu codes (letters + number, d for DMs). example: |
 |      a5> <ttytter> Send me Dr Pepper http://www.floodgap.com/TTYtter       |
-|      [DM da0][ttytter/Sun Jan 32 1969] I think you are cute
+|      [DM da0][ttytter/Sun Jan 32 1969] I think you are cute                |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
 |      becomes  \@ttytter I also like Dr Pepper     (and is threaded)         |
@@ -1622,18 +2153,12 @@ EOF
 |      Mac OS X users, do first: /set urlopen open %U                        |
 |      Dummy terminal users, try /set urlopen lynx -dump %U | more           |
 | /delete a5                        deletes tweet a5, if it's your tweet     |
+| /rt a5                            retweets tweet a5: RT \@tytter: Send me...|
 +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
 =====> /reply, /delete and /url work for direct message menu codes too! <=====
 EOF
-		if ($termrl) {
-			$termrl->readline("PRESS RETURN/ENTER> ");
-		} else {
-			print "PRESS RETURN/ENTER> ";
-			$j = <$stdin>;
-		}
-
+		&linein("PRESS RETURN/ENTER>");
 		print <<"EOF";
-
 
 
 
@@ -1641,11 +2166,13 @@ Use /set to turn on options or set them at runtime. There is a BIG LIST!
 
 >> EXAMPLE: WANT ANSI? /set ansi 1
                        or use the -ansi command line option.
-For readline support, UTF-8, SSL, proxies, etc., see the documentation.
+            WANT TO VERIFY YOUR TWEETS BEFORE POSTING? /set verify 1
+                       or use the -verify command line option.
+For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: http://www.floodgap.com/software/ttytter/
 
- TTYtter $TTYtter_VERSION is (c)2009 cameron kaiser + contributors.
+ TTYtter $TTYtter_VERSION is (c)2011 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
 
@@ -1653,7 +2180,6 @@ For readline support, UTF-8, SSL, proxies, etc., see the documentation.
                                     or http://twitter.com/floodgap
                send your suggestions to me at ckaiser\@floodgap.com
                                            or http://twitter.com/doctorlinguist
-
 
 
 
@@ -1669,49 +2195,64 @@ ${prompt}1...5....0....5....0....5....0....5....0....5....0....5....0....5....0.
 EOF
 		return 0;
 	}
+	if ($_ eq '/cls' || $_ eq '/clear') {
+		if ($ansi) {
+			print $stdout "${ESC}[H${ESC}[2J\n";
+		} else {
+			print $stdout ("\n" x ($ENV{'ROWS'} || 50));
+		}
+		return 0;
+	}
 	if ($_ eq '/refresh' || $_ eq '/thump' || $_ eq '/r') {
 		&thump;
 		return 0;
 	}
-	if ($_ =~ m#^/(w)?a(gain)?\s+([^\s]+)#) { # the synchronous form
-#TODO
-# add +count parameter or page number?
+	if (m#^/a(gain)?(\s+\+\d+)?$#) { # the asynchronous form
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		if ($countmaybe > 999) {
+			print $stdout "-- greedy bastard, try +fewer.\n";
+			return 0;
+		}
+		$countmaybe = sprintf("%03i", $countmaybe);
+		print $stdout "-- background request sent\n" unless ($synch);
+		
+		print C "reset${countmaybe}-----------\n";
+		&sync_semaphore;
+		return 0;
+	}
+
+	# this is for users -- list form is below
+	if ($_ =~ m#^/(w)?a(gain)?\s+(\+\d+\s+)?([^\s/]+)$#) { #synchronous form
 		my $mode = $1;
-		my $uname = $3;
+		my $uname = lc($4);
+
+		my $countmaybe = $3;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
 		
 		$uname =~ s/^\@//;
 		$readline_completion{'@'.$uname}++ if ($termrl);
-		print $stdout "-- synchronous /again command for $uname\n"
+		print $stdout
+		"-- synchronous /again command for $uname ($countmaybe)\n"
 			if ($verbose);
-		my $my_json_ref = &grabjson("$uurl/${uname}.json", 0);
-
-		if (defined($my_json_ref)
-				&& ref($my_json_ref) eq 'ARRAY'
-				&& scalar(@{ $my_json_ref })) {
-			my ($crap, $art) =
-				&tdisplay($my_json_ref, "again");
-			unless ($timestamp) {
-				my ($time, $ts1) = &wraptime(
-$my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
-				my ($time, $ts2) =
-					&wraptime($art->{'created_at'});
-			print $stdout &wwrap(
-				"-- update covers $ts1 thru $ts2\n");
-			}
-		}
-		&$conclude;
+		my $my_json_ref =
+		&grabjson("${uurl}?screen_name=${uname}&include_rts=true",
+			0, 0, $countmaybe);
+		&dt_tdisplay($my_json_ref, 'again');
 		unless ($mode eq 'w' || $mode eq 'wf') {
 			return 0;
 		} # else fallthrough
 	}
-	if ($_ =~ m#^/w(hois|a|again)?\s+([^\s]+)#) {
-		my $uname = $2;
-
+	if ($_ =~ m#^/w(hois|a|again)?\s+(\+\d+\s+)?\@?([^\s]+)#) {
+		my $uname = lc($3);
 		$uname =~ s/^\@//;
 		$readline_completion{'@'.$uname}++ if ($termrl);
 		print $stdout "-- synchronous /whois command for $uname\n"
 			if ($verbose);
-		my $my_json_ref = &grabjson("$wurl/${uname}.json", 0);
+		my $my_json_ref =
+		&grabjson("${wurl}?screen_name=${uname}", 0);
 
 		if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
 				length($my_json_ref->{'screen_name'})) {
@@ -1728,27 +2269,26 @@ m#^http://[^.]+\.(twimg\.com|twitter\.com).+/images/default_profile_\d+_normal.p
 					$exec =~ s/\%U/'$purl'/g;
 					$exec =~ s/\%N/$uname/g;
 					$exec =~ s/\%E/$fext/g;
-					print $stdout "\n($exec)\n";
+					print $stdout "\n";
+					print $stdout "($exec)\n"
+						if ($verbose);
 					system($exec);
 				}
 			}
-			my $verified =
-				($my_json_ref->{'verified'} eq 'true') ?
-				"${EM}(Verified Account)${OFF}" : '';
-			print $stdout <<"EOF"; 
-
-${CCprompt}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} ($uname) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'}) $verified
-EOF
-			print $stdout
-"\"@{[ &descape($my_json_ref->{'description'}) ]}\"\n"
-				if (length($my_json_ref->{'description'}));
+			print $stdout "\n";
+			&userline($my_json_ref, $stdout);
+			print $stdout &wwrap(
+"\"@{[ &strim(&descape($my_json_ref->{'description'})) ]}\"\n")
+			if (length(&strim($my_json_ref->{'description'})));
 			if (length($my_json_ref->{'url'})) {
 				$sturl = 
 				$urlshort = &descape($my_json_ref->{'url'});
+				$urlshort =~ s/^\s+//;
+				$urlshort =~ s/\s+$//;
 				print $stdout "${EM}URL:${OFF}\t\t$urlshort\n";
 			}
-			print $stdout
-"${EM}Location:${OFF}\t@{[ &descape($my_json_ref->{'location'}) ]}\n"
+			print $stdout &wwrap(
+"${EM}Location:${OFF}\t@{[ &descape($my_json_ref->{'location'}) ]}\n")
 				if (length($my_json_ref->{'location'}));
 			print $stdout <<"EOF";
 ${EM}Picture:${OFF}\t@{[ &descape($my_json_ref->{'profile_image_url'}) ]}
@@ -1757,39 +2297,134 @@ EOF
 			unless ($anonymous || $whoami eq $uname) {
 				my $g =
 		&grabjson("$frurl?user_a=$whoami&user_b=$uname", 0);
-				print $stdout 
-	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n"
+				print $stdout &wwrap(
+	"${EM}Do you follow${OFF} this user? ... ${EM}$g->{'literal'}${OFF}\n")
 					if (ref($g) eq 'HASH');
 				my $g =
 		&grabjson("$frurl?user_a=$uname&user_b=$whoami", 0);
-				print $stdout
-"${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n"
+				print $stdout &wwrap(
+"${EM}Does this user follow${OFF} you? ... ${EM}$g->{'literal'}${OFF}\n")
 					if (ref($g) eq 'HASH');
 				print $stdout "\n";
 			}
-			print $stdout
-	"-- %URL% is now $urlshort (/short shortens, /url opens)\n"
+			print $stdout &wwrap(
+	"-- %URL% is now $urlshort (/short shortens, /url opens)\n")
 				if (defined($sturl));
 		}
 		return 0;
 	}
 		
-	if ($_ eq '/again' || $_ eq '/a') { # the asynchronous form
-#TODO
-# add count parameter or page number?
-		print C "reset--------------\n";
+	if (m#^/(df|doesfollow)\s+\@?([^\s]+)$#) {
+		if ($anonymous) {
+			print $stdout "-- who follows anonymous anyway?\n";
+			return 0;
+		}
+		$_ = "/doesfollow $2 $whoami";
+		print $stdout "*** assuming you meant: $_\n";
+		# fall through to ...
+	}
+	if (m#^/(df|doesfollow)\s+\@?([^\s]+)\s+\@?([^\s]+)$#) {
+		my $user_a = $2;
+		my $user_b = $3;
+		if ($user_a =~ m#/# || $user_b =~ m#/#) {
+			print $stdout "--- sorry, this won't work on lists.\n";
+			return 0;
+		}
+		my $g = &grabjson(
+			"${frurl}?user_a=${user_a}&user_b=${user_b}", 0);
+		if ($g->{'ok'}) {
+			print $stdout "--- does $user_a follow ${user_b}? => ";
+			print $streamout "$g->{'literal'}\n"
+		}
 		return 0;
 	}
 
-	if (m#^/th(read)? ([a-zA-Z][0-9])$#) {
-		my $code = lc($2);
+	# this handles lists too.
+	if(s#^/(frs|friends|fos|followers)(\s+\+\d+)?\s*##) {
+		my $countmaybe = $2;
+		my $mode = $1;
+		my $arg = lc($_);
+		my $lname = '';
+		my $user = '';
+		my $what = '';
+		$arg =~ s/^@//;
+		$who = $arg;
+		($who, $lname) = split(m#/#, $arg, 2) if (m#/#);
+		if (length($lname) && !length($user) && $anonymous) {
+			print $stdout
+		"-- you must specify a username for a list when anonymous.\n";
+			return 0;
+		}
+		if (!length($lname)) {
+			$user = "&screen_name=$_" if length;
+			$what = ($mode eq 'frs' || $mode eq 'friends')
+				? "friends" : "followers";
+			$mode = ($mode eq 'frs' || $mode eq 'friends')
+				? $friendsurl : $followersurl;
+			$who = "user $who";
+		} else {
+			$who ||= $whoami;
+			$what = ($mode eq 'frs' || $mode eq 'friends')
+				? "friends/members" : "followers/subscribers";
+			$mode = ($mode eq 'frs' || $mode eq 'friends')
+				? $getliurl : $getfliurl;
+			$mode = &liurltourl($mode, $lname, $who);
+			$who = "list $who/$lname";
+			$user = '';
+		}
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		$countmaybe ||= 20;
+
+		# we use the undocumented count= support to, by default,
+		# reduce the JSON parsing overhead. if we always had to take
+		# all 100, we really eat it on parsing. the downside is that,
+		# per @episod, the stuff we get is "less" fresh.
+		my $countper = ($countmaybe < 100) ? $countmaybe : 100;
+
+		# loop through using the cursor until desired number.
+		my $cursor = -1; # initial value
+		my $printed = 0;
+		my $nofetch = 0; 
+		my $json_ref = undef;
+		my @usarray = undef; shift(@usarray); # force underflow
+
+		FABIO: while($countmaybe--) {
+			if(!scalar(@usarray)) {
+				last FABIO if ($nofetch);
+				$json_ref = &grabjson(
+			"${mode}?count=${countper}&cursor=${cursor}${user}");
+				@usarray = @{ $json_ref->{'users'} };
+				last FABIO if (!scalar(@usarray));
+				$cursor = $json_ref->{'next_cursor_str'} ||
+					$json_ref->{'next_cursor'} || -1;
+				$nofetch = ($cursor < 1) ? 1 : 0;
+			}
+			&$userhandle(shift(@usarray));
+			$printed++;
+		}
+		print $stdout "-- sorry, no $what found for $who.\n"
+			if (!$printed);
+		return 0;
+	}
+
+	# threading
+	if (m#^/th(read)?\s+(\+\d+\s+)?([zZ]?[a-zA-Z][0-9])$#) {
+		my $countmaybe = $2;
+		if (length($countmaybe)) {
+			print $stdout
+			"-- /thread does not (yet) support +count\n";
+			return 0;
+		}
+		my $code = lc($3);
 		my $tweet = &get_tweet($code);
 		if (!defined($tweet)) {
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
 		my $limit = 9;
-		my $id = $tweet->{'in_reply_to_status_id'};
+		my $id = $tweet->{'retweeted_status'}->{'id_str'} ||
+			$tweet->{'in_reply_to_status_id_str'};
 		my $thread_ref = [ $tweet ];
 		while ($id && $limit) {
 			print $stdout "-- thread: fetching $id\n"
@@ -1798,25 +2433,86 @@ EOF
 			$id = 0;
 			$limit--;
 			if (defined($next) && ref($next) eq 'HASH') {
-				push(@{ $thread_ref }, $next);
-				$id = $next->{'in_reply_to_status_id'} || 0;
+				push(@{ $thread_ref },
+					&fix_geo_api_data($next));
+				$id = $next->{'retweeted_status'}->{'id_str'}
+					|| $next->{'in_reply_to_status_id_str'}
+					|| 0;
 			}
 		}
 		&tdisplay($thread_ref, 'thread', 0, 1); # use the mini-menu
 		return 0;
 	}
 
-	if ($_ eq '/url' && length($urlshort)) {
+	# pull out entities. this works for DMs and tweets.
+	# btw: T.CO IS WACK.
+	if (m#^/ent?(ities)? ([dDzZ]?[a-zA-Z][0-9])$#) {
+		my $v;
+		my $w;
+		my $thing;
+		my $genurl;
+		my $code = lc($2);
+		my $hash;
+		if ($code =~ /^d.[0-9]$/) {
+			$hash = &get_dm($code);
+			$thing = "DM";
+			$genurl = $dmidurl;
+		} else {
+			$hash = &get_tweet($code);
+			$thing = "tweet";
+			$genurl = $idurl;
+		}
+
+		if (!defined($hash)) {
+			print $stdout "-- no such $thing (yet?): $code\n";
+			return 0;
+		}
+
+		# we don't ordinarily ask for entities, so now we must.
+		my $id = $hash->{'id_str'};
+		$hash = &grabjson("${genurl}/${id}.json?include_entities=1", 0);
+		if (!defined($hash) || ref($hash) ne 'HASH') {
+		print $stdout "-- failed to get entities from server, sorry\n";
+				return 0;
+		}
+		
+		my $didprint = 0;
+		# Twitter puts entities in multiple fields.
+		foreach $w (qw(media urls)) {
+			my $p = $hash->{'entities'}->{$w};
+			next if (!defined($p) || ref($p) ne 'ARRAY');
+			foreach $v (@{ $p }) {
+				next if (!defined($v) || ref($v) ne 'HASH');
+				next if (!length($v->{'url'}) ||
+					!length($v->{'expanded_url'}));
+				my $u1 = &descape($v->{'url'});
+				my $u2 = &descape($v->{'expanded_url'});
+				print $stdout "$u1 => $u2\n";
+				$urlshort = $u1;
+				$didprint++;
+			}
+		}
+		if ($didprint) {
+			print $stdout &wwrap(
+	"-- %URL% is now $urlshort (/url opens)\n");
+		} else {
+			print $stdout "-- no entities or URLs found\n";
+		}
+		return 0;
+	}
+
+	if (($_ eq '/url' || $_ eq '/open') && length($urlshort)) {
 		$_ = "/url $urlshort";
 		print $stdout "*** assuming you meant %URL%: $_\n";
 		# and fall through to ...
 	}
-	if (m#^/url (http|gopher|https|ftp)://.+# && s#^/url ##) {
+	if (m#^/(url|open)\s+(http|gopher|https|ftp)://.+# &&
+			s#^/(url|open)\s+##) {
 		&openurl($_);
 		return 0;
 	}
-	if (m#^/url (d?[a-zA-Z][0-9])$#) {
-		my $code = lc($1);
+	if (m#^/(url|open) ([dDzZ]?[a-zA-Z][0-9])$#) {
+		my $code = lc($2);
 		my $tweet;
 		$urlshort = undef;
 
@@ -1838,12 +2534,13 @@ EOF
 		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
-#	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
+	=~ s#(http|https|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##) {
 # sigh. I HATE YOU TINYARRO.WS
 #TODO
 # eventually we will have to put a punycode implementation into openurl
 # to handle things like Mac OS X's open which don't understand UTF-8 URLs.
-	=~ s#(http|https|ftp|gopher)://([^'\\]+?)('|\\|\s|$)##) {
+# when we do, uncomment this again
+#	=~ s#(http|https|ftp|gopher)://([^'\\]+?)('|\\|\s|$)##) {
 			my $url = $1 . "://$2";
 			$url =~ s/[\.\?]$//;
 			&openurl($url);
@@ -1853,12 +2550,15 @@ EOF
 		return 0;
 	}
 
-	if (s/^\/(favourites|favorites|faves|favs|fl)\s*//) {
-#TODO
-# add count parameter or page number?
+	if (s/^\/(favourites|favorites|faves|favs|fl)(\s+\+\d+)?\s*//) {
 		my $my_json_ref;
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+
 		if (length) {
-			$my_json_ref = &grabjson("${favsurl}/${_}.json", 0);
+			$my_json_ref = &grabjson("${favsurl}/${_}.json", 0, 0,
+				$countmaybe);
 		} else {
 			if ($anonymous) {
 				print $stdout
@@ -1867,7 +2567,8 @@ EOF
 				print $stdout
 				"-- synchronous /favourites user command\n"
 					if ($verbose);
-				$my_json_ref = &grabjson($myfavsurl, 0);
+				$my_json_ref = &grabjson($myfavsurl, 0, 0,
+					$countmaybe);
 			}
 		}
 		if (defined($my_json_ref)
@@ -1887,7 +2588,7 @@ EOF
 		return 0;
 	}
 	if (
-	m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([a-zA-Z][0-9])$#) {
+m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z][0-9])$#) {
 		my $mode = $1;
 		my $secondmode = $2;
 		my $code = lc($3);
@@ -1902,7 +2603,7 @@ EOF
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		&cordfav($tweet->{'id'}, 1,
+		&cordfav($tweet->{'id_str'}, 1,
 			(($mode eq 'un') ? $favdelurl : $favurl),
 			  &descape($tweet->{'text'}),
 			(($mode eq 'un') ? 'removed' : 'created'));
@@ -1914,7 +2615,8 @@ EOF
 		}
 	}
 
-	if (s#^/(e?)r(etweet|t) ([a-zA-Z][0-9])\s*##) {
+	# Retweet API and manual RTs
+	if (s#^/([oe]?)r(etweet|t) ([zZ]?[a-zA-Z][0-9])\s*##) {
 		my $mode = $1;
 		my $code = lc($3);
 		my $tweet = &get_tweet($code);
@@ -1922,8 +2624,19 @@ EOF
 			print $stdout "-- no such tweet (yet?): $code\n";
 			return 0;
 		}
-		#$in_reply_to = $tweet->{'id'}; # maybe later.
-		#$expected_tweet_ref = $tweet;
+		# use a native retweet unless we can't (or user used /ort /ert)
+		unless ($nonewrts || length || length($mode)) {
+			# we don't always get rs->text, so we simulate it.
+			my $text = &descape($tweet->{'text'});
+			$text =~ s/^RT \@[^\s]+:\s+//
+				if ($tweet->{'retweeted_status'}->{'id_str'});
+			print $stdout "-- status retweeted\n"
+				unless(&updatest($text, 1, 0, undef,
+					$tweet->{'retweeted_status'}->{'id_str'}
+					|| $tweet->{'id_str'}));
+			return 0;
+		}
+		# we can't or user requested /ert /ort
 		$retweet = "RT @" .
 			&descape($tweet->{'user'}->{'screen_name'}) .
 			": " . &descape($tweet->{'text'});
@@ -1938,8 +2651,58 @@ EOF
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
 	}
+	if (m#^/(re)?rts?of?me?(\s+\+\d+)?$# && !$nonewrts) {
+#TODO
+# when more fields are added, integrate them over the JSON_ref
+		my $mode = $1;
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		
+		my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
+		&dt_tdisplay($my_json_ref, "rtsofme");
+		if ($mode eq 're') {
+			$_ = '/re'; # and fall through ...
+		} else {
+			return 0;
+		}
+	}
+	if (m#^/rts?of\s+([zZ]?[a-zA-Z][0-9])$# && !$nonewrts) {
+		my $code = lc($1);
+		my $tweet = &get_tweet($code);
+		my $id;
 
-	if (m#^/del(ete)? ([a-zA-Z][0-9])$#) {
+		if (!defined($tweet)) {
+			print $stdout "-- no such tweet (yet?): $code\n";
+			return 0;
+		}
+		$id = $tweet->{'retweeted_status'}->{'id_str'} ||
+			$tweet->{'id_str'};
+		if (!$id) {
+			print $stdout "-- hmmm, that tweet is major bogus.\n";
+			return 0;
+		}
+		my $url = $rtsbyurl;
+		$url =~ s/%I/$id/;
+		my $users_ref = &grabjson("$url?count=100");
+		return if (!defined($users_ref) || ref($users_ref) ne 'ARRAY');
+		my $k = scalar(@{ $users_ref });
+		if (!$k) {
+			print $stdout
+				"-- no known retweeters, or they're private.\n";
+			return 0;
+		}
+		my $j;
+		foreach $j (@{ $users_ref }) {
+			&$userhandle($j);
+		}
+		print $stdout
+			"** truncated at 100 retweeters (JACKPOT!!!)\n"
+				if ($k >= 100);
+		return 0;
+	}
+
+	if (m#^/del(ete)?\s+([zZ]?[a-zA-Z][0-9])$#) {
 		my $code = lc($2);
 		my $tweet = &get_tweet($code);
 		if (!defined($tweet)) {
@@ -1954,14 +2717,15 @@ EOF
 		}
 		print $stdout &wwrap(
 "-- verify you want to delete: \"@{[ &descape($tweet->{'text'}) ]}\"");
-		print $stdout
-"\n-- sure you want to delete? (only y or Y is affirmative): ";
-		chomp($answer = lc(<$stdin>));
+		print $stdout "\n";
+		$answer = &linein(
+	"-- sure you want to delete? (only y or Y is affirmative):");
 		if ($answer ne 'y') {
-			warn "-- ok, tweet is NOT deleted.\n";
+			print $stdout "-- ok, tweet is NOT deleted.\n";
 			return 0;
 		}
-		&deletest($tweet->{'id'}, 1);
+		$lastpostid = -1 if ($tweet->{'id_str'} == $lastpostid);
+		&deletest($tweet->{'id_str'}, 1);
 		return 0;
 	}
 	# DM delete version
@@ -1976,18 +2740,41 @@ EOF
 			"-- verify you want to delete: " .
 		"(from @{[ &descape($dm->{'sender'}->{'screen_name'}) ]}) ".
 			"\"@{[ &descape($dm->{'text'}) ]}\"");
-		print $stdout
-"\n-- sure you want to delete? (only y or Y is affirmative): ";
-		chomp($answer = lc(<$stdin>));
+		print $stdout "\n";
+		$answer = &linein(
+	"-- sure you want to delete? (only y or Y is affirmative):");
 		if ($answer ne 'y') {
-			warn "-- ok, DM is NOT deleted.\n";
+			print $stdout "-- ok, DM is NOT deleted.\n";
 			return 0;
 		}
-		&deletedm($dm->{'id'}, 1);
+		&deletedm($dm->{'id_str'}, 1);
+		return 0;
+	}
+	# /deletelast
+	if (m#^/de?l?e?t?e?last$#) {
+		if (!$lastpostid) {
+			print $stdout "-- you haven't posted yet this time!\n";
+			return 0;
+		}
+		if ($lastpostid == -1) {
+			print $stdout "-- you already deleted it!\n";
+			return 0;
+		}
+		print $stdout &wwrap(
+"-- verify you want to delete: \"$lasttwit\"");
+		print $stdout "\n";
+		$answer = &linein(
+	"-- sure you want to delete? (only y or Y is affirmative):");
+		if ($answer ne 'y') {
+			print $stdout "-- ok, tweet is NOT deleted.\n";
+			return 0;
+		}
+		&deletest($lastpostid, 1);
+		$lastpostid = -1;
 		return 0;
 	}
 
-	if (s#^/(v)?re(ply)? \@?([a-zA-Z][0-9]) ## && length) {
+	if (s#^/(v)?re(ply)? ([zZ]?[a-zA-Z][0-9]) ## && length) {
 		my $mode = $1;
 		my $code = lc($3);
 		my $tweet = &get_tweet($code);
@@ -1998,12 +2785,12 @@ EOF
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
 		$_ = '@' . $target . " $_";
 		unless ($mode eq 'v') {
-			$in_reply_to = $tweet->{'id'};
+			$in_reply_to = $tweet->{'id_str'};
 			$expected_tweet_ref = $tweet;
 		} else {
 			$_ = ".$_";
 		}
-		$readline_completion{'@'.$target}++ if ($termrl);
+		$readline_completion{'@'.lc($target)}++ if ($termrl);
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -2018,16 +2805,18 @@ EOF
 		}
 		# in the future, add DM in_reply_to here
 		my $target = &descape($dm->{'sender'}->{'screen_name'});
-		$readline_completion{'@'.$target}++ if ($termrl);
-		$_ = "D $target $_";
+		$readline_completion{'@'.lc($target)}++ if ($termrl);
+		$_ = "/dm $target $_";
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
-		goto TWEETPRINT; # fugly! FUGLY!
+		# and fall through to ...
 	}
 
-	if ($_ eq '/replies' || $_ eq '/re') {
-#TODO
-# add count parameter or page number?
+	if (m#^/re(plies)?(\s+\+\d+)?$#) {
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		
 		if ($anonymous) {
 			print $stdout
 		"-- sorry, how can anyone reply to you if you're anonymous?\n";
@@ -2037,40 +2826,344 @@ EOF
 			# updated and may not act as we expect.
 			print $stdout "-- synchronous /replies command\n"
 				if ($verbose);
-			my $my_json_ref = &grabjson($rurl, 0);
-			if (defined($my_json_ref)
-				&& ref($my_json_ref) eq 'ARRAY'
-					&& scalar(@{ $my_json_ref })) {
-				&tdisplay($my_json_ref, "replies");
-			}
-			&$conclude;
+			my $my_json_ref = &grabjson($rurl, 0, 0, $countmaybe);
+			&dt_tdisplay($my_json_ref, "replies");
 		}
 		return 0;
 	}
 
 	# DMs
 	if ($_ eq '/dm' || $_ eq '/dmrefresh' || $_ eq '/dmr') {
-		print C "dmthump------------\n";
+		&dmthump;
 		return 0;
 	}
-	if ($_ eq '/dmagain' || $_ eq '/dma') {
-#TODO
-# add count parameter or page number?
-		print C "dmreset------------\n";
+	# /dmsent, /dmagain
+	if (m#^/dm(s|sent|a|again)(\s+\+\d+)?$#) {
+		my $mode = $1;
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		if ($countmaybe > 999) {
+			print $stdout "-- greedy bastard, try +fewer.\n";
+			return 0;
+		}
+		$countmaybe = sprintf("%03i", $countmaybe);
+		print $stdout "-- background request sent\n" unless ($synch);
+		
+		$mode = ($mode =~ /^s/) ? 's' : 'd';
+		print C "${mode}mreset${countmaybe}---------\n";
+		&sync_semaphore;
+		return 0;
+	}
+	if (s#^/dm \@?([^\s]+)\s+## && length)  {
+		return &common_split_post($_, undef, $1);
+	}
+
+	# follow and leave users
+	if (m#^/(follow|leave|unfollow) \@?([^\s/]+)$#) {
+		my $m = $1;
+		my $u = lc($2);
+		&foruuser($u, 1,
+			(($m eq 'follow') ? $followurl : $leaveurl),
+			(($m eq 'follow') ? 'started' : 'stopped'));
 		return 0;
 	}
 
-	if ($_ eq '/end' || $_ eq '/e') {
-		if ($child) {
-			print "waiting for child ...\n";
-			print C "sync---------------\n";
-			waitpid $child, 0;
-			$child = 0;
-			print "exiting.\n";
-			exit ($? >> 8);
+	# follow and leave lists. this is, frankly, pointless; it does
+	# nothing other than to mark you. otherwise, /liston and /listoff
+	# actually add lists to your timeline.
+	if (m#^/(l?follow|l?leave|l?unfollow) \@?([^\s/]*)/([^\s/]+)$#) {
+		my $m = $1;
+		my $uname = lc($2);
+		my $lname = lc($3);
+
+		if (!length($uname) || $uname eq $whoami) {
+			print $stdout &wwrap(
+"** you can't mark/unmark yourself as a follower of your own lists!\n");
+			print $stdout &wwrap(
+"** to add/remove your own lists from your timeline, use /liston /listoff\n");
+			return 0;
 		}
-		exit;
+		if ($m !~ /^l/) {
+			print $stdout &wwrap(
+"-- to mark/unmark you as a follower of a list, use /lfollow /lleave\n");
+			print $stdout &wwrap(
+"-- to add/remove your own lists from your timeline, use /liston /listoff\n");
+			return 0;
+		}
+
+		my $r = &postjson(&liurltourl($getfliurl, $lname, $uname),
+			(($m ne 'lfollow') ? "_method=DELETE&" : "").
+			"list_id=$lname" 
+			);
+		if ($r) {
+			my $t = ($m eq 'lfollow') ? "" : "un";
+			print $stdout &wwrap(
+"*** ok, you are now ${t}marked as a follower of $uname/${lname}.\n");
+			my $c = ($t eq 'un') ? "off" : "on";
+			$t = ($t eq 'un') ? "remove from" : "add to";
+			print $stdout &wwrap(
+"--- to also $t your timeline, use /list${c}\n");
+		}
+		return 0;	
 	}
+
+	# block and unblock users
+	if (m#^/(block|unblock) \@?([^\s/]+)$#) {
+		my $m = $1;
+		my $u = lc($2);
+		if ($m eq 'block') {	
+			$answer = &linein(
+	"-- sure you want to block $u? (only y or Y is affirmative):");
+			if ($answer ne 'y') {
+				print $stdout "-- ok, $u is NOT blocked.\n";
+				return 0;
+			}
+		}
+		&boruuser($u, 1,
+			(($m eq 'block') ? $blockurl : $blockdelurl),
+			(($m eq 'block') ? 'started' : 'stopped'));
+		return 0;
+	}
+
+	# list support
+	# /withlist (/withlis, /with, /wl)
+	if (s#^/(withlist|withlis|withl|with|wl)\s+([^/\s]+)\s+## &&
+			($lname=lc($2)) && s/\s*$// && length) {
+		my $comm = '';
+		my $args = '';
+		my $dont_return = 0;
+		if ($anonymous) {
+			print $stdout "-- no list love for anonymous\n";
+			return 0;
+		}
+		if (/\s+/) {
+			($comm, $args) = split(/\s+/, $_, 2);
+		} else {
+			$comm = $_;
+		}
+		
+		my $return;
+		# this is a Twitter bug -- it will not give you the
+		# new slug in the returned hash.
+		my $state = "modified list $lname (WAIT! then /lists to see new slug)";
+		if ($comm eq 'create') {
+			my $desc;
+			($args, $desc) = split(/\s+/, $args, 2)
+				if ($args =~ /\s+/);
+			if ($args ne 'public' && $args ne 'private') {
+				print $stdout
+					"-- must specify public or private\n";
+				return 0;
+			}
+			$state = "created new list $lname (mode $args)";
+			$desc = "description=".&url_oauth_sub($desc)."&"
+				if (length($desc));
+			$return = &postjson(&liurltourl($getlisurl, $lname),
+				"${desc}mode=$args&name=$lname");
+		} elsif ($comm eq 'private' || $comm eq 'public') {
+			$return = &postjson(&liurltourl($modifyliurl, $lname), 
+				"mode=$comm");
+		} elsif ($comm eq 'desc' || $comm eq 'description') {
+			if (!length($args)) {
+				print $stdout "-- $comm needs an argument\n";
+				return 0;
+			}
+			$return = &postjson(&liurltourl($modifyliurl, $lname), 
+				"description=".&url_oauth_sub($args));
+		} elsif ($comm eq 'name') {
+			if (!length($args)) {
+				print $stdout "-- $comm needs an argument\n";
+				return 0;
+			}
+			$return = &postjson(&liurltourl($modifyliurl, $lname), 
+				"name=".&url_oauth_sub($args));
+			$state = "RENAMED list $lname (WAIT! then /lists to see new slug)\n";
+		} elsif ($comm eq 'add' || $comm eq 'adduser') {
+			$state = "user(s) added to list $lname";
+			if ($args !~ /,/ || $args =~ /\s+/) {
+				1 while ($args =~ s/\s+/,/);
+			}
+			if ($args =~ /\s*,\s+/ || $args =~ /\s+,\s*/) {
+				1 while ($args =~ s/\s+//);
+			}
+			if (!length($args)) {
+				print $stdout "-- $comm needs an argument\n";
+				return 0;
+			}
+			print $stdout "--- warning: user list not checked\n";
+			$return = &postjson(&liurltourl($adduliurl, $lname),
+				"screen_name=".&url_oauth_sub($args));
+		} elsif ($comm eq 'delete' && !length($args)) {
+			$state = "deleted list $lname";
+			print $stdout
+				"-- verify you want to delete list $lname\n";
+			my $answer = &linein(
+		"-- sure you want to delete? (only y or Y is affirmative):");
+			if ($answer ne 'y') {
+				print $stdout "-- ok, list is NOT deleted.\n";
+				return 0;
+			}
+			$return = &postjson(&liurltourl($modifyliurl, $lname),
+				"_method=DELETE");
+			if ($return) {
+				# check and see if this is in our autolists.
+				# if it is, delete it there too.
+				my $value = &getvariable('lists');
+				&setvariable('lists', $value, 1)
+				if ($value=~s#(^|,)${whoami}/${lname}($|,)##);
+			}
+		} elsif ($comm eq 'delete') {
+			if ($args =~ /[,\s+]/) {
+				print $stdout "-- one at a time, please\n";
+				return 0;
+			}
+			# look up the id, since delete doesn't do screen names
+			my $my_json_ref =
+				&grabjson("${wurl}?screen_name=$args", 0);
+			if ($my_json_ref && ref($my_json_ref) eq 'HASH') {
+				$state = "removed user $args from list $lname";
+				my $id = $my_json_ref->{'id_str'} ||
+					$my_json_ref->{'id'};
+				$return = &postjson(&liurltourl($getliurl,
+					$lname),
+				"_method=DELETE&id=$id&list_id=$lname");
+			}
+		} elsif ($comm eq 'list') { # synonym for /list
+			$_ = "/list /$lname";
+			$dont_return = 1; # and fall through
+		} else {
+			print $stdout "*** illegal list operation $comm\n";
+		}
+		if ($return) {
+			print $stdout "*** ok, $state\n";
+		}
+		return 0 unless ($dont_return);
+	}
+	
+	# /a to show statuses in a list
+	if (m#^/a(gain)?\s+(\+\d+\s+)?\@?([^\s/]*)/([^\s/]+)#) {
+		my $uname = lc($3);
+		if ($anonymous && !length($uname)) {
+	print $stdout "-- you must specify a username when anonymous.\n";
+			return 0;
+		}
+		my $lname = lc($4);
+		my $countmaybe = $2;
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+
+		my $my_json_ref =
+		&grabjson(&liurltourl($statusliurl, $lname, $uname),
+			0, 0, $countmaybe);
+		&dt_tdisplay($my_json_ref, "again");
+		return 0;
+	}
+
+	# /lists command: if @, show their lists. if @?../... show that list.
+	# trivially duplicates /frs and /fos for lists
+	# also handles /listfos and /listfrs
+	if (length($whoami) &&
+			(m#^/list?s?$# || m#^/list?f[ro](llower|iend)?s$#)) {
+		$_ .= " $whoami";
+	}
+	if (m#^/lis(t|ts|t?fos|tfollowers|t?frs|tfriends)?\s+(\+\d+\s+)?(\@?[^\s]+)$#) {
+		my $mode = $1;
+		my $countmaybe = $2;
+		my $uname = lc($3);
+		my $lname = '';
+
+		$mode = ($mode =~ /^t?fo/) ? 'fo' :
+			($mode =~ /^t?fr/) ? 'fr' :
+			'';
+		$uname =~ s/^\@//;
+		($uname, $lname) = split(m#/#, $uname, 2) if ($uname =~ m#/#);
+		if ($anonymous && !length($uname) && length($mode)) {
+	print $stdout "-- you must specify a username when anonymous.\n";
+			return 0;
+		}
+		$uname ||= $whoami;
+		if (length($lname) && length($mode)) {
+			print $stdout "-- specify username only\n";
+			return 0;
+		}
+
+		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
+		$countmaybe += 0;
+		$countmaybe ||= 20;
+
+		# this is copied from /friends and /followers (q.v.)
+		my $countper = ($countmaybe < 100) ? $countmaybe : 100;
+
+		my $cursor = -1; # initial value
+		my $nofetch = 0; 
+		my $printed = 0;
+		my $json_ref = undef;
+		my @usarray = undef; shift(@usarray); # force underflow
+		my $furl = &liurltourl((length($lname) ? $getliurl
+			: ($mode eq '') ? $getlisurl
+			: ($mode eq 'fo') ? $getuliurl
+			: $getufliurl) ,
+			$lname, $uname);
+
+		LABIO: while($countmaybe--) {
+			if(!scalar(@usarray)) {
+				last LABIO if ($nofetch);
+				$json_ref = &grabjson(
+			"${furl}?count=${countper}&cursor=${cursor}");
+				@usarray = @{ $json_ref->{
+					((length($lname)) ? 'users' : 'lists')
+				} };
+				last LABIO if (!scalar(@usarray));
+				$cursor = $json_ref->{'next_cursor_str'} ||
+					$json_ref->{'next_cursor'} || -1;
+				$nofetch = ($cursor < 1) ? 1 : 0;
+			}
+			my $list_ref = shift(@usarray);
+			if (length($lname)) {
+				&$userhandle($list_ref);
+			} else {
+				# listhandle?
+				my $list_name =
+"\@$list_ref->{'user'}->{'screen_name'}/@{[ &descape($list_ref->{'slug'}) ]}";
+				my $list_full_name =
+					(length($list_ref->{'name'})) ?
+&descape($list_ref->{'name'})."${OFF} ($list_name)" : $list_name;
+				my $list_mode =
+			(lc(&descape($list_ref->{'mode'})) ne 'public') ?
+" ${EM}(@{[ ucfirst(&descape($list_ref->{'mode'})) ]})${OFF}" : "";
+				print $streamout <<"EOF";
+${CCprompt}$list_full_name${OFF} (f:$list_ref->{'member_count'}/$list_ref->{'subscriber_count'})$list_mode
+EOF
+			my $desc = &strim(&descape($list_ref->{'description'}));
+				my $klen = ($wrap || 79) - 9;
+				$klen = 10 if ($klen < 0);
+				$desc = substr($desc, 0, $klen)."..."
+					if (length($desc) > $klen);
+				print $streamout (' "' . $desc . '"' . "\n")
+					if (length($desc));
+			}
+			$printed++;
+		}
+		if (!$printed) {
+			print $stdout ((length($lname))
+			? "-- list $uname/$lname does not follow anyone.\n"
+				: ($mode eq 'fr')
+			? "-- user $uname doesn't follow any lists.\n"
+				: ($mode eq 'fo')
+			? "-- user $uname isn't followed by any lists.\n"
+			: "-- no lists found for user $uname.\n");
+		}
+		return 0;
+	}
+
+	&sync_n_quit if ($_ eq '/end' || $_ eq '/e');
+
+	#####
+	#
+	# below this point, we are posting
+	#
+	#####
 
 	if (m#^/me\s#) {
 		$slash_first = 0; # kludge!
@@ -2086,49 +3179,83 @@ EOF
 	}
 
 TWEETPRINT: # fugly! FUGLY!
+	return &common_split_post($_, $in_reply_to, undef);
+}
 
-	(@tweetstack) = &usplit($_, ($autosplit eq 'char' ||
+# this turns list URL templates into fully qualified URLs
+sub liurltourl {
+	my $url = shift;
+	my $list = shift; # null allowed!
+	my $user = shift || $whoami;
+
+	die("assert: list URL access without effuser\n") if (!length($user));
+	$url =~ s/%U/$user/g;
+	$url =~ s/%L/$list/g;
+	return $url;
+}
+
+# this is the common code used by standard updates and by the /dm command.
+sub common_split_post {
+	my $k = shift;
+	my $in_reply_to = shift;
+	my $dm_user = shift;
+	
+	my $dm_lead = (length($dm_user)) ? "/dm $dm_user " : '';
+	my $ol = "$dm_lead$k";
+
+	my (@tweetstack) = &csplit($k, ($autosplit eq 'char' ||
 		$autosplit eq 'cut') ? 1 : 0);
-	$_ = shift(@tweetstack);
+	my $m = shift(@tweetstack);
 	if (scalar(@tweetstack)) {
-		$history[0] = $_;
+		$l = "$dm_lead$m";
+		$history[0] = $l;
 		if (!$autosplit) {
 			print $stdout &wwrap(
-"*** sorry, tweet too long; ".
-"truncated to \"$_\" (@{[ &ulength($_) ]} bytes)\n");
+"*** sorry, too long to send; ".
+"truncated to \"$l\" (@{[ length($m) ]} chars)\n");
 	print $stdout "*** use %% for truncated version, or append to %%.\n";
 			return 0;
 		}
 		print $stdout &wwrap(
-			"*** overlong tweet; autosplitting to \"$_\"\n");
+			"*** over $linelength; autosplitting to \"$l\"\n");
 	}
-	&updatest($_, 1, $in_reply_to);
+	# there was an error; stop autosplit, restore original command
+	if (&updatest($m, 1, $in_reply_to, $dm_user)) {
+		$history[0] = $ol;
+		return 0;
+	}
 	if (scalar(@tweetstack)) {
-		$_ = shift(@tweetstack);
-		&add_history($_);
-		print $stdout &wwrap("*** next tweet part is ready: \"$_\"\n");
+		$k = shift(@tweetstack);
+		$l = "$dm_lead$k";
+		&add_history($l);
+		print $stdout &wwrap("*** next part is ready: \"$l\"\n");
 		print $stdout "*** (this will also be automatically split)\n"
-			if (&ulength($_) > 140);
+			if (length($k) > $linelength);
 		print $stdout
-		"*** to send this next portion of your tweet, use %%.\n";
+		"*** to send this next portion, use %%.\n";
 	}
-	return 0;
+	return 1;
 }
 
-# common code from the above which is now referenced in a few places.
+# helper functions for the command line processor.
 sub add_history {
 	my $h = shift;
 
 	@history = (($h, @history)[0..&min(scalar(@history), $maxhist)]);
-	$termrl->addhistory($h) if ($termrl);
+	if ($termrl) {
+		if ($termrl->Features()->{'canSetTopHistory'}) {
+			$termrl->settophistory($h);
+		} else {
+			$termrl->addhistory($h);
+		}
+	}
 }
-
 sub sub_helper {
-	# ($i, $proband, $r, $s) = &sub_helper($1, $2);
 	my $r = shift;
 	my $s = shift;
+	my $g = shift;
 	my $x;
-	my $q;
+	my $q = 0;
 	my $proband;
 
 	if ($r eq '%') {
@@ -2143,6 +3270,14 @@ sub sub_helper {
 	$proband = $history[-($x + 1)];
 	if ($s eq '--') {
 		$q = 1;
+	} elsif ($s eq '*') {
+		if ($x != -1 || !length($shadow_history)) {
+			print $stdout
+				"*** can only %%* on most recent command\n";
+			return (0, $_, undef, undef, undef);
+		}
+		# we assume it's at the end; it's only relevant there
+		$proband = substr($shadow_history, length($g)-(2+length($r)));
 	} else {
 		$q = -(0+$s);
 	} 
@@ -2160,311 +3295,298 @@ sub sub_helper {
 	return (1, $proband, $r, $s);
 }
 
-sub updatest {
-	my $string = shift;
-	my $interactive = shift;
-	my $in_reply_to = shift;
-	my $urle = '';
-	my $i;
-	my $subpid;
-	my $istring;
+# this is used for synchronicity mode to make sure we receive the
+# GA semaphore from the background before printing another prompt.
+sub sync_console {
+	&thump;
+	&dmthump unless (!$dmpause);
+}
+sub sync_semaphore {
+	if ($synch) {
+		my $k = '';
 
-	$in_reply_to = ($in_reply_to > 0) ?
-		"&in_reply_to_status_id=$in_reply_to" : '';
-
-	if ($anonymous) {
-		print $stdout "-- sorry, you can't tweet if you're anonymous.\n"
-			if ($interactive);
-		return 99;
+		while(!length($k)) {
+			sysread(W, $k, 1);
+		} # wait for semaphore
 	}
-	$string = &$prepost($string);
+}
 
-	if ($verify && !$status) {
-		my $answer;
+# wrapper function to get a line from the terminal.
+sub linein {
+	my $prompt = shift;
+	my $return;
 
-		warn &wwrap("-- verify you want to post: \"$string\"\n");
-		print $stdout
-"-- do you want to post this tweet? (only y or Y is affirmative): ";
-		chomp($answer = lc(<$stdin>));
-		if ($answer ne 'y') {
-			warn "-- ok, tweet is NOT posted.\n";
-			return 97;
-		}
+	return 'y' if ($script);
+
+	$prompt .= " ";
+	if ($termrl) {
+		$dont_use_counter = 1;
+		eval '$termrl->hook_no_counter';
+		$return = $termrl->readline($prompt);
+		$dont_use_counter = $nocounter;
+		eval '$termrl->hook_no_counter';
+	} else {
+		print $stdout $prompt;
+		chomp($return = lc(<$stdin>));
 	}
+	return $return;
+}
 
-	# to avoid unpleasantness with UTF-8 interactions, this will simply
-	# turn the whole thing into a hex string and insert %, thus URL
-	# escaping the whole thing whether it needs it or not. ugly? well ...
-	$istring = $string;
-	eval 'utf8::encode($istring)' unless ($seven);
-	$istring = unpack("H280", $istring);
-	for($i = 0; $i < length($istring); $i+=2) {
-		$urle .= '%' . substr($istring, $i, 2);
-	}
-	#&update_authenticationheaders;
+#### this is the background part of the process ####
 
-	my $i = "source=TTYtter&status=${urle}${in_reply_to}";
-	$slowpost += 0; if ($slowpost && !$script && !$status && !$silent) {
-		if($pid = open(SLOWPOST, '-|')) {
-			print $stdout &wwrap(
-	"-- waiting $slowpost seconds to post, ^C cancels: \"$string\"\n");
-			close(SLOWPOST); # this should wait for us
-			if ($? > 256) {
-				print $stdout "\n-- post cancelled by user\n";
-				return 0;
+MONITOR:
+%store_hash = ();
+$is_background = 1;
+$first_synch = $synchronous_mode = 0;
+$rin = '';
+vec($rin,fileno(STDIN),1) = 1;
+# paranoia
+binmode($stdout, ":crlf") if ($termrl);
+unless ($seven) {
+	binmode(STDIN, ":utf8");
+	binmode($stdout, ":utf8");
+}
+$interactive = $previous_last_id = $we_got_signal = 0;
+$suspend_output = -1;
+$dm_first_time = ($dmpause) ? 1 : 0;
+&sigify("IGNORE", qw(BREAK INT)); # we only respond to SIGKILL/SIGTERM
+# allow foreground process to squelch us
+# freaking Linux signals encore. SIGSYS? really? wtf, Linus!
+# well, never mind. Solaris makes us use SIGXCPU/SIGXFSZ
+&sigify(sub {
+	$suspend_output ^= 1 if ($suspend_output != -1);
+	$we_got_signal = 1;
+}, qw(USR1 PWR XCPU));
+&sigify( sub {
+	$suspend_output = -1; $we_got_signal = 1;
+}, qw(USR2 SYS UNUSED XFSZ));
+
+# loop until we are killed or told to stop.
+# we receive instructions on stdin, and send data back on our pipe().
+for(;;) {
+	&$heartbeat;
+	&update_effpause;
+	$wrapseq = 0; # remember, we don't know when commands are sent.
+	&refresh($interactive, $previous_last_id) unless
+		($dont_refresh_first_time || (!$effpause && !$interactive));
+	$dont_refresh_first_time = 0;
+	$previous_last_id = $last_id;
+	if ($dmpause && ($effpause || $synch)) {
+		if ($dm_first_time) {
+			&dmrefresh(0);
+			$dmcount = $dmpause;
+		} elsif (!$interactive) {
+			if (!--$dmcount) {
+				&dmrefresh($interactive); # using dm_first_time
+				$dmcount = $dmpause;
 			}
-			print $stdout "-- posting now\n";
+		}
+	}
+DONT_REFRESH:
+	# nrvs is tricky with synchronicity
+	if (!$synch || ($synch && $synchronous_mode && !$dm_first_time)) {
+		$k = length($notify_rate) + length($vs) + length($credlog);
+	#	$wrapseq = 0;
+		if ($k) {
+			&send_removereadline if ($termrl);
+			print $stdout $notify_rate;
+			print $stdout $vs;
+			print $stdout $credlog;
+			$wrapseq = 1;
+		}
+		$notify_rate = "";
+		$vs = "";
+		$credlog = "";
+	}
+	print P "0" if ($synchronous_mode && $interactive);
+	&send_repaint;
+	# this core loop is tricky. most signals will not restart the call.
+	# -- respond to alarms if we are ignoring our timeout.
+	# -- do not respond to bogus packets if a signal handler triggered it.
+	# -- clear our flag when we detect a signal handler has been called.
+RESTART_SELECT:
+	$interactive = 0;
+	$we_got_signal = 0; # acknowledge all signals
+	$nfound = select($rout = $rin, undef, undef, $effpause);
+	if ($nfound > 0) {
+		# there is data on our socket.
+		# command packets should always be (initially) 20 characters.
+		# if we come up short, it's either a bug, signal or timeout.
+		if (sysread(STDIN, $rout, 20) != 20 && $we_got_signal) {
+			goto RESTART_SELECT;
+		}
+		$we_got_signal = 0;
+		# background communications central command code
+		# we received a command from the console, so let's look at it.
+		print $stdout "-- command received ", scalar
+				localtime, " $rout" if ($verbose);
+		if ($rout =~ /^rsga/) {
+			$suspend_output = 0; # reset our status
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^pipet (..)/) {
+			my $key = &get_tweet($1);
+			my $ms = $key->{'menu_select'} || 'XX';
+			my $ds = $key->{'created_at'} || 'argh, no created_at';
+			$ds =~ s/\s/_/g;
+			my $src = $key->{'source'} || 'unknown';
+			$src =~ s/\|//g; # shouldn't be any anyway.
+			$key = substr(( "$ms ".($key->{'id_str'})." ".
+		($key->{'in_reply_to_status_id_str'})." ".
+		($key->{'retweeted_status'}->{'id_str'})." ".
+		($key->{'user'}->{'geo_enabled'} || "false") . " ".
+		($key->{'geo'}->{'coordinates'}->[0]). " ".
+		($key->{'geo'}->{'coordinates'}->[1]). " ".
+		$key->{'tag'}->{'type'}. " ". # NO SPACES!
+		unpack("${pack_magic}H*", $key->{'tag'}->{'payload'}). " ".
+		($key->{'retweet_count'} || "0") . " " .
+		$key->{'user'}->{'screen_name'}." $ds $src|".
+			unpack("${pack_magic}H*", $key->{'text'}).
+			$space_pad), 0, 1024);
+			print P $key;
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^piped (..)/) {
+			my $key = $dm_store_hash{$1};
+			my $ms = $key->{'menu_select'} || 'XX';
+			my $ds = $key->{'created_at'} || 'argh, no created_at';
+			$ds =~ s/\s/_/g;
+			$key = substr(( "$ms ".($key->{'id_str'})." ".
+		$key->{'sender'}->{'screen_name'}." $ds ".
+			unpack("${pack_magic}H*", $key->{'text'}).
+			$space_pad), 0, 1024);
+			print P $key;
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^ki ([^\s]+) /) {
+			my $key = $1;
+			my $module;
+			sysread(STDIN, $module, 1024);
+			$module =~ s/\s+$//;
+			$module = pack("H*", $module);
+			print $stdout "-- fetch for module $module key $key\n"
+				if ($verbose);
+			print P substr(unpack("${pack_magic}H*",
+				$master_store->{$module}->{$key}).$space_pad,
+					0, 1024);
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^kn ([^\s]+) /) {
+			my $key = $1;
+			my $module;
+			sysread(STDIN, $module, 1024);
+			$module =~ s/\s+$//;
+			$module = pack("H*", $module);
+			print $stdout "-- nulled module $module key $key\n"
+				if ($verbose);
+			$master_store->{$module}->{$key} = undef;
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^ko ([^\s]+) /) {
+			my $key = $1;
+			my $value;
+			my $module;
+			sysread(STDIN, $module, 1024);
+			$module =~ s/\s+$//;
+			$module = pack("H*", $module);
+			sysread(STDIN, $value, 1024);
+			$value =~ s/\s+$//;
+			print $stdout
+				"-- set module $module key $key = $value\n"
+				if ($verbose);
+			$master_store->{$module}->{$key} = pack("H*", $value);
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^sync/) {
+			print $stdout "-- synced; exiting at ",
+					scalar localtime, "\n"
+				if ($verbose);
+			exit $laststatus;
+		} elsif ($rout =~ /^synm/) {
+			$first_synch = $synchronous_mode = 1;
+			print $stdout "-- background is now synchronous\n"
+				if ($verbose);
+		} elsif ($rout =~ /([\=\?\+])([^ ]+)/) {
+			$comm = $1;
+			$key =$2;
+			if ($comm eq '?') {
+				print P substr("${$key}$space_pad", 0, 1024);
+			} else {
+				sysread(STDIN, $value, 1024);
+				$value =~ s/\s+$//;
+				$interactive = ($comm eq '+') ? 0 : 1;
+				if ($key eq 'tquery') {
+					print $stdout
+					"*** custom query installed\n"
+						if ($interactive || $verbose);
+					print $stdout
+					"$value" if ($verbose);
+					@trackstrings = ();
+					# already URL encoded
+					push(@trackstrings, $value);
+				} else {
+					$$key = $value;
+					print $stdout
+					"*** changed: $key => $$key\n"
+						if ($interactive || $verbose);
+
+					&generate_ansi if ($key eq 'ansi' ||
+						$key =~ /^colour/);
+					$rate_limit_next = 0
+						if ($key eq 'pause' &&
+							$value eq 'auto');
+					&tracktags_makearray
+						if ($key eq 'track');
+					&filter_compile
+						if ($key eq 'filter');
+					&notify_compile
+						if ($key eq 'notifies');
+					&list_compile
+						if ($key eq 'lists');
+				}
+			}
+			goto RESTART_SELECT;
 		} else {
-			$in_backticks = 1; # defeat END sub
-			$SIG{'BREAK'} = $SIG{'INT'} = sub {
-				exit 254;
-			};
-			sleep $slowpost;
-			exit 0;
+			$interactive = 1;
+			($fetchwanted = 0+$1, $fetch_id = 0, $last_id = 0)
+				if ($rout =~ /^reset(\d+)/);
+			($dmfetchwanted = 0+$1, $last_dm = 0)
+				if ($rout =~ /^dmreset(\d+)/);
+			if ($rout =~ /^smreset/) { # /dmsent
+				$dmfetchwanted = 0+$1
+					if ($rout =~ /(\d+)/);
+				&dmrefresh(1, 1);
+				&send_repaint;
+				# we do not want to force a refresh.
+				goto DONT_REFRESH;
+			}
+			if ($rout =~ /^dm/) {
+				&dmrefresh($interactive);
+				&send_repaint;
+				$dmcount = $dmpause;
+				goto DONT_REFRESH;
+			}
 		}
+	} else {
+		if ($we_got_signal || $nfound == -1) {
+			# we need to restart the call. we might be waiting
+			# longer, but this is unavoidable.
+			goto RESTART_SELECT;
+		}
+		print $stdout
+"-- routine refresh (effpause = $effpause, $dmcount to next dm) ",
+			scalar localtime, "\n" if ($verbose);
 	}
-	my $return = &backticks($baseagent, '/dev/null', undef,
-		$update, $i, @wend);
-	print $stdout "-- return --\n$return\n-- return --\n"
-		if ($superverbose);
-	if ($? > 0) {
-		$x = $? >> 8;
-		print $stdout <<"EOF" if ($interactive);
-${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
-*** to attempt a resend, type %%${OFF}
-EOF
-		return $?;
-	}
-	$lasttwit = $string;
-	&$postpost($string);
-
-	return 0;
 }
 
-# this dispatch routine replaces the common logic of deletest, deletedm
-# and the favourites system.
-# this is a modified, abridged version of &updatest.
-sub central_cd_dispatch {
-	my ($id, $interactive, $update) = (@_);
-	#&update_authenticationheaders;
-	my $return = &backticks($baseagent, '/dev/null', undef,
-		$update, "id=$id", @wend);
-	print $stdout "-- return --\n$return\n-- return --\n"
-		if ($superverbose);
-	if ($? > 0) {
-		$x = $? >> 8;
-		print $stdout <<"EOF" if ($interactive);
-${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
-*** to attempt again, type %%${OFF}
-EOF
-		return ($?, '');
-	}
-	return (0, $return);
-}
+#### internal implementation functions for the twitter API. DON'T ALTER ####
 
-sub deletest {
-	my $id = shift;
-	my $interactive = shift;
-
-	my $update = "${delurl}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch($id, $interactive, $update);
-	print $stdout "-- tweet id #${id} has been removed\n"
-		if ($interactive && !$en);
+# manage automatic rate limiting by checking our max.
 #TODO
-# getting this even with success
-# looks like this is a Twitter bug
-	print $stdout "*** (was the tweet already deleted?)\n"
-		if ($interactive && $en);
-	return 0;
-}
-
-sub deletedm {
-	my $id = shift;
-	my $interactive = shift;
-
-	my $update = "${dmdelurl}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch($id, $interactive, $update);
-	print $stdout "-- DM id #${id} has been removed\n"
-		if ($interactive && !$en);
-	print $stdout "*** (was the DM already deleted?)\n"
-		if ($interactive && $en);
-	return 0;
-}
-
-sub cordfav {
-	my $id = shift;
-	my $interactive = shift;
-	my $basefav = shift;
-	my $text = shift;
-	my $verb = shift;
-
-	my $update = "${basefav}/${id}.json";
-	my ($en, $em) = &central_cd_dispatch($id, $interactive, $update);
-	print $stdout "-- favourite $verb for tweet id #${id}: \"$text\"\n"
-		if ($interactive && !$en);
-	print $stdout "*** (was the favourite already ${verb}?)\n"
-		if ($interactive && $en);
-	return 0;
-}
-
-# these are the centrally maintained notification routines
-
-sub notifier_growl {
-	my $class = shift;
-	my $text = shift;
-	my $ref = shift; # not used in this version
-
-	if (!defined($class) || !defined($growl_notify_path)) {
-		# we are being asked to initialize
-		$growl_notify_path = &wherecheck("trying to find growlnotify",
-			"growlnotify",
-"growlnotify must be installed to use growl notifications. check your\n" .
-			"documentation for how to do this.\n");
-		if (!defined($class)) {
-			$class = 'Growl support activated';
-			$text = 
-'You can configure notifications for TTYtter in the Growl preference pane.';
-		}
-	}
-	open(GROWL, "|$growl_notify_path -n 'TTYtter' 'TTYtter: $class'");
-	binmode(GROWL, ":utf8") unless ($seven);
-	print GROWL $text;
-	close(GROWL);
-	return 1;
-}
-
-# this is EXPERIMENTAL, and requires this patch to notify-send:
-# http://trac.galago-project.org/ticket/147
-# why it has not already been applied is fricking beyond me, it makes
-# sense. would YOU want arbitrary characters on the command line
-# separated only from overwriting your home directory by a quoting routine?
-
-sub notifier_libnotify {
-	my $class = shift;
-	my $text = shift;
-	my $ref = shift; # not used in this version
-
-	if (!defined($class) || !defined($notify_send_path)) {
-		# we are being asked to initialize
-		$notify_send_path = &wherecheck("trying to find notify-send",
-			"notify-send",
-"notify-send must be installed to use libnotify, and it must be modified\n".
-"for standard input. see the documentation for how to do this.\n");
-		if (!defined($class)) {
-			$class = 'libnotify support activated';
-			$text =
-'Congratulations, your notify-send is correctly configured for TTYtter.';
-		}
-	}
-	# figure out the time to display based on length of tweet
-	my $t = 1000+50*length($text); # about 150-180wpm read speed
-	open(NOTIFYSEND,
-		"|$notify_send_path -t $t -f - 'TTYtter: $class'");
-	binmode(NOTIFYSEND, ":utf8") unless ($seven);
-	print NOTIFYSEND $text;
-	close(NOTIFYSEND);
-	return 1;
-}
-
-# this is the central routine that takes a rolling tweet code, figures
-# out where that tweet is, and returns something approximating a tweet
-# structure (or the actual tweet structure itself if it can).
-sub get_tweet {
-	my $code = lc(shift);
-	return undef if (length($code) != 2 || $code !~ /^[a-z][0-9]$/);
-	my $source = ($code =~ /^[u-z]/) ? 1 : 0;
-	my $k = '';
-	my $l = '';
-	my $w = {'user' => {}};
-
-	if ($is_background) {
-		if ($source == 1) { # foreground only
-			return undef;
-		}
-		return $store_hash{$code};
-	}
-	return $store_hash{$code} if ($source); # foreground, foreground twt
-
-	print C "pipet $code ----------\n";
-	while(length($k) < 1024) {
-		sysread(W, $l, 1024);
-		$k .= $l;
-	}
-	return undef if ($k !~ /[^\s]/);
-	$k =~ s/\s+$//; # remove trailing spaces
-	print $stdout "-- background store fetch: $k\n" if ($verbose);
-	($w->{'menu_select'}, $w->{'id'}, $w->{'in_reply_to_status_id'},
-		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
-			$w->{'text'}) = split(/\s/, $k, 6);
-	return undef if (!length($w->{'text'})); # not possible
-	$w->{'created_at'} =~ s/_/ /g;
-	return $w;
-}
-
-# this is the analogous function for a rolling DM code. it is somewhat
-# simpler as DM codes are always rolling and have no foreground store
-# currently, so it always executes a background request.
-sub get_dm {
-	my $code = lc(shift);
-	my $k = '';
-	my $l = '';
-	my $w = {'sender' => {}};
-
-	return undef if (length($code) != 3 || $code !~ s/^d// ||
-				$code !~ /^[a-z][0-9]$/);
-	print C "piped $code ----------\n"; # internally two alphanum, recall
-	while(length($k) < 1024) {
-		sysread(W, $l, 1024);
-		$k .= $l;
-	}
-	return undef if ($k !~ /[^\s]/);
-	$k =~ s/\s+$//; # remove trailing spaces
-	print $stdout "-- background store fetch: $k\n" if ($verbose);
-	($w->{'menu_select'}, $w->{'id'},
-		$w->{'sender'}->{'screen_name'}, $w->{'created_at'},
-			$w->{'text'}) = split(/\s/, $k, 5);
-	return undef if (!length($w->{'text'})); # not possible
-	$w->{'created_at'} =~ s/_/ /g;
-	return $w;
-}
-
-# common code for /url
-
-sub openurl {
-	my $comm = $urlopen;
-	my $url = shift;
-	$urlshort = $url;
-	$comm =~ s/\%U/'$url'/g;
-	print $stdout "($comm)\n";
-	system("$comm");
-}
-
-sub thump { print C "update-------------\n"; }
-
-sub synckey {
-	my $key = shift;
-	my $value = shift;
-	print $stdout "*** (transmitting to background)\n";
-	print C (substr("=$key                           ", 0, 19) . "\n");
-	print C (substr(($value . $space_pad), 0, 1024));
-	sleep 1;
-}
-
-sub urlshorten {
-	my $url = shift;
-	my $rc;
-
-	return $url if ($url =~ /^$shorturldomain/i); # stop loops
-	chomp($rc = `$weld "${shorturl}$url"`);
-	return ($urlshort = (($rc =~ m#^http://#) ? $rc : undef));
-}
-
+# autoslowdown as we run out of requests, then speed up when hour
+# has passed.
 sub update_effpause {
+	return ($effpause = undef) if ($script); # for select()
 	if ($pause ne 'auto' && $noratelimit) {
-		$effpause = 0+$pause;
+		$effpause = (0+$pause) || undef;
 		return;
 	}
-	$effpause = 0+$pause if ($anonymous || (!$pause && $pause ne 'auto'));
+	$effpause = (0+$pause) || undef
+		 if ($anonymous || (!$pause && $pause ne 'auto'));
 	if (!$rate_limit_next && !$anonymous && ($pause > 0 ||
 		$pause eq 'auto')) {
 
@@ -2476,10 +3598,10 @@ sub update_effpause {
 		if (defined $rate_limit_ref &&
 				ref($rate_limit_ref) eq 'HASH') {
 			$rate_limit_left =
-				$rate_limit_ref->{'remaining_hits'};
+				$rate_limit_ref->{'remaining_hits'}+0;
 			$rate_limit_rate =
-				$rate_limit_ref->{'hourly_limit'};
-			if ($rate_limit_left < 10) {
+				$rate_limit_ref->{'hourly_limit'}+0;
+			if ($rate_limit_left < 10 && $rate_limit_rate) {
 				$estring = 
 "*** warning: $rate_limit_left API requests remain";
 				if ($pause eq 'auto') {
@@ -2490,12 +3612,7 @@ sub update_effpause {
 				&$exception(5, "$estring\n");
 			} else {
 				if ($pause eq 'auto') {
-					if ($rate_limit_rate > 3000) {
-# whitelisted accounts: can't go lower than once a minnit
-						$effpause = 60;
-					} else {
-# other accounts
-# this is computed to give you approximately 40% over the limit for client
+# this is computed to give you approximately 50% over the limit for client
 # requests
 # first, how many requests do we want to make an hour? $dmpause in a sec
 						$effpause =
@@ -2503,13 +3620,30 @@ sub update_effpause {
 # second, take requests away for $dmpause (e.g., 4:1 means reduce by 25%)
 						$effpause -=
 				((1/$dmpause) * $effpause) if ($dmpause);
+# third, divide by two (1:1) if replies "mention" streamix is on
+						$effpause = int($effpause/2)
+							if ($mentions);
+# take 1 request away for each subscription in @listlist (i.e., each one,
+# cut effpause in half again). if this gets us below zero, warn here.
+						if (scalar(@listlist)) {
+			$effpause = int($effpause/(2**scalar(@listlist)));
+							if (!$effpause) {
+print $stdout "** WARNING: YOU ARE FOLLOWING TOO MANY LISTS SIMULTANEOUSLY!\n";
+print $stdout "** automatic rate limit control cannot manage this many lists\n";
+print $stdout "** to disable this message, use a fixed number with -pause\n";
+print $stdout "** or use /lists or /listoff to reduce the number of lists\n";
+# and fall through to the fallback ha ha ha 
+							}
+						}
 # finally determine how many seconds should elapse
 						print $stdout
-		"-- that's funny: effpause is zero, using fallback 180sec\n"
+		"-- effective pause time zero?!, using fallback 180sec\n"
 						if (!$effpause && $verbose);
 						$effpause =
 				($effpause) ? int(3600/$effpause) : 180;
-					}
+# we don't go under sixty.
+						$effpause = 60
+							if ($effpause < 60);
 				} else {
 					$effpause = 0+$pause;
 				}
@@ -2537,206 +3671,1945 @@ sub update_effpause {
 	}
 }
 
-MONITOR:
-# asynchronous monitoring process -- uses select() to receive from console
+# thump for timeline
+# THIS MUST ONLY BE RUN BY THE BACKGROUND.
+sub refresh {
+	my $interactive = shift;
+	my $relative_last_id = shift;
+	my $k;
+	my $my_json_ref = undef;
+	my $i;
+	my @streams = ();
+	my $dont_roll_back_too_far = 0;
 
-%store_hash = ();
-$is_background = 1;
-$rin = '';
-vec($rin,fileno(STDIN),1) = 1;
-# paranoia
-binmode($stdout, ":crlf") if ($termrl);
-unless ($seven) {
-	binmode(STDIN, ":utf8");
-	binmode($stdout, ":utf8");
-}
-$interactive = $timeleft = $previous_last_id = 0;
-$dm_first_time = ($dmpause) ? 1 : 0;
-$SIG{'BREAK'} = $SIG{'INT'} = 'IGNORE'; # we only respond to SIGKILL/SIGTERM
+	# this mixes all the tweet streams (timeline, hashtags, replies
+	# and lists) into a single unified data river.
+	# backload can be zero, but this will still work since &grabjson
+	# sees a count of zero as "default."
 
-for(;;) {
-	&$heartbeat;
-	&update_effpause;
-	$wrapseq = 0; # remember, we don't know when commands are sent.
-	&refresh($interactive, $previous_last_id) unless ($timeleft
-		|| (!$effpause && !$interactive));
-	$previous_last_id = $last_id;
-	if ($dmpause && $effpause) {
-		if ($dm_first_time) {
-			&dmrefresh(0);
-			$dmcount = $dmpause;
-		} elsif (!$interactive) {
-			if (!--$dmcount) {
-				&dmrefresh($interactive); # using dm_first_time
-				$dmcount = $dmpause;
-			}
-		}
-	}
-	$interactive = 0;
-	print $stdout $notify_rate;
-	$notify_rate = "";
-	print $stdout $vs;
-	$vs = "";
-	$timeleft = ($effpause) ? $effpause : 60;
-	if($timeleft=select($rout=$rin, undef, undef, ($timeleft||$effpause))) {
-		sysread(STDIN, $rout, 20);
-		next if (!length($rout));
-		# background communications central command code
-		if ($rout =~ /^pipet (..)/) {
-			my $key = &get_tweet($1);
-			my $ms = $key->{'menu_select'} || 'XX';
-			my $ds = $key->{'created_at'} || 'argh, no created_at';
-			$ds =~ s/\s/_/g;
-			$key = substr(( "$ms ".(0+$key->{'id'})." ".
-		(0+$key->{'in_reply_to_status_id'})." ".
-		$key->{'user'}->{'screen_name'}." $ds ".$key->{'text'}.
-			$space_pad), 0, 1024);
-			print P $key;
-		} elsif ($rout =~ /^piped (..)/) {
-			my $key = $dm_store_hash{$1};
-			my $ms = $key->{'menu_select'} || 'XX';
-			my $ds = $key->{'created_at'} || 'argh, no created_at';
-			$ds =~ s/\s/_/g;
-			$key = substr(( "$ms ".(0+$key->{'id'})." ".
-		$key->{'sender'}->{'screen_name'}." $ds ".$key->{'text'}.
-			$space_pad), 0, 1024);
-			print P $key;
-		} elsif ($rout =~ /^sync/) {
-			print $stdout "-- synced; exiting at ",scalar localtime
-				if ($verbose);
-			exit $laststatus;
-		} elsif ($rout =~ /([\=\?])([^ ]+)/) {
-			$comm = $1;
-			$key =$2;
-			if ($comm eq '?') {
-				print $stdout "*** $key => $$key\n";
-			} else {
-				sysread(STDIN, $value, 1024);
-				$value =~ s/\s+$//;
-				if ($key eq 'tquery') {
-					print $stdout
-					"*** custom query installed\n";
-					print $stdout
-					"$value" if ($verbose);
-					@trackstrings = ();
-					# already URL encoded
-					push(@trackstrings, $value);
-				} else {
-					$$key = $value;
-					print $stdout
-					"*** changed: $key => $$key\n";
+	# first, get my own timeline
+	unless ($notimeline) {
+		my $base_json_ref = &grabjson($url, $fetch_id, 0,
+			(($last_id) ? 250 : $fetchwanted || $backload), {
+				"type" => "timeline",
+				"payload" => ""
+			});
+		# if I can't get my own timeline, ABORT! highest priority!
+		return if (!defined($base_json_ref) ||
+			ref($base_json_ref) ne 'ARRAY');
 
-					&generate_ansi if ($key eq 'ansi' ||
-						$key =~ /^colour/);
-					$rate_limit_next = 0
-						if ($key eq 'pause' &&
-							$value eq 'auto');
-					&tracktags_makearray
-						if ($key eq 'track');
-					&filter_compile
-						if ($key eq 'filter');
-					&notify_compile
-						if ($key eq 'notifies');
+		# we have to filter against the ID cache right now, because
+		# we might not have any other streams!
+		if ($fetch_id && $last_id) {
+			$my_json_ref = [];
+			my $l;
+			my %k; # need temporary dedupe
+			foreach $l (@{ $base_json_ref }) {
+				unless (length($id_cache{$l->{'id_str'}}) ||
+						$filter_next{$l->{'id_str'}} ||
+						$k{$l->{'id_str'}}) {
+					push(@{ $my_json_ref }, $l);
+					$k{$l->{'id_str'}}++;
 				}
 			}
 		} else {
-			$interactive = 1;
-			$last_id = 0 if ($rout =~ /^reset/);
-			$last_dm = 0 if ($rout =~ /^dmreset/);
-			print $stdout "-- command received ", scalar
-				localtime, " $rout" if ($verbose);
-			if ($rout =~ /^dm/) {
-				&dmrefresh($interactive);
-				$dmcount = $dmpause;
-			} else {
-				$timeleft = 0;
+			$my_json_ref = $base_json_ref;
+		}
+	}
+
+	# add stream for replies, if requested
+	if ($mentions) {
+		my $r = &grabjson($rurl, $fetch_id, 0,
+			(($last_id) ? 250
+			: $fetchwanted || $backload), {
+				"type" => "reply",
+				"payload" => ""
+			});
+		push(@streams, $r)
+			if (defined($r) &&
+				ref($r) eq 'ARRAY' &&
+				scalar(@{ $r }));
+	}
+
+	# next handle hashtags and tracktags
+	# failure here does not abort, because search may be down independently
+	# of the main timeline.
+	if (!$notrack && scalar(@trackstrings)) {
+		my $r;
+		my $k;
+		my $l = &max((($last_id) ? 100 :
+			$fetchwanted || $backload), $searchhits);
+		# temporarily squelch server complaints (see below)
+		$muffle_server_messages = 1 unless ($verbose);
+		foreach $k (@trackstrings) {
+		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
+				$fetch_id, 1, 0, {
+					"type" => "search",
+					"payload" => $k
+				});
+		# depending on the state of the search API, we might be using
+		# a bogus search ID that is too far back. so if this fails,
+		# try again with last_id.
+			if (!defined($r) || ref($r) ne 'ARRAY') {
+		print $stdout "-- search retry $k attempted with last_id\n"
+				if ($verbose);
+		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
+				$last_id, 1, 0, {
+					"type" => "search",
+					"payload" => $k
+				});
+				$dont_roll_back_too_far = 1;
+			}
+		# or maybe not even then?
+			if (!defined($r) || ref($r) ne 'ARRAY') {
+		print $stdout "-- search retry $k attempted with zero!\n"
+				if ($verbose);
+		$r = &grabjson("$queryurl?${k}&rpp=${l}&result_type=recent",
+				0, 1, 0, {
+					"type" => "search",
+					"payload" => $k
+				});
+				$dont_roll_back_too_far = 1;
+			}
+			push(@streams, $r)
+				if (defined($r) &&
+					ref($r) eq 'ARRAY' &&
+					scalar(@{ $r }));
+		}
+		$muffle_server_messages = 0;
+	}
+
+	# add stream for lists we have on with /set lists, and tag it with
+	# the list.
+	if (scalar(@listlist)) {
+		foreach $k (@listlist) {
+			my $r = &grabjson(&liurltourl($statusliurl,
+				$k->[1], $k->[0]), $fetch_id, 0,
+				(($last_id) ? 250 : $fetchwanted), {
+					"type" => "list",
+					"payload" => ($k->[0] ne $whoami) ?
+						"$k->[0]/$k->[1]" :
+						"$k->[1]"
+				});
+			push(@streams, $r)
+				if (defined($r) && ref($r) eq 'ARRAY' &&
+					scalar(@{ $r }));
+		}
+	}
+
+	$fetchwanted = 0; # done with that.
+	# now, streamix all the streams into my_json_ref, discarding duplicates
+	# a simple hash lookup is no good; it has to be iterative. because of
+	# that, we might as well just splice it in here and save a sort later.
+	# the streammix logic is unnecessarily complex, probably.
+	# remember, the most recent tweets are FIRST.
+	if (scalar(@streams)) {
+		my $j;
+		my $k;
+		my $l = scalar(@{ $my_json_ref });
+		my $m;
+		my $n;
+
+		foreach $n (@streams) {
+			SMIX0: foreach $j (@{ $n }) {
+				my $id = $j->{'id_str'}; # for ease of use
+				# possible to happen if search tryhard is on
+				next SMIX0 if ($id < $fetch_id);
+
+				# filter this lot against the id cache
+				# and any tweets we just filtered.
+				next SMIX0 if (length($id_cache{$id}) &&
+					$fetch_id);
+				next SMIX0 if ($filter_next{$id} &&
+					$fetch_id);
+
+				if (!$l) { # degenerate case
+					push (@{ $my_json_ref }, $j);
+					$l++;
+					next SMIX0;
+				}
+
+				# find the same ID, or one just before,
+				# and splice in
+				$m = -1;
+				SMIX1: for($i=0; $i<$l; $i++) {
+					next SMIX0 # it's a duplicate
+					if($my_json_ref->[$i]->{'id_str'} == $id);
+					if($my_json_ref->[$i]->{'id_str'} < $id) {
+						$m = $i;
+						last SMIX1; # got it
+					}
+				}
+				if ($m == -1) { # didn't find
+					push (@{ $my_json_ref }, $j);
+				} elsif ($m == 0) { # degenerate case
+					unshift (@{ $my_json_ref }, $j);
+				} else { # did find, so splice
+					splice(@{ $my_json_ref }, $m, 0,
+						$j);
+				} 
+				$l++;
 			}
 		}
-	} else {
-		print $stdout "-- routine refresh ($dmcount to next dm) ",
-			scalar localtime, "\n" if ($verbose);
+	}
+	%filter_next = ();
+
+	# fetch_id gyration. initially start with last_id, then roll. we
+	# want to keep a window, though, so we try to pick a sensible value
+	# that doesn't fetch too much but includes some overlap. we can't
+	# do computations on the ID itself, because it's "opaque."
+	$fetch_id = 0 if ($last_id == 0);
+	($last_id, $crap) =
+		&tdisplay($my_json_ref, undef, $relative_last_id);
+	my $new_fi = (scalar(@{ $my_json_ref })) ?
+		$my_json_ref->[(scalar(@{ $my_json_ref })-1)]->{'id_str'} :
+		'';
+	# try to widen the window to a "reasonable amount"
+	$fetch_id = ($fetch_id == 0) ? $last_id :
+		(length($new_fi) && $new_fi ne $last_id
+			&& $new_fi > $fetch_id) ? $new_fi :
+		($relative_last_id > 0 && $relative_last_id ne $last_id &&
+				$relative_last_id > $fetch_id) ?
+			$relative_last_id : $fetch_id;
+	
+	print $stdout
+"-- last_id $last_id, fetch_id $fetch_id, rollback $relative_last_id\n".
+"-- (@{[ scalar(keys %id_cache) ]} cached)\n"
+		if ($verbose);
+	&send_removereadline if ($termrl);
+	&$conclude;
+	$wrapseq = 1;
+	&send_repaint;
+} 
+
+# handle (i.e., display) an array of tweets in standard format
+sub tdisplay { # used by both synchronous /again and asynchronous refreshes
+	my $my_json_ref = shift;
+	my $class = shift;
+	my $relative_last_id = shift;
+	my $mini_id = shift;
+	my $printed = 0;
+	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
+	my $save_counter = -1;
+	my $i;
+	my $j;
+
+	if ($disp_max) { # null list may be valid if we get code 304
+		unless ($is_background) { # reset store hash each console
+			if ($mini_id) {
+#TODO
+# generalize this at some point instead of hardcoded menu codes
+# maybe an ma0-mz9?
+				$save_counter = $tweet_counter;
+				$tweet_counter = $mini_split;
+				for(0..9) {
+					undef $store_hash{"zz$_"};
+				}
+			}# else {
+			#	$tweet_counter = $back_split;
+			#	%store_hash = ();
+			#}
+		}
+		for($i = $disp_max; $i > 0; $i--) {
+			my $g = ($i-1);
+			$j = $my_json_ref->[$g];
+			my $id = $j->{'id_str'};
+
+			next if (!length($j->{'user'}->{'screen_name'}));
+			if ($filter_c && &$filter_c(&descape($j->{'text'}))) {
+				$filtered++;
+				$filter_next{$j->{'id_str'}}++
+					if ($is_background);
+				next;
+			}
+
+			# assign menu codes and place into caches
+			$key = (($is_background) ? '' : 'z' ).
+				substr($alphabet, $tweet_counter/10, 1) .
+				$tweet_counter % 10;
+			$tweet_counter = 
+				($tweet_counter == 259) ? $mini_split :
+				($tweet_counter == ($mini_split - 1))
+					? 0 : ($tweet_counter+1);
+			$j->{'menu_select'} = $key;
+			$key = lc($key);
+
+			# recover ID cache memory: find the old ID with this
+			# menu code and remove it, then add the new one
+			# except if this is the foreground. we don't use this
+			# in the foreground.
+			if ($is_background) {
+				delete $id_cache{$store_hash{$key}->{'id_str'}};
+				$id_cache{$id} = $key;
+			}
+
+			# finally store in menu code cache
+			$store_hash{$key} = $j;
+
+			sleep 5 while ($suspend_output > 0);
+			&send_removereadline if ($termrl);
+			$wrapseq++;
+
+			$printed += scalar(&$handle($j,
+			($class || (($id <= $relative_last_id) ? 'again' :
+				undef))));
+		}
+	}
+	$tweet_counter = $save_counter if ($save_counter > -1);
+	sleep 5 while ($suspend_output > 0);
+	&$exception(6,"*** warning: more tweets than menu codes; truncated\n")
+		if (scalar(@{ $my_json_ref }) > $print_max);
+	if (($interactive || $verbose) && !$printed) {
+		&send_removereadline if ($termrl);
+		print $stdout "-- sorry, nothing to display.\n";
+		$wrapseq = 1;
+	}
+	return (&max($my_json_ref->[0]->{'id_str'}, $last_id), $j);
+}
+
+sub dt_tdisplay {
+	my $my_json_ref = shift;
+	my $class = shift;
+	if (defined($my_json_ref)
+		&& ref($my_json_ref) eq 'ARRAY'
+			&& scalar(@{ $my_json_ref })) {
+		my ($crap, $art) = &tdisplay($my_json_ref, $class);
+		unless ($timestamp) {
+			my ($time, $ts1) = &$wraptime(
+$my_json_ref->[(&min($print_max,scalar(@{ $my_json_ref }))-1)]->{'created_at'});
+			my ($time, $ts2) = &$wraptime($art->{'created_at'});
+			print $stdout &wwrap(
+				"-- update covers $ts1 thru $ts2\n");
+		}
+		&$conclude;
 	}
 }
 
-sub backticks {
-	# more efficient/flexible backticks system
-	my $comm = shift;
-	my $rerr = shift;
-	my $rout = shift;
+# thump for DMs
+sub dmrefresh {
+	my $interactive = shift;
+	my $sent_dm = shift;
+	if ($anonymous) {
+		print $stdout
+			"-- sorry, you can't read DMs if you're anonymous.\n"
+			if ($interactive);
+		return;
+	}
+
+	# no point in doing this if we can't even get to our own timeline
+	# (unless user specifically requested it, or our timeline is off)
+	return if (!$interactive && !$last_id && !$notimeline); # NOT last_dm
+
+	my $my_json_ref = &grabjson((($sent_dm) ? $dmsenturl : $dmurl),
+		(($sent_dm) ? 0 : $last_dm), 0, $dmfetchwanted);
+	return if (!defined($my_json_ref)
+		|| ref($my_json_ref) ne 'ARRAY');
+
+	my $orig_last_dm = $last_dm;
+	$last_dm = 0 if ($sent_dm);
+
+	$dmfetchwanted = 0;
+	my $printed = 0;
+	my $max = 0;
+	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
+	my $i;
+	my $g;
+	my $key;
+
+	if ($disp_max) { # an empty list can be valid
+		if ($dm_first_time) {
+			sleep 5 while ($suspend_output > 0);
+			&send_removereadline if ($termrl);
+			print $stdout
+			"-- checking for most recent direct messages:\n";
+			$disp_max = 2;
+			$interactive = 1;
+		}
+		for($i = $disp_max; $i > 0; $i--) {
+			$g = ($i-1);
+			my $j = $my_json_ref->[$g];
+			next if (!$sent_dm && $j->{'id_str'} <= $last_dm);
+			next if (!length($j->{'sender'}->{'screen_name'}) ||
+				!length($j->{'recipient'}->{'screen_name'}));
+
+			$key = substr($alphabet, $dm_counter/10, 1) .
+				$dm_counter % 10;
+			$dm_counter = 
+				($dm_counter == 259) ? 0 :
+				($dm_counter+1);
+			$j->{'menu_select'} = $key;
+			$dm_store_hash{lc($key)} = $j;
+
+			sleep 5 while ($suspend_output > 0);
+			&send_removereadline if ($termrl);
+			$wrapseq++;
+
+			$printed += scalar(&$dmhandle($j));
+		}
+		$max = $my_json_ref->[0]->{'id_str'};
+	}
+	sleep 5 while ($suspend_output > 0);
+	if (($interactive || $verbose) && !$printed && !$dm_first_time) {
+		&send_removereadline if ($termrl);
+		print $stdout (($sent_dm)
+			? "-- you haven't sent anything yet.\n"
+			: "-- sorry, no new direct messages.\n");
+		$wrapseq = 1;
+	}
+	$last_dm = ($sent_dm) ? $orig_last_dm 
+		: &max($last_dm, $max);
+	$dm_first_time = 0 if ($last_dm || !scalar(@{ $my_json_ref }));
+	print $stdout "-- dm bookmark is $last_dm.\n" if ($verbose);
+	&$dmconclude;
+	&send_repaint;
+}	
+
+# post an update
+# this is a general API function that handles status updates and sending DMs.
+sub updatest {
+	my $string = shift;
+	my $interactive = shift;
+	my $in_reply_to = shift;
+	my $user_name_dm = shift;
+	my $rt_id = shift; # even if this is set, string should also be set.
+	my $urle = '';
+	my $i;
+	my $subpid;
+	my $istring;
+
+	my $verb = (length($user_name_dm)) ? "DM $user_name_dm" :
+			($rt_id) ? 'RE-tweet' :
+			'tweet';
+
+	if ($anonymous) {
+		print $stdout
+		"-- sorry, you can't $verb if you're anonymous.\n"
+			if ($interactive);
+		return 99;
+	}
+
+	# "the pastebrake"
+	if (!$slowpost && !$verify && !$script) {
+		if ((time() - $postbreak_time) < 5) {
+			$postbreak_count++;
+			if ($postbreak_count == 3) {
+				print $stdout
+		"-- you're posting pretty fast. did you mean to do that?\n".
+		"-- waiting three seconds before taking the next set of tweets\n".
+		"-- hit CTRL-C NOW! to kill TTYtter if you accidentally pasted in this window\n";
+				sleep 3;
+				$postbreak_count = 0;
+			}
+		} else {
+			$postbreak_count = 0;
+		}
+		$postbreak_time = time();
+	}
+
+	my $payload = (length($user_name_dm)) ? 'text' : 'status';
+	$string = &$prepost($string) unless ($user_name_dm || $rt_id);
+
+	# YES, you *can* verify and slowpost. I thought about this and I
+	# think I want to allow it.
+	if ($verify && !$status) {
+		my $answer;
+
+		print $stdout
+			&wwrap("-- verify you want to $verb: \"$string\"\n");
+		$answer = &linein(
+			"-- send to server? (only y or Y is affirmative):");
+		if ($answer ne 'y') {
+			print $stdout "-- ok, NOT sent to server.\n";
+			return 97;
+		}
+	}
+
+	unless ($rt_id) {
+		$urle = '';
+		foreach $i (unpack("${pack_magic}C*", $string)) {
+			my $k = chr($i);
+			if ($k =~ /[-._~a-zA-Z0-9]/) {
+				$urle .= $k;
+			} else {
+				$k = sprintf("%02X", $i);
+				$urle .= "%$k";
+			}
+		}
+	}
+
+	$user_name_dm = (length($user_name_dm)) ?
+		"&user=$user_name_dm" : '';
+
+	my $i = '';
+	$i .= "source=TTYtter&" if ($authtype eq 'basic');
+	$i .= "in_reply_to_status_id=${in_reply_to}&" if ($in_reply_to > 0);
+	if (!$rt_id && defined $lat && defined $long && $location) {
+		print $stdout "-- using lat/long: ($lat, $long)\n";
+		$i .= "lat=${lat}&long=${long}&";
+	} elsif ((defined $lat || defined $long) && $location && !$rt_id) {
+		print $stdout
+		"-- warning: incomplete location ($lat, $long) ignored\n";
+	}
+	$i .= "${payload}=${urle}${user_name_dm}" unless ($rt_id);
+	$i .= "id=$rt_id" if ($rt_id);
+	$slowpost += 0; if ($slowpost && !$script && !$status && !$silent) {
+		if($pid = open(SLOWPOST, '-|')) {
+			print $stdout &wwrap(
+	"-- waiting $slowpost seconds to $verb, ^C cancels: \"$string\"\n");
+			close(SLOWPOST); # this should wait for us
+			if ($? > 256) {
+				print $stdout
+					"\n-- not sent, cancelled by user\n";
+				return 97;
+			}
+			print $stdout "-- sending to server\n";
+		} else {
+			$in_backticks = 1; # defeat END sub
+			&sigify(sub { exit 254; }, qw(BREAK INT));
+			sleep $slowpost;
+			exit 0;
+		}
+	}
+	my $return = &backticks($baseagent, '/dev/null', undef,
+		(length($user_name_dm)) ? $dmupdate :
+		($rt_id) ? "$rturl/${rt_id}.json" :
+		$update, $i, 0, @wend);
+	print $stdout "-- return --\n$return\n-- return --\n"
+		if ($superverbose);
+	if ($? > 0) {
+		$x = $? >> 8;
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
+*** to attempt a resend, type %%${OFF}
+EOF
+		return $?;
+	}
+	my $ec;
+	if ($ec = &is_json_error($return)) {
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: server error message received
+*** "$ec"${OFF}
+EOF
+		return 98;
+	}
+	if ($ec = &is_fail_whale($return) ||
+			$return =~ /^\[?\]?<!DOCTYPE\s+html/i ||
+			$return =~ /^(Status:\s*)?50[0-9]\s/ ||
+			$return =~ /^<html>/i ||
+			$return =~ /^<\??xml\s+/) {
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: Twitter Fail Whale${OFF}
+EOF
+		return 98;
+	}
+	$lastpostid = &parsejson($return)->{'id_str'};
+	unless ($user_name_dm || $rt_id) {
+		$lasttwit = $string;
+		&$postpost($string);
+	}
+	return 0;
+}
+
+# this dispatch routine replaces the common logic of deletest, deletedm,
+# follow, leave and the favourites system.
+# this is a modified, abridged version of &updatest.
+sub central_cd_dispatch {
+	my ($payload, $interactive, $update) = (@_);
+	my $return = &backticks($baseagent, '/dev/null', undef,
+		$update, $payload, 0, @wend);
+	print $stdout "-- return --\n$return\n-- return --\n"
+		if ($superverbose);
+	if ($? > 0) {
+		$x = $? >> 8;
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: connect timeout or no confirmation received ($x)
+*** to attempt again, type %%${OFF}
+EOF
+		return ($?, '');
+	}
+	my $ec;
+	if ($ec = &is_json_error($return)) {
+		print $stdout <<"EOF" if ($interactive);
+${MAGENTA}*** warning: server error message received
+*** "$ec"${OFF}
+EOF
+		return (98, $return);
+	}
+	return (0, $return);
+}
+
+# the following functions may be user-exposed in a future version of
+# TTYtter, but are officially still "private interfaces."
+# delete a status
+sub deletest {
+	my $id = shift;
+	my $interactive = shift;
+
+	my $update = "${delurl}/${id}.json";
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	print $stdout "-- tweet id #${id} has been removed\n"
+		if ($interactive && !$en);
+	print $stdout "*** (was the tweet already deleted?)\n"
+		if ($interactive && $en);
+	return 0;
+}
+
+# delete a DM
+sub deletedm {
+	my $id = shift;
+	my $interactive = shift;
+
+	my $update = "${dmdelurl}/${id}.json";
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	print $stdout "-- DM id #${id} has been removed\n"
+		if ($interactive && !$en);
+	print $stdout "*** (was the DM already deleted?)\n"
+		if ($interactive && $en);
+	return 0;
+}
+
+# create or destroy a favourite
+sub cordfav {
+	my $id = shift;
+	my $interactive = shift;
+	my $basefav = shift;
+	my $text = shift;
+	my $verb = shift;
+
+	my $update = "${basefav}/${id}.json";
+	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $update);
+	print $stdout "-- favourite $verb for tweet id #${id}: \"$text\"\n"
+		if ($interactive && !$en);
+	print $stdout "*** (was the favourite already ${verb}?)\n"
+		if ($interactive && $en);
+	return 0;
+}
+
+# follow or unfollow a user
+sub foruuser {
+	my $uname = shift;
+	my $interactive = shift;
+	my $basef = shift;
+	my $verb = shift;
+
+	my $update = "${basef}/${uname}.json";
+	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
+		$interactive, $update);
+	print $stdout "-- ok, you have $verb following user $uname.\n"
+		if ($interactive && !$en);
+	return 0;
+}
+
+# block or unblock a user
+sub boruuser {
+	my $uname = shift;
+	my $interactive = shift;
+	my $basef = shift;
+	my $verb = shift;
+
+	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
+		$interactive, $basef);
+	print $stdout "-- ok, you have $verb blocking user $uname.\n"
+		if ($interactive && !$en);
+	return 0;
+}
+
+#### TTYtter internal API utility functions ####
+# ... which your API *can* call
+
+# gets and returns the contents of a URL (optionally pass a POST body)
+sub graburl {
 	my $resource = shift;
 	my $data = shift;
-	my $buf = '';
-	my $undersave = $_;
-	my $pid;
+	
+	return &backticks($baseagent,
+		'/dev/null', undef, $resource, $data,
+		1, @wind);
+}
 
-	($comm, $args, $data) = &$stringify_args($comm, $resource, $data, @_);
-	print $stdout "$comm\n$args\n$data\n" if ($superverbose);
-	if(open(BACTIX, '-|')) {
-		while(<BACTIX>) {
-			$buf .= $_;
-		} close(BACTIX);
-		$_ = $undersave;
-		return $buf; # and $? is still in $?
+# format a tweet based on user options
+sub standardtweet {
+	my $ref = shift;
+	my $nocolour = shift;
+
+	my $sn = &descape($ref->{'user'}->{'screen_name'});
+	my $tweet = &descape($ref->{'text'});
+	my $colour;
+	my $g;
+	my $h;
+
+	# wordwrap really ruins our day here, thanks a lot, @augmentedfourth
+	# have to insinuate the ansi sequences after the string is wordwrapped
+
+	$g = $colour = ${'CC' . scalar(&$tweettype($ref, $sn, $tweet)) }
+		unless ($nocolour);
+	$colour = $OFF . $colour
+		unless ($nocolour);
+
+	# prepend screen name "badges"
+	$sn = "\@$sn" if ($ref->{'in_reply_to_status_id_str'} > 0);
+	$sn = "+$sn" if ($ref->{'user'}->{'geo_enabled'} eq 'true' &&
+		$ref->{'geo'}->{'coordinates'}->[0] ne 'undef' &&
+		$ref->{'geo'}->{'coordinates'}->[1] ne 'undef');
+	$sn = "%$sn" if (length($ref->{'retweeted_status'}->{'id_str'}));
+	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
+	# prepend list information, if this tweet originated from a list
+	$sn = "($ref->{'tag'}->{'payload'})$sn"	
+		if (length($ref->{'tag'}->{'payload'}) &&
+			$ref->{'tag'}->{'type'} eq 'list');
+	$tweet = "<$sn> $tweet";
+	# twitter doesn't always do this right.
+	$h = $ref->{'retweet_count'}; $h += 0; $h = "${h}+" if ($h >= 100);
+	# twitter doesn't always handle single retweets right. good f'n grief.
+	$tweet = "(x${h}) $tweet" if ($h > 1 && !$nonewrts);
+	# br3nda's modified timestamp patch
+	if ($timestamp) {
+		my ($time, $ts) = &$wraptime($ref->{'created_at'});
+		$tweet = "[$ts] $tweet";
+	}
+	
+	# pull it all together
+	$tweet = &wwrap($tweet, ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0)
+		if ($wrap); # remember to account for prompt length on #1
+	$tweet =~ s/^([^<]*)<([^>]+)>/${g}\1<${EM}\2${colour}>/
+		unless ($nocolour);
+	$tweet =~ s/\n*$//;
+	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
+
+	# highlight anything that we have in track
+	if(scalar(@tracktags)) { # I'm paranoid
+		foreach $h (@tracktags) {
+			$h =~ s/^"//; $h =~ s/"$//; # just in case
+$tweet =~ s/(^|[^a-zA-Z0-9])($h)([^a-zA-Z0-9]|$)/\1${EM}\2${colour}\3/ig
+			unless ($nocolour);
+		}
+	}
+
+	# smb's underline/bold patch goes on last (modified for lists)
+	unless ($nocolour) {
+		# only do this after the < > portion.
+		my $k = index($tweet, ">");
+		my $botsub = substr($tweet, $k);
+		my $topsub = substr($tweet, 0, $k);
+		$botsub =~
+s/(^|[^a-zA-Z0-9_])\@([a-zA-Z0-9_\-\/]+)/\1\@${UNDER}\2${colour}/g;
+		$tweet = $topsub . $botsub;
+	}
+
+	return $tweet;
+}
+
+# format a DM based on standard user options
+sub standarddm {
+	my $ref = shift;
+	my $nocolour = shift;
+
+	my ($time, $ts) = &$wraptime($ref->{'created_at'});
+	my $text = &descape($ref->{'text'});
+	my $sns = &descape($ref->{'sender'}->{'screen_name'});
+	if ($sns eq $whoami) {
+		$sns = "->" . &descape($ref->{'recipient'}->{'screen_name'});
+	}
+	my $g = &wwrap("[DM d$ref->{'menu_select'}]".
+		"[$sns/$ts] $text", ($wrapseq <= 1) ? ((&$prompt(1))[1]) : 0);
+
+	$g =~ s/^\[DM ([^\/]+)\//${CCdm}[DM ${EM}\1${OFF}${CCdm}\//
+		unless ($nocolour);
+	$g =~ s/\n*$//;
+	$g .= ($nocolour) ? "\n" : "$OFF\n";
+	$g =~ s/(^|[^a-zA-Z0-9_])\@(\w+)/\1\@${UNDER}\2${OFF}${CCdm}/g
+		unless ($nocolour);
+	return $g;
+}
+
+# for future expansion: this is the declared API callable method
+# for executing a command as if the console had typed it.
+sub ucommand {
+	die("** can't call &ucommand during multi-module loading.\n")
+		if ($multi_module_mode == -1);
+	&prinput(@_);
+}
+
+# your application can also call &grabjson to get a hashref
+# corresponding to parsed JSON from an arbitrary resource.
+# see that function later on.
+
+
+#### DEFAULT TTYtter INTERNAL API METHODS ####
+# don't change these here. instead, use -exts=yourlibrary.pl and set there.
+# note that these are all anonymous subroutine references.
+# anything you don't define is overwritten by the defaults.
+# it's better'n'superclasses.
+# NOTE: defaultaddaction, defaultmain and defaultprompt
+# are all defined in the "console" section above for
+# clarity.
+
+# this first set are the multi-module aware ones.
+
+# the standard iterator for multi-module methods
+sub multi_module_dispatch {
+	my $default = shift;
+	my $dispatch_chain = shift;
+	my $rv_handler = shift;
+	my @args = @_;
+
+	local $dispatch_ref; # on purpose; get_key/set_key may need it
+	# $*_call_default is a global
+	$did_call_default = 0;
+	$this_call_default = 0;
+	$multi_module_context = 0;
+
+	if ($rv_handler == 0) {
+		$rv_handler = sub {
+			return 0;
+		};
+	}
+
+	# fall through to default if no dispatch chain
+	if (!scalar(@{ $dispatch_chain })) {
+		return &$default(@args);
+	}
+	foreach $dispatch_ref (@{ $dispatch_chain }) {
+		# each reference has the code, and the file that specified it.
+		# set up a multi-module context and run that function. if the
+		# default ever gets called, we log it to tell the multi-module
+		# handler to call the default at the end.
+
+		my $rv;
+		my $irv;
+		my $caller = (caller(1))[3];
+		$caller =~ s/^main::multi//;
+
+		$multi_module_context = 1; # defaults then know to defer
+		$this_call_default = 0;
+		$store = $master_store->{ $dispatch_ref->[0] };
+		print "-- calling \$$caller in $dispatch_ref->[0]\n"
+			if ($verbose);
+		my $code_ref = $dispatch_ref->[1];
+		$rv = &$rv_handler(@irv = &$code_ref(@args));
+		$multi_module_context = 0;
+		if ($rv & 4) {
+			# rv_handler indicating to call default and halt
+			# if it was called.
+			return &$default(@args) if ($did_call_default);
+		}
+		if ($rv & 2) {
+			# rv_handler indicating to make new @args from @irv
+			@args = @irv;
+		}
+		if ($rv & 1) {
+			# rv_handler indicating to halt early. do so.
+			return (wantarray) ? @irv : $irv[0];
+		}
+	}
+	$multi_module_context = 0;
+	return &$default(@args) if ($did_call_default);
+	return (wantarray) ? @irv : $irv[0];
+}
+		
+# these are the stubs that call the dispatcher.
+sub multiaddaction {
+	&multi_module_dispatch(\&defaultaddaction, \@m_addaction, sub{
+		# return immediately on the first extension to accept
+		return (shift>0);
+	}, @_);
+}
+sub multiconclude {
+	&multi_module_dispatch(\&defaultconclude, \@m_conclude, 0, @_);
+}
+sub multidmconclude {
+	&multi_module_dispatch(\&defaultdmconclude, \@m_dmconclude, 0, @_);
+}
+#handlr
+sub multidmhandle {
+	&multi_module_dispatch(\&defaultdmhandle, \@m_dmhandle, sub {
+		my $rv = shift;
+
+		# skip default calls.
+		return 0 if ($this_call_default);
+
+		# if not a default call, and the DM was refused for
+		# processing by this extension, then the DM is now
+		# suppressed. do not call any other extensions after this.
+		# even if it ends in suppression, we still call the default
+		# if it was ever called before.
+		return 5 if ($rv == 0);
+
+		# if accepted in any manner, keep calling.
+		return 0;
+	}, @_);
+}
+sub multiexception {
+	# this is a secret option for people who want to suppress errors.
+	if ($exception_is_maskable) {
+		&multi_module_dispatch(\&defaultexception, \@m_exception, sub {
+			my $rv = shift;
+
+			# same logic as handle/dmhandle, except return -1-
+			# to mask from subsequent extensions.
+			return 0 if ($this_call_default);
+			return 5 if ($rv);
+			return 0;
+		}, @_);
 	} else {
-		$in_backticks = 1;
-		if (length($rerr)) {
-			close(STDERR); 
-			open(STDERR, ">$rerr");
-		}
-		if (length($rout)) {
-			close(STDOUT);
-			open(STDOUT, ">$rout");
-		}
-		if(open(FRONTIX, "|$comm")) {
-			print FRONTIX "$args\n";
-			print FRONTIX "$data" if (length($data));
-			close(FRONTIX);
-		} else {
-			die(
-			"backticks() failure for $comm $rerr $rout @_: $!\n");
-		}
-		$rv = $? >> 8;
-		exit $rv;
+		&multi_module_dispatch(
+			\&defaultexception, \@m_exception, 0, @_);
+	}
+}
+sub multishutdown {
+	return if ($shutdown_already_called++);
+	&multi_module_dispatch(\&defaultshutdown, \@m_shutdown, 0, @_);
+}
+
+sub multiuserhandle {
+	&multi_module_dispatch(\&defaultuserhandle, \@m_userhandle, sub{
+		# skip default calls.
+		return 0 if ($this_call_default);
+
+		# return immediately on the first extension to accept
+		return (shift>0);
+	}, @_);
+}
+sub multilisthandle {
+	&multi_module_dispatch(\&defaultlisthandle, \@m_listhandle, sub{
+		# skip default calls.
+		return 0 if ($this_call_default);
+
+		# return immediately on the first extension to accept
+		return (shift>0);
+	}, @_);
+}
+sub multihandle {
+	&multi_module_dispatch(\&defaulthandle, \@m_handle, sub {
+		my $rv = shift;
+
+		# skip default calls.
+		return 0 if ($this_call_default);
+
+		# if not a default call, and the tweet was refused for
+		# processing by this extension, then the tweet is now
+		# suppressed. do not call any other extensions after this.
+		# even if it ends in suppression, we still call the default
+		# if it was ever called before.
+		return 5 if ($rv==0);
+
+		# if accepted in any manner, keep calling.
+		return 0;
+	}, @_);
+}
+sub multiheartbeat {
+	&multi_module_dispatch(\&defaultheartbeat, \@m_heartbeat, 0, @_);
+}
+sub multiprecommand {
+	&multi_module_dispatch(\&defaultprecommand, \@m_precommand, sub {
+		return 2; # feed subsequent chains the result.
+	}, @_);
+}
+sub multiprepost {
+	&multi_module_dispatch(\&defaultprepost, \@m_prepost, sub {
+		return 2; # feed subsequent chains the result.
+	}, @_);
+}
+sub multipostpost {
+	&multi_module_dispatch(\&defaultpostpost, \@m_postpost, 0, @_);
+}
+sub multitweettype {
+	&multi_module_dispatch(\&defaulttweettype, \@m_tweettype, sub {
+		# if this module DID NOT call default, exit now.
+		return (!$this_call_default);
+	}, @_);
+}
+
+sub flag_default_call { $this_call_default++; $did_call_default++; }
+
+# now the actual default methods
+
+sub defaultexception {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $msg_code = shift;
+	return if ($msg_code == 2 && $muffle_server_messages);
+	my $message = "@_";
+	$message =~ s/\n*$//sg;
+	if ($timestamp) {
+		my ($time, $ts) = &$wraptime(scalar(localtime));
+		$message = "[$ts] $message";
+		$message =~ s/\n/\n[$ts] /sg;
+	}
+	&send_removereadline if ($termrl);
+	$wrapseq = 1;
+	print $stdout "${MAGENTA}${message}${OFF}\n";
+	&send_repaint;
+	$laststatus = 1;
+}
+sub defaultshutdown { 
+	(&flag_default_call, return) if ($multi_module_context);
+}
+sub defaultlisthandle {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $list_ref = shift;
+
+	print $streamout "*** for future expansion ***\n";
+
+	return 1;
+}
+sub defaulthandle {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $tweet_ref = shift;
+	my $class = shift;
+	my $dclass = ($verbose) ? "{$class,$tweet_ref->{'id_str'}} " :  '';
+	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
+	my $tweet = &descape($tweet_ref->{'text'});
+	my $stweet = &standardtweet($tweet_ref);
+	my $menu_select = $tweet_ref->{'menu_select'};
+	
+	$menu_select = (length($menu_select) && !$script)
+		? (($menu_select =~ /^z/) ?
+			"${EM}${menu_select}>${OFF} " :
+			"${menu_select}> ")
+		: '';
+
+	print $streamout $menu_select . $dclass . $stweet;
+	&sendnotifies($tweet_ref, $class);
+	return 1;
+}
+sub defaultuserhandle {
+	(&flag_default_call, return) if ($multi_module_context);
+
+	my $user_ref = shift;
+	&userline($user_ref, $streamout);
+	my $desc = &strim(&descape($user_ref->{'description'}));
+	my $klen = ($wrap || 79) - 9;
+	$klen = 10 if ($klen < 0);
+	$desc = substr($desc, 0, $klen)."..." if (length($desc) > $klen);
+	print $streamout (' "' . $desc . '"' . "\n") if (length($desc));
+	return 1;
+}
+sub userline { # used by both $userhandle and /whois
+	my $my_json_ref = shift;
+	my $fh = shift;
+
+	my $verified =
+		($my_json_ref->{'verified'} eq 'true') ?
+		"${EM}(Verified)${OFF} " : '';
+	my $protected =
+		($my_json_ref->{'protected'} eq 'true') ?
+		"${EM}(Protected)${OFF} " : '';
+	print $fh <<"EOF"; 
+${CCprompt}@{[ &descape($my_json_ref->{'name'}) ]}${OFF} (@{[ &descape($my_json_ref->{'screen_name'}) ]}) (f:$my_json_ref->{'friends_count'}/$my_json_ref->{'followers_count'}) (u:$my_json_ref->{'statuses_count'}) ${verified}${protected}
+EOF
+	return;
+}
+sub sendnotifies { # this is a default subroutine of a sort, right?
+	my $tweet_ref = shift;
+	my $class = shift;
+
+	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
+	my $tweet = &descape($tweet_ref->{'text'});
+
+	unless (length($class) || !$last_id) { # interactive? first time?
+		$class = scalar(&$tweettype($tweet_ref, $sn, $tweet));
+		&notifytype_dispatch($class,
+				&standardtweet($tweet_ref, 1), $tweet_ref)
+			if ($notify_list{$class});
 	}
 }
 
-# the refresh engine depends on later tweets having higher id numbers.
-# Obvious, don't change this if you know what's good for you, ya twerps,
-# or I will poison all of yer kitties. *pats my Burmese, who purrs*
+sub defaulttweettype {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $ref = shift;
+	my $sn = shift;
+	my $tweet = shift;
 
-sub grabjson {
-	my $data;
+	# br3nda's and smb's modified colour patch
+	unless ($anonymous) {
+		if ($sn eq $whoami) {
+			# if it's me speaking, colour the line yellow
+			return 'me';
+		} elsif ($tweet =~ /\@$whoami(\b|$)/i) {
+			# if I'm in the tweet, colour red
+			return 'reply';
+		} 
+	}
+	if ($ref->{'class'} eq 'search') { # anonymous allows this too
+		# if this is a search result, colour cyan
+		return 'search';
+	}
+	if ($ref->{'tag'}->{'type'} eq 'list') { # anonymous allows this too
+		return 'list';
+	}
+	return 'default';
+}
+
+sub defaultconclude {
+	(&flag_default_call, return) if ($multi_module_context);
+	if ($filtered && $filter_attribs{'count'}) {
+		print $stdout "-- (filtered $filtered tweets)\n";
+		$filtered = 0;
+	}
+}
+
+sub defaultdmhandle {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $dm_ref = shift;
+	print $streamout &standarddm($dm_ref);
+	&senddmnotifies($dm_ref);
+	return 1;
+}
+sub senddmnotifies {
+	my $dm_ref = shift;
+	&notifytype_dispatch('DM', &standarddm($dm_ref, 1), $dm_ref)
+		if ($notify_list{'dm'} && $last_dm);
+}
+
+sub defaultdmconclude {
+	(&flag_default_call, return) if ($multi_module_context);
+}
+
+sub defaultheartbeat {
+	(&flag_default_call, return) if ($multi_module_context);
+}
+
+# not much sense to multi-module protect these.
+sub defaultprecommand { return ("@_"); }
+sub defaultprepost { return ("@_"); }
+
+sub defaultpostpost {
+	(&flag_default_call, return) if ($multi_module_context);
+	my $line = shift;
+	return if (!$termrl);
+
+	# populate %readline_completion if readline is on
+	while($line =~ s/^\@(\w+)\s+//) {
+		$readline_completion{'@'.lc($1)}++;
+	}
+	if ($line =~ /^[dD]\s+(\w+)\s+/) {
+		$readline_completion{'@'.lc($1)}++;
+	}
+}
+
+sub defaultautocompletion {
+	my ($text, $line, $start) = (@_);
+	my $qmtext = quotemeta($text);
+	my @proband;
+	my @rlkeys;
+
+	# handle / completion
+	if ($start == 0 && $text =~ m#^/#) {
+		return sort grep(/^$qmtext/i, '/history',
+			'/print', '/quit', '/bye', '/again',
+			'/wagain', '/whois', '/thump', '/dm',
+			'/refresh', '/dmagain', '/set', '/help',
+			'/reply', '/url', '/thread', '/retweet',
+			'/replies', '/ruler', '/exit', '/me', '/vcheck',
+			'/oretweet', '/eretweet', '/fretweet', '/liston',
+			'/listoff', '/dmsent', '/rtsof', '/rtsofme',
+			'/lists', '/withlist', '/add', '/padd', '/push',
+			'/pop', '/followers', '/friends', '/lfollow',
+			'/lleave', '/listfollowers', '/listfriends',
+			'/unset', '/verbose', '/short', '/follow', '/unfollow',
+			'/doesfollow', '/search', '/tron', '/troff',
+			'/delete', '/deletelast', '/dump',
+			'/track', '/trends', '/block', '/unblock',
+			'/fave', '/faves', '/unfave', '/eval');
+	}
+	@rlkeys = keys(%readline_completion);
+
+	# handle @ completion. this works slightly weird because
+	# readline hands us the string WITHOUT the @, so we have to
+	# test somewhat blindly. this works even if a future readline
+	# DOES give us the word with @. also handles D, /wa, /wagain,
+	# /a, /again, etc.
+	if (($line =~ m#^(D|/wa|/wagain|/a|/again) #i) ||
+		($start == 1 && substr($line, 0, 1) eq '@') ||
+		# this code is needed to prevent inline @ from flipping out
+		($start >= 1 && substr($line, ($start-2), 2) eq ' @')) {
+		@proband = grep(/^\@$qmtext/i, @rlkeys);
+		if (scalar(@proband)) {
+			@proband = map { s/^\@//;$_ } @proband;
+			return @proband;
+		}
+	}
+	# definites that are left over, including @ if it were included
+	if(scalar(@proband = grep(/^$qmtext/i, @rlkeys))) {
+		return @proband;
+	}
+
+	# heuristics
+	# URL completion (this doesn't always work of course)
+	if ($text =~ m#https?://#) {
+		return (&urlshorten($text) || $text);
+	}
+
+	# "I got nothing."
+	return ();
+}
+
+#### built-in notification routines ####
+
+# growl for Mac OS X
+sub notifier_growl {
+	my $class = shift;
+	my $text = shift;
+	my $ref = shift; # not used in this version
+
+	if (!defined($class) || !length($notify_tool_path)) {
+		# we are being asked to initialize
+		$notify_tool_path = &wherecheck("trying to find growlnotify",
+			"growlnotify",
+"growlnotify must be installed to use growl notifications. check your\n" .
+			"documentation for how to do this.\n")
+				unless ($notify_tool_path);
+		if (!defined($class)) {
+			return 1 if ($script || $notifyquiet);
+			$class = 'Growl support activated';
+			$text = 
+'You can configure notifications for TTYtter in the Growl preference pane.';
+		}
+	}
+	# handle this in the background for faster performance.
+	# to avoid problems with SIGCHLD, we fork ourselves twice (mmm!),
+	# leaving an orphan which init should grab (we need SIGCHLD for
+	# proper backticks, so it can't be IGNOREd).
+	my $gchild;
+	if ($gchild = fork()) {
+		# the parent harvests the child, which will die immediately.
+		waitpid($gchild, 0);
+		return 1;
+	} elsif (!defined ($gchild)) {
+		print $stdout "warning: failed growl fork: $!\n";
+		return 1;
+	}
+	# this is the child. spawn, then exit and abandon our own child,
+	# which init will reap. the problem with teen pregnancy is mounting.
+	$in_backticks = 1;
+	my $hchild;
+	if ($hchild = fork()) {
+		exit;
+	} elsif (!defined ($hchild)) {
+		print $stdout "warning: failed growl fork: $!\n";
+		exit;
+	}
+	# this is the subchild, which is abandoned at a fire sta^W^W^Winit.
+	open(GROWL, "|$notify_tool_path -n 'TTYtter' 'TTYtter: $class'");
+	binmode(GROWL, ":utf8") unless ($seven);
+	print GROWL $text;
+	close(GROWL);
+	exit;
+}
+
+# libnotify for {Linux,whatevs}
+# this is EXPERIMENTAL, and requires this patch to notify-send:
+# http://www.floodgap.com/software/ttytter/libnotifypatch.txt
+# why it has not already been applied is fricking beyond me, it makes
+# sense. would YOU want arbitrary characters on the command line
+# separated only from overwriting your home directory by a quoting routine?
+sub notifier_libnotify {
+	my $class = shift;
+	my $text = shift;
+	my $ref = shift; # not used in this version
+
+	if (!defined($class) || !defined($notify_tool_path)) {
+		# we are being asked to initialize
+		$notify_tool_path = &wherecheck("trying to find notify-send",
+			"notify-send",
+"notify-send must be installed to use libnotify, and it must be modified\n".
+"for standard input. see the documentation for how to do this.\n")
+			unless ($notify_tool_path);
+		if (!defined($class)) {
+			return 1 if ($script || $notifyquiet);
+			$class = 'libnotify support activated';
+			$text =
+'Congratulations, your notify-send is correctly configured for TTYtter.';
+		}
+	}
+	# figure out the time to display based on length of tweet
+	my $t = 1000+50*length($text); # about 150-180wpm read speed
+	open(NOTIFYSEND,
+		"|$notify_tool_path -t $t -f - 'TTYtter: $class'");
+	binmode(NOTIFYSEND, ":utf8") unless ($seven);
+	print NOTIFYSEND $text;
+	close(NOTIFYSEND);
+	return 1;
+}
+
+#### IPC routines for communicating between the foreground + background ####
+
+# this is the central routine that takes a rolling tweet code, figures
+# out where that tweet is, and returns something approximating a tweet
+# structure (or the actual tweet structure itself if it can).
+sub get_tweet {
+	my $code = lc(shift);
+	return undef if ($code !~ /^z?[a-z][0-9]$/);
+	my $source = ($code =~ /^z/) ? 1 : 0;
+	my $k = '';
+	my $l = '';
+	my $w = {'user' => {}};
+
+	if ($is_background) {
+		if ($source == 1) { # foreground only
+			return undef;
+		}
+		return $store_hash{$code};
+	}
+	return $store_hash{$code} if ($source); # foreground c/foreground twt
+
+	print $stdout "-- querying background: $code\n" if ($verbose);
+	kill $SIGUSR2, $child if ($child);
+	print C "pipet $code ----------\n";
+	while(length($k) < 1024) {
+		sysread(W, $l, 1024);
+		$k .= $l;
+	}
+	return undef if ($k !~ /[^\s]/);
+	$k =~ s/\s+$//; # remove trailing spaces
+	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
+		$w->{'retweeted_status'}->{'id_str'},
+		$w->{'user'}->{'geo_enabled'},
+		$w->{'geo'}->{'coordinates'}->[0],
+		$w->{'geo'}->{'coordinates'}->[1],
+		$w->{'tag'}->{'type'},
+		$w->{'tag'}->{'payload'},
+		$w->{'retweet_count'}, 
+		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
+			$l) = split(/\s/, $k, 13);
+	($w->{'source'}, $k) = split(/\|/, $l, 2);
+	$w->{'text'} = pack("H*", $k);
+	$w->{'tag'}->{'payload'} = pack("H*", $w->{'tag'}->{'payload'});
+	return undef if (!length($w->{'text'})); # not possible
+	$w->{'created_at'} =~ s/_/ /g;
+	return $w;
+}
+
+# this is the analogous function for a rolling DM code. it is somewhat
+# simpler as DM codes are always rolling and have no foreground store
+# currently, so it always executes a background request.
+sub get_dm {
+	my $code = lc(shift);
+	my $k = '';
+	my $l = '';
+	my $w = {'sender' => {}};
+
+	return undef if (length($code) != 3 || $code !~ s/^d// ||
+				$code !~ /^[a-z][0-9]$/);
+	kill $SIGUSR2, $child if ($child); # prime pipe
+	print C "piped $code ----------\n"; # internally two alphanum, recall
+	while(length($k) < 1024) {
+		sysread(W, $l, 1024);
+		$k .= $l;
+	}
+	return undef if ($k !~ /[^\s]/);
+	$k =~ s/\s+$//; # remove trailing spaces
+	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	($w->{'menu_select'}, $w->{'id_str'},
+		$w->{'sender'}->{'screen_name'}, $w->{'created_at'},
+			$l) = split(/\s/, $k, 5);
+	$w->{'text'} = pack("H*", $l);
+	return undef if (!length($w->{'text'})); # not possible
+	$w->{'created_at'} =~ s/_/ /g;
+	return $w;
+}
+
+# this function requests a $store key from the background. it only works
+# if foreground.
+sub getbackgroundkey {
+	if ($is_background) {
+		print $stdout "*** can't call getbackgroundkey from background\n";
+		return undef;
+	}
+	my $key = shift;
+	my $l;
+	my $k;
+	print C substr("ki $key ---------------------", 0, 19)."\n";
+	my $ref = (length($dispatch_ref->[0])) ? ($dispatch_ref->[0]) :
+		"DEFAULT";
+	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, 1024);
+	while(length($k) < 1024) {
+		sysread(W, $l, 1024);
+		$k .= $l;
+	}
+	$k =~ s/[^0-9a-fA-F]//g;
+	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	return pack("H*", $k);
+}
+
+# this function sends a $store key to the background. it only works if
+# foreground.
+sub sendbackgroundkey {
+	if ($is_background) {
+		print $stdout "*** can't call sendbackgroundkey from background\n";
+		return;
+	}
+	my $key = shift;
+	my $value = shift;
+	if (ref($value)) {
+		print $stdout "*** send_key only supported for scalars\n";
+		return;
+	}
+	if (!length($value)) {
+		print C substr("kn $key ---------------------", 0, 19)."\n";
+	} else {
+		print C substr("ko $key ---------------------", 0, 19)."\n";
+	}
+	my $ref = (length($dispatch_ref->[0])) ? ($dispatch_ref->[0]) :
+		"DEFAULT";
+	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, 1024);
+	return if (!length($value));
+	print C substr(unpack("${pack_magic}H*", $value).$space_pad, 0, 1024);
+}
+
+sub thump { print C "update-------------\n"; &sync_semaphore; }
+sub dmthump { print C "dmthump------------\n"; &sync_semaphore; }
+
+sub sync_n_quit {
+	if ($child) {
+		print $stdout "waiting for child ...\n" unless ($silent);
+		print C "sync---------------\n";
+		waitpid $child, 0;
+		$child = 0;
+		print $stdout "exiting.\n" unless ($silent);
+		exit ($? >> 8);
+	}
+	exit;
+}
+
+# setter for internal variables, with all the needed side effects for those
+# variables that are programmed to trigger internal actions when changed.
+sub setvariable {
+	my $key = shift;
+	my $value = shift;
+	my $interactive = 0+shift;
+
+	$value =~ s/^\s+//;
+	$value =~ s/\s+$//; # mostly to avoid problems with /(p)add
+
+	if ($key eq 'script') { # this can never be changed by this routine
+		print $stdout "*** script may only be changed on init\n";
+		return 1;
+	}
+	if ($key eq 'tquery' && $value eq '0') { # undo tqueries
+		$tquery = undef;
+		$key = 'track';
+		$value = $track; # falls thru to sync
+		&tracktags_makearray;
+	}
+	if ($opts_can_set{$key} ||
+			# we CAN set read-only variables during initialization
+			($multi_module_mode == -1 && $valid{$key})) {
+		if (length($value) > 1023) {
+			# can't transmit this in a packet
+			print $stdout "*** value too long\n";
+			return 1;
+		} elsif ($opts_boolean{$key} && $value ne '0' &&
+				$value ne '1') {
+			print $stdout "*** 0|1 only (boolean): $key\n";
+			return 1;
+		} elsif ($opts_urls{$key} &&
+	$value !~ m#^(http|https|gopher)://#) {
+			print $stdout "*** must be valid URL: $key\n";
+			return 1;
+		} else {
+			KEYAGAIN: $$key = $value;
+			print $stdout "*** changed: $key => $$key\n"
+				if ($interactive || $verbose);
+
+			# handle special values
+			&generate_ansi if ($key eq 'ansi' ||
+				$key =~ /^colour/);
+			&generate_shortdomain if ($key eq 'shorturl');
+			&tracktags_makearray if ($key eq 'track');
+			&filter_compile if ($key eq 'filter');
+			&notify_compile if ($key eq 'notifies');
+			&list_compile if ($key eq 'lists');
+
+			# transmit to background process sync-ed values
+			if ($opts_sync{$key}) {
+				&synckey($key, $value, $interactive);
+			}
+			if ($key eq 'superverbose') {
+				if ($value eq '0') {
+					$key = 'verbose';
+					$value = $supreturnto;
+					goto KEYAGAIN;
+				}
+				$supreturnto = $verbose;
+			}
+		}
+	# virtual keys
+	} elsif ($key eq 'tquery') {
+		my $ivalue = &tracktags_tqueryurlify($value);
+		if (length($ivalue) > 139) {
+			print $stdout
+		"*** custom query is too long (encoded: $ivalue)\n";
+			return 1;
+		} else {
+			$tquery = $value;
+			&synckey($key, $ivalue, $interactive);
+		}
+	} elsif ($valid{$key}) {
+		print $stdout
+		"*** read-only, must change on command line: $key\n";
+		return 1;
+	} else {
+		print $stdout
+		"*** not a valid option or setting: $key\n";
+		return 1;
+	}
+	return 0;
+}
+sub synckey {
+	my $key = shift;
+	my $value = shift;
+	my $interactive = 0+shift;
+	my $commchar = ($interactive) ? '=' : '+';
+	print $stdout "*** (transmitting to background)\n"
+		if ($interactive || $verbose);
+	return if (!$child); 
+	kill $SIGUSR2, $child if ($child);
+	print C
+	(substr("${commchar}$key                           ", 0, 19) . "\n");
+	print C (substr(($value . $space_pad), 0, 1024));
+	sleep 1;
+}
+
+# getter for internal variables. right now this just returns the variable by
+# name and a couple virtuals, but in the future this might be expanded.
+sub getvariable {
+	my $key = shift;
+	if ($valid{$key}) {
+		return $$key;
+	}
+	if ($key eq 'effpause' ||
+			$key eq 'rate_limit_rate' ||
+			$key eq 'rate_limit_left') {
+		my $value;
+		kill $SIGUSR2, $child if ($child);
+		print C (substr("?$key                    ", 0, 19) . "\n");
+		sysread(W, $value, 1024);
+		$value =~ s/\s+$//;
+		return $value;
+	}
+	return undef;
+}
+
+# compatibility stub for extensions calling the old wraptime
+sub wraptime { return &$wraptime(@_); }
+
+#### url management (/url, /short) ####
+
+sub generate_shortdomain {
+	my $x;
+	my $y;
+
+	undef $shorturldomain;
+	($shorturl =~ m#^http://([^/]+)/#) && ($x = $1);
+	# chop off any leading hostname stuff (like api., etc.)
+	while(1) {
+		$y = $x;
+		$x =~ s/^[^\.]*\.//;
+		if ($x !~ /\./) { # a cut too far
+			$shorturldomain = "http://$y/";
+			last;
+		}
+	}
+	print $stdout "-- warning: couldn't parse shortener service\n"
+		if (!length($shorturldomain));
+}
+
+sub openurl {
+	my $comm = $urlopen;
 	my $url = shift;
-	my $last_id = shift;
-	my @agent = (shift) ? @weld : @wand;
-	my $count = shift;
-	my $tdata;
-	my $seed;
-	my $xurl;
-	my $my_json_ref = undef; # durrr hat go on foot
-	my $kludge_search_api_adjust = 0;
-	my $i;
+	$url = "http://gopher.floodgap.com/gopher/gw?".&url_oauth_sub($url)
+		if ($url =~ m#^gopher://# && $comm !~ /^[^\s]*lynx/);
+	$urlshort = $url;
+	$comm =~ s/\%U/'$url'/g;
+	print $stdout "($comm)\n";
+	system("$comm");
+}
 
-	#undef $/; $data = <STDIN>;
+sub urlshorten {
+	my $url = shift;
+	my $rc;
+	my $cl;
 
-	# count needs to be removed for the default case due to show, etc.
-	$xurl = ($last_id) ? 
-		((($url =~ /\?/) ? '&' : '?')."since_id=$last_id")
-			: "";
-	$xurl .= ((length($xurl)) ? "&count=$count" :
-		((($url =~ /\?/) ? '&' : '?')."count=$count"))
-			if ($count);
+	$url = "http://gopher.floodgap.com/gopher/gw?".&url_oauth_sub($url)
+		if ($url =~ m#^gopher://#);
+	return $url if ($url =~ /^$shorturldomain/i); # stop loops
+	$url = &url_oauth_sub($url);
+	$cl = "$simple_agent \"${shorturl}$url\"";
+	print $stdout "$cl\n" if ($superverbose);
+	chomp($rc = `$cl`);
+	return ($urlshort = (($rc =~ m#^http://#) ? $rc : undef));
+}
 
-	#&update_authenticationheaders;
-	my @cargs = ($baseagent,
-			'/dev/null', undef, "$url$xurl", undef, @agent);
-	chomp($data = &backticks(@cargs));
+##### optimizers -- these compile into an internal format #####
+
+# utility routine for tquery support
+sub tracktags_tqueryurlify {
+	my $value = shift;
+	$value =~ s/([^ a-z0-9A-Z_])/"%".unpack("H2",$1)/eg;
+	$value =~ s/\s/+/g;
+	$value = "q=$value" if ($value !~ /^q=/);
+	return $value;
+}
+
+# tracking subroutines
+# run when a string is passed
+sub tracktags_makearray {
+	@tracktags = ();
+	$track =~ s/^'//; $track =~ s/'$//;
+	if (!length($track)) {
+		@trackstrings = ();
+		return;
+	}
+	my $k;
+	my $l = '';
+	my $q = 0;
+	my %w;
+	my (@ptags) = split(/\s+/, $track);
+
+	# filter duplicates and merge quoted strings
+	foreach $k (@ptags) {
+		if ($q && $k =~ /"$/) { # this has to be first
+			$l .= " $k";
+			$q = 0;
+		} elsif ($k =~ /^"/ || $q) {
+			$l .= (length($l)) ? " $k" : $k;
+			$q = 1;
+			next;
+		} else {
+			$l = $k;
+		}
+			
+		if ($w{$l}) {
+			print $stdout
+			"-- warning: dropping duplicate track term \"$l\"\n";
+		} elsif (uc($l) eq 'OR' || uc($l) eq 'AND') {
+			print $stdout
+			"-- warning: dropping unnecessary logical op \"$l\"\n";
+		} else {
+			$w{$l} = 1;
+			push(@tracktags, $l);
+		}
+		$l = '';
+	}
+	print $stdout "-- warning: syntax error, missing quote?\n" if ($q);
+	$track = join(' ', @tracktags);
+	&tracktags_compile;
+}	
+# run when array is altered (based on @kellyterryjones' code)
+sub tracktags_compile {
+	@trackstrings = ();
+	return if (!scalar(@tracktags));
+
+	my $k;
+	my $l = '';
+	my @jtags = map { # don't alter @tracktags, and support UTF-8
+		$j=$_; $j=~s/([^0-9a-zA-Z_])/&uhex($1)/eg; $j;
+	} @tracktags;
+	# need to make 140 character pieces
+	TAGBAG: foreach $k (@jtags) {
+		if (length($k) > 130) { # I mean, really
+			print $stdout
+				"-- warning: track tag \"$k\" is TOO LONG\n";
+			next TAGBAG;
+		}
+		if (length($l)+length($k) > 130) { # reasonable safety
+			push(@trackstrings, $l);
+			$l = '';
+		}
+		$l = (length($l)) ? "${l}+OR+${k}" : "q=${k}";
+	}
+	push(@trackstrings, $l) if (length($l));
+}
+
+# notification multidispatch
+sub notifytype_dispatch {
+	return if (!scalar(@notifytypes));
+	my $nt; foreach $nt (@notifytypes) { &$nt(@_); }
+}
+
+# notifications compiler
+sub notify_compile {
+	if ($notifies) {
+		my $w;
+
+		undef %notify_list;
+		foreach $w (split(/\s*,\s*/, $notifies)) {
+			$notify_list{$w} = 1;
+		}
+		$notifies = join(',', keys %notify_list);
+	}
+}
+
+# lists compiler
+# we don't check the validity of lists here; /liston and /listoff do that.
+sub list_compile {
+	my @oldlistlist = @listlist;
+	my %already;
+
+	undef @listlist;
+	if ($lists) {
+		my $w;
+		my $u;
+		my $l;
+		foreach $w (split(/\s*,\s*/, $lists)) {
+			$w =~ s/^@//;
+			if ($w =~ m#/#) {
+				($u, $l) = split(m#\s*/\s*#, $w, 2);
+			} else {
+				$l = $w;
+			}
+			if (!length($u) && $anonymous) {
+print $stdout "*** must use fully specified lists when anonymous\n";
+				@listlist = @oldlistlist;
+				return 0;
+			}
+			$u ||= $whoami;
+			if ($l =~ m#/#) {
+print $stdout "*** syntax error in list $u/$l\n";
+				@listlist = @oldlistlist;
+				return 0;
+			}
+			if ($already{"$u/$l"}++) {
+			print $stdout "*** duplicate list $u/$l ignored\n";
+			} else {
+				push(@listlist, [ $u, $l ]);
+			}
+		}
+		$lists = join(',', keys %already);
+	}
+	return 1;
+}
+
+# filter compiler
+sub filter_compile {
+	undef %filter_attribs;
+	undef $filter_c;
+	if ($filter) {
+		my $tfilter = $filter;
+		$tfilter =~ s/^['"]//;
+		$tfilter =~ s/['"]$//;
+		# note attributes
+		$filter_attribs{$1}++ while ($tfilter =~ s/^([a-z]+),//);
+		my $b = <<"EOF";
+		\$filter_c = sub {
+			local \$_ = shift;
+			return ($tfilter);
+		};
+EOF
+		#print $b;
+		eval $b;
+		if (!defined($filter_c)) {
+			print $stdout ("** syntax error in your filter: $@\n");
+			return 0;
+		}
+	}
+	return 1;
+}
+
+#### common system subroutines follow ####
+
+sub updatecheck {
+	my $vcheck_url =
+		"http://www.floodgap.com/software/ttytter/01current.txt";
+	my $vrlcheck_url =
+		"http://www.floodgap.com/software/ttytter/01readlin.txt";
+	my $update_url = shift;
+
+	my $vs = '';
+	my $vvs;
+	my $tverify;
+	my $inversion;
+	my $bversion;
+	my $rcnum;
+	my $download;
+	my $maj;
+	my $min;
+	my $s1, $s2, $s3;
+	my $update_trlt = undef;
+	
+	if ($termrl && $termrl->ReadLine eq 'Term::ReadLine::TTYtter') {
+		my $trlv = $termrl->Version;
+		print $stdout
+	"-- checking Term::ReadLine::TTYtter version: $vrlcheck_url\n";
+		$vvs = `$simple_agent $vrlcheck_url`;
+		print $stdout "-- server response: $vvs\n" if ($verbose);
+		($vvs, $s1, $s2, $s3) = split(/--__--\n/s, $vvs);
+		$s1 = undef if ($s1 !~ /^\*/) ;
+		$s2 = undef if ($s2 !~ /^\*/) ;
+		$s3 = undef if ($s3 !~ /^\*/) ;
+		chomp($vvs);
+		# right now we're only using $inversion (no betas/rcs).
+		($tverify, $inversion, $bversion, $rcnum, $download,
+			$bdownload) = split(/;/, $vvs, 6);
+		if ($tverify ne 'trlt') {
+$vs .= "-- warning: unable to verify Term::ReadLine::TTYtter version\n";
+		} else {
+			if ($trlv < 0+$inversion) {
+$vs .= "** NEW Term::ReadLine::TTYtter VERSION AVAILABLE: $inversion **\n" .
+       "** GET IT: $download\n";
+				$update_trlt = $download;
+			} else {
+$vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($inversion)\n";
+			}
+		}
+	}
+
+	print $stdout "-- checking TTYtter version: $vcheck_url\n";
+	$vvs = `$simple_agent $vcheck_url`;
+	print $stdout "-- server response: $vvs\n" if ($verbose);
+	($vvs, $s1, $s2, $s3) = split(/--__--\n/s, $vvs);
+	$s1 = undef if ($s1 !~ /^\*/) ;
+	$s2 = undef if ($s2 !~ /^\*/) ;
+	$s3 = undef if ($s3 !~ /^\*/) ;
+	chomp($vvs);
+	($tverify, $inversion, $bversion, $rcnum, $download, $bdownload) =
+		split(/;/, $vvs, 6);
+	if ($tverify ne 'ttytter') {
+		$vs .= "-- warning: unable to verify TTYtter version\n";
+	} else {
+		if ($my_version_string eq $bversion) {
+			$vs .=
+"** REMINDER: you are using a beta version (${my_version_string}b${TTYtter_RC_NUMBER})\n";
+			$vs .=
+"** NEW TTYtter RELEASE CANDIDATE AVAILABLE: build $rcnum **\n" .
+"** get it: $bdownload\n$s2"
+			if ($TTYtter_RC_NUMBER < $rcnum);
+			$vs .= "** (this is the most current beta)\n"
+				if ($TTYtter_RC_NUMBER == $rcnum);
+			$vs .= "$s1$s3";
+			if ($TTYtter_RC_NUMBER < $rcnum) {
+				if ($update_url) {
+					$vs .=
+"-- %URL% is now $bdownload (/short shortens, /url opens)\n";
+					$urlshort = $bdownload;
+				}
+			} elsif (length($update_trlt) && $update_url) {
+				$urlshort = $update_trlt;
+	$vs .= "-- %URL% is now $urlshort (/short shortens, /url opens)\n";
+			}
+			return $vs;
+		}
+		if ($my_version_string eq $inversion && $TTYtter_RC_NUMBER) {
+			$vs .=
+"** FINAL TTYtter RELEASE NOW AVAILABLE for version $inversion **\n" .
+"** get it: $download\n$s2$s1";
+			if ($update_url) {
+				$vs .=
+"-- %URL% is now $bdownload (/short shortens, /url opens)\n";
+				$urlshort = $bdownload;
+			}
+			return $vs;
+		}
+		($inversion =~/^(\d+\.\d+)\.(\d+)$/) && ($maj = 0+$1,
+			$min = 0+$2);
+		if (0+$TTYtter_VERSION < $maj ||
+				(0+$TTYtter_VERSION == $maj &&
+				 $TTYtter_PATCH_VERSION < $min)) {
+			$vs .=
+	"** NEWER TTYtter VERSION NOW AVAILABLE: $inversion **\n" .
+	"** get it: $download\n$s2$s1";
+			if ($update_url) {
+				$vs .=
+"-- %URL% is now $download (/short shortens, /url opens)\n";
+				$urlshort = $download;
+			}
+			return $vs;
+		} elsif (0+$TTYtter_VERSION > $maj ||
+				(0+$TTYtter_VERSION == $maj &&
+				 $TTYtter_PATCH_VERSION > $min)) {
+			$vs .= 
+	"** unable to identify your version of TTYtter\n$s1";
+		} else {
+			$vs .=
+	"-- your version of TTYtter is up to date ($inversion)\n$s1";
+		}
+	}
+
+	# if we got this far, then there is no TTYtter update, but maybe a
+	# T:RL:T update, so we offer that as the URL
+	if (length($update_trlt) && $update_url) {
+		$urlshort = $update_trlt;
+		$vs .= "-- %URL% is now $urlshort (/short shortens, /url opens)\n";
+	}
+	return $vs;
+}
+
+sub generate_otabcomp {
+	if (scalar(@j = keys(%readline_completion))) {
+		# print optimized readline. include all that we
+		# manually specified, plus/including top @s, total 10.
+		@keys = sort { $readline_completion{$b} <=>
+			$readline_completion{$a} } @j;
+		$factor = $readline_completion{$keys[0]};
+		foreach(keys %original_readline) {
+			$readline_completion{$_} += $factor;
+		}
+		print $stdout "*** optimized readline:\n";
+		@keys = sort { $readline_completion{$b} <=>
+			$readline_completion{$a} } keys
+				%readline_completion;
+		@keys = @keys[0..14] if (scalar(@keys) > 15);
+		print $stdout "-readline=\"@keys\"\n";
+	}
+}
+sub end_me { exit; } # which falls through to, via END, ...
+sub killkid {
+	if ($child) {
+		print $stdout "\n\ncleaning up.\n";
+		if (length($track)) {
+			print $stdout "*** you were tracking:\n";
+			print $stdout "*** -track='$track'\n";
+		}
+		&generate_otabcomp;
+		kill 9, $child;
+	}
+	&$shutdown unless (!$shutdown);
+}
+
+sub generate_ansi {
+	my $k;
+
+	$BLUE = ($ansi) ? "${ESC}[34;1m" : '';
+	$RED = ($ansi) ? "${ESC}[31;1m" : '';
+	$GREEN = ($ansi) ? "${ESC}[32;1m" : '';
+	$YELLOW = ($ansi) ? "${ESC}[33m" : '';
+	$MAGENTA = ($ansi) ? "${ESC}[35m" : '';
+	$CYAN = ($ansi) ? "${ESC}[36m" : '';
+
+	$EM = ($ansi) ? "${ESC}[1m" : '';
+	$UNDER = ($ansi) ? "${ESC}[4m" : '';
+	$OFF = ($ansi) ? "${ESC}[0m" : '';
+
+	foreach $k (qw(prompt me dm reply warn search list default)) {
+		${"colour$k"} = uc(${"colour$k"});
+		if (!defined($${"colour$k"})) {
+			print $stdout
+		"-- warning: bogus colour '".${"colour$k"}."'\n";
+		} else {
+			eval("\$CC$k = \$".${"colour$k"});
+		}
+	}
+
+	eval '$termrl->hook_use_ansi' if ($termrl);
+}
+
+# always POST
+sub postjson {
+	my $url = shift;
+	my $postdata = shift; # add _method=DELETE for delete
+	my $data;
+
+	# this is copied mostly verbatim from grabjson
+	chomp($data = &backticks($baseagent, '/dev/null', undef, $url,
+		$postdata, 0, @wend));
+	my $k = $? >> 8;
 
 	$data =~ s/[\r\l\n\s]*$//s;
 	$data =~ s/^[\r\l\n\s]*//s;
-	#print unpack("H90", $data);
 
-	if (!length($data)) {
+	if (!length($data) || $k == 28 || $k == 7 || $k == 35) {
 		&$exception(1, "*** warning: timeout or no data\n");
 		return undef;
 	}
@@ -2744,9 +5617,13 @@ sub grabjson {
 	# old non-JSON based error reporting code still supported
 	if ($data =~ /^\[?\]?<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i || $data =~ /^<\??xml\s+/) {
 		print $stdout $data if ($superverbose);
+		if (&is_fail_whale($data)) {
+			&$exception(2, "*** warning: Twitter Fail Whale\n");
+		} else {
 		&$exception(2, "*** warning: Twitter error message received\n" .
 			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
 				"*** \"$1\"\n" : ''));
+		}
 		return undef;
 	}
 	if ($data =~ /^rate\s*limit/i) {
@@ -2754,6 +5631,12 @@ sub grabjson {
 		&$exception(3,
 "*** warning: exceeded API rate limit for this interval.\n" .
 "*** no updates available until interval ends.\n");
+		return undef;
+	}
+
+	if ($k > 0) {
+		&$exception(4,
+"*** warning: unexpected error code ($k) from user agent\n");
 		return undef;
 	}
 
@@ -2770,29 +5653,119 @@ sub grabjson {
 			return undef;
 		}
 		&$exception(4,
-"*** warning: unexpected HTTP return code $code from Twitter server\n");
+"*** warning: unexpected HTTP return code $code from server\n");
 		return undef;
 	}
-
-# process the JSON data ... simplemindedly, because I just write utter crap,
-# am not a professional programmer, and don't give a flying fig whether
-# kludges suck or no.
 
 	# test for error/warning conditions with trivial case
 	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s
 		|| $data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
 		print $stdout $data if ($superverbose);
-		&$exception(2, "*** warning: Twitter $2 message received\n" .
+		&$exception(2, "*** warning: server $2 message received\n" .
 			"*** \"$3\"\n");
 		return undef;
 	}
 
-	# test for single logicals
-	return {
-		'ok' => 1,
-		'result' => (($1 eq 'true') ? 1 : 0),
-		'literal' => $1,
-			} if ($data =~ /^['"]?(true|false)['"]?$/);
+	return &parsejson($data);
+}
+
+# always GET
+sub grabjson {
+	my $data;
+	my $url = shift;
+	my $last_id = shift;
+	my $is_anon = shift;
+	my $count = shift;
+	my $tag = shift;
+	my $kludge_search_api_adjust = 0;
+	my $my_json_ref = undef; # durrr hat go on foot
+	my $i;
+	my $tdata;
+	my $seed;
+
+	#undef $/; $data = <STDIN>;
+
+	# we may need to sort our args for more flexibility here.
+	my @xargs = (); my $i = index($url, "?");
+	if ($i > -1) {
+		# throw an error if "?" is at the end.
+		push(@xargs, split(/\&/, substr($url, ($i+1))));
+		$url = substr($url, 0, $i);
+	}
+
+	# count needs to be removed for the default case due to show, etc.
+	push(@xargs, "count=$count") if ($count);
+	# timeline control. this speeds up parsing since there's less data.
+	# can't use skip_user: no SN
+	push (@xargs, "since_id=${last_id}") if ($last_id);
+
+	my $resource = (scalar(@xargs)) ?
+		[ $url, join('&', sort @xargs) ] : $url;
+
+	chomp($data = &backticks($baseagent,
+			'/dev/null', undef, $resource, undef,
+			$is_anon + $anonymous, @wind));
+	my $k = $? >> 8;
+
+	$data =~ s/[\r\l\n\s]*$//s;
+	$data =~ s/^[\r\l\n\s]*//s;
+
+	if (!length($data) || $k == 28 || $k == 7 || $k == 35) {
+		&$exception(1, "*** warning: timeout or no data\n");
+		return undef;
+	}
+
+	# old non-JSON based error reporting code still supported
+	if ($data =~ /^\[?\]?<!DOCTYPE\s+html/i || $data =~ /^(Status:\s*)?50[0-9]\s/ || $data =~ /^<html>/i || $data =~ /^<\??xml\s+/) {
+		print $stdout $data if ($superverbose);
+		if (&is_fail_whale($data)) {
+			&$exception(2, "*** warning: Twitter Fail Whale\n");
+		} else {
+		&$exception(2, "*** warning: Twitter error message received\n" .
+			(($data =~ /<title>Twitter:\s*([^<]+)</) ?
+				"*** \"$1\"\n" : ''));
+		}
+		return undef;
+	}
+	if ($data =~ /^rate\s*limit/i) {
+		print $stdout $data if ($superverbose);
+		&$exception(3,
+"*** warning: exceeded API rate limit for this interval.\n" .
+"*** no updates available until interval ends.\n");
+		return undef;
+	}
+
+	if ($k > 0) {
+		&$exception(4,
+"*** warning: unexpected error code ($k) from user agent\n");
+		return undef;
+	}
+
+	# handle things like 304, or other things that look like HTTP
+	# error codes
+	if ($data =~ m#^HTTP/\d\.\d\s+(\d+)\s+#) {
+		$code = 0+$1;
+		print $stdout $data if ($superverbose);
+
+		# 304 is actually a cop-out code and is not usually
+		# returned, so we should consider it a non-fatal error
+		if ($code == 304 || $code == 200 || $code == 204) {
+			&$exception(1, "*** warning: timeout or no data\n");
+			return undef;
+		}
+		&$exception(4,
+"*** warning: unexpected HTTP return code $code from server\n");
+		return undef;
+	}
+
+	# test for error/warning conditions with trivial case
+	if ($data =~ /^\s*\{\s*(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1/s
+		|| $data =~ /(['"])(warning|error)\1\s*:\s*\1([^\1]*?)\1\}/s) {
+		print $stdout $data if ($superverbose);
+		&$exception(2, "*** warning: server $2 message received\n" .
+			"*** \"$3\"\n");
+		return undef;
+	}
 
 	# THIS IS A TEMPORARY KLUDGE for API issue #26
 	# http://code.google.com/p/twitter-api/issues/detail?id=26
@@ -2803,9 +5776,139 @@ sub grabjson {
 
 	# if wrapped in results object, unwrap it (@kellyterryjones)
 	# (and tag it to do more later)
-        if ($data =~ s/^\{['"]results['"]:(\[.*\]).*$/$1/isg) {
+        if ($data =~ s/^(\{.+,|\{)\s*['"]results['"]\s*:\s*(\[.*\]).*$/$2/isg) {
 		$kludge_search_api_adjust = 1;
 	}
+
+	$my_json_ref = &parsejson($data);
+
+	# normalize the data into a standard form.
+	# single tweets such as from statuses/show aren't arrays, so
+	# we special-case for them.
+	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
+		$my_json_ref->{'favorited'} &&
+		$my_json_ref->{'source'} &&
+		((0+$my_json_ref->{'id'}) ||
+			length($my_json_ref->{'id_str'}))) {
+		$my_json_ref = &normalizejson($my_json_ref);
+	}
+	if (defined($my_json_ref) && ref($my_json_ref) eq 'ARRAY') {
+		foreach $i (@{ $my_json_ref }) {
+			$i = &normalizejson($i,$kludge_search_api_adjust,$tag);
+		}
+	}
+
+	$laststatus = 0;
+	return $my_json_ref;
+}
+
+# takes a tweet structure and normalizes it according to settings.
+# what this currently does is the following gyrations:
+# - if there is no id_str, see if we can convert id into one. if
+#   there is loss of precision, warn the user. same for
+#   in_reply_to_status_id_str.
+# - if the source of this JSON data source is the Search API, translate
+#   its fields into the standard API.
+# - if the calling function has specified a tag, tag the tweets, since
+#   we're iterating through them anyway. the tag should be a hashref payload.
+# - if the tweet is an newRT, unwrap it so that the full tweet text is
+#   revealed (unless -nonewrts).
+# - if this appears to be a tweet, put in a stub geo hash if one does
+#   not yet exist.
+# one day I would like this code to go the hell away.
+sub normalizejson {
+	my $i = shift;
+	my $kludge_search_api_adjust = shift;
+	my $tag = shift;
+	my $rt;
+
+	# tag the tweet
+	$i->{'tag'} = $tag if (defined($tag));
+
+	# id -> id_str if needed
+	if (!length($i->{'id_str'})) {
+		my $k = "" + (0 + $i->{'id'});
+		if ($k !~ /[eE][+-]/) {
+			$i->{'id_str'} = $k;
+		} else {
+			# desperately try to convert
+			$k =~ s/[eE][+-]\d+$//;
+			$k =~ s/\.//g;
+			# this is a hack, so we warn.
+			&$exception(13,
+"*** impending doom: ID overflows Perl precision; stubbed to $k\n");
+			$i->{'id_str'} = $k;
+		}
+	}
+	# irtsid -> irtsid_str (if there is one)
+	if (!length($i->{'in_reply_to_status_id_str'}) &&
+			$i->{'in_reply_to_status_id'}) {
+		my $k = "" + (0+$i->{'in_reply_to_status_id'});
+		if ($k !~ /[eE][+-]/) {
+			$i->{'in_reply_to_status_id_str'} = $k;
+		} else {
+			# desperately try to convert
+			$k =~ s/[eE][+-]\d+$//;
+			$k =~ s/\.//g;
+			# this is a hack, so we warn.
+			&$exception(13,
+"*** impending doom: IRT-ID overflows Perl precision; stubbed to $k\n");
+			$i->{'in_reply_to_status_id_str'} = $k;
+		}
+	}
+
+	# normalize geo. if this has a source and it has a
+	# favorited, then it is probably a tweet and we will
+	# add a stub geo hash if one doesn't exist yet.
+	if ($kludge_search_api_adjust || 
+			($i->{'favorited'} && $i->{'source'})){
+		$i = &fix_geo_api_data($i);
+	}
+
+	# normalize Search
+	if ($kludge_search_api_adjust) {
+		# hopefully this hack can die with API v2.
+		$i->{'class'} = "search";
+		$i->{'user'}->{'screen_name'} =
+			$i->{'from_user'};
+		# translate time stamps
+		# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
+		# Fri, 20 Mar 2009 16:35:56 +0000 (search)
+		$i->{'created_at'} =~
+	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
+	}
+
+	# normalize newRTs
+	# if we get newRTs with -nonewrts, oh well
+	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
+		# reconstruct the RT in a "canonical" format
+		# without truncation
+		$i->{'text'} =
+		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
+	}
+
+	return $i;
+}
+
+# process the JSON data ... simplemindedly, because I just write utter crap,
+# am not a professional programmer, and don't give a flying fig whether
+# kludges suck or no. this used to be part of grabjson, but I split it out.
+sub parsejson {
+	my $data = shift;
+	my $my_json_ref = undef; # durrr hat go on foot
+	my $i;
+	my $tdata;
+	my $seed;
+	my $bbqqmask;
+	my $ddqqmask;
+	my $ssqqmask;
+
+	# test for single logicals
+	return {
+		'ok' => 1,
+		'result' => (($1 eq 'true') ? 1 : 0),
+		'literal' => $1,
+			} if ($data =~ /^['"]?(true|false)['"]?$/);
 
 	# first isolate escaped backslashes with a unique sequence.
 	$bbqqmask = "BBQQ";
@@ -2846,8 +5949,9 @@ sub grabjson {
 	# run arbitrary code. that would really suck!
 	# first, generate a syntax tree.
 	$tdata = $data;
-	1 while $tdata =~ s/'[^']+'//;
-	$tdata =~ s/-?[0-9]+\.?[0-9]*//g; # have to handle floats
+	1 while $tdata =~ s/'[^']*'//; # empty strings are valid too ...
+	$tdata =~ s/-?[0-9]+\.?[0-9]*([eE][+-][0-9]+)?//g;
+		# have to handle floats *and* their exponents
 	$tdata =~ s/(true|false|null)//g;
 	$tdata =~ s/\s//g;
 
@@ -2894,241 +5998,102 @@ sub grabjson {
 	&screech("$data\n$tdata\nJSON could not be parsed: $@\n")
 		if (!defined($my_json_ref));
 
-	if ($kludge_search_api_adjust && defined($my_json_ref) &&
-			ref($my_json_ref) eq 'ARRAY') {
-		# this translates search API fields into standard ones,
-		# and marks them.
-		foreach $i (@{ $my_json_ref }) {
-			$i->{'class'} = "search";
-
-			# hopefully this hack can die with API v2.
-			$i->{'user'}->{'screen_name'} = $i->{'from_user'};
-			# translate time stamps
-			# Fri Mar 20 13:18:18 +0000 2009 (twitter) vs
-			# Fri, 20 Mar 2009 16:35:56 +0000 (search)
-			$i->{'created_at'} =~
-	s/(...), (..) (...) (....) (..:..:..) (.....)/\1 \3 \2 \5 \6 \4/;
-		}
-	}
-
-	$laststatus = 0;
 	return $my_json_ref;
 }
 
-sub refresh {
-	my $interactive = shift;
-	my $relative_last_id = shift;
-	my $k;
-	my $my_json_ref = undef;
-	my $i;
-	my @streams = ();
-
-	# this mixes all the tweet streams (timeline, hashtags, replies
-	# [someday]) into a single unified data river.
-
-	# first, get my own timeline
-	unless ($notimeline) {
-		$my_json_ref = &grabjson($url, $last_id, 0, 30);
-		# if I can't get my own timeline, ABORT! highest priority!
-		return if (!defined($my_json_ref) ||
-			ref($my_json_ref) ne 'ARRAY');
-	}
-
-	# next handle hashtags and tracktags
-	# failure here does not abort, because search may be down independently
-	# of the main timeline.
-	if (!$notrack && scalar(@trackstrings)) {
-		foreach $k (@trackstrings) {
-			my $r = &grabjson("$queryurl?${k}&rpp=20",
-				0, 1); # $last_id, 1);
-			push(@streams, $r)
-				if (defined($r) &&
-					ref($r) eq 'ARRAY' &&
-					scalar(@{ $r }));
-		}
-	}
-
-	# replies ... maybe later
-
-	# now, streamix all the streams into my_json_ref, discarding duplicates
-	# a simple hash lookup is no good; it has to be iterative. because of
-	# that, we might as well just splice it in here and save a sort later.
-	# remember, the most recent tweets are FIRST.
-	if (scalar(@streams)) {
-		my $j;
-		my $k;
-		my $l = scalar(@{ $my_json_ref });
-		my $m;
-
-		foreach $i (@streams) {
-			SMIX0: foreach $j (@{ $i }) {
-				if (!$l) { # degenerate case
-					push (@{ $my_json_ref }, $j);
-					$l++;
-					next SMIX0;
-				}
-				my $id = $j->{'id'}; # anticipating many comps
-
-				# find the same ID, or one just before,
-				# and splice in
-				$m = -1;
-				SMIX1: for($i=0; $i<$l; $i++) {
-					next SMIX0 # it's a duplicate
-					if($my_json_ref->[$i]->{'id'} == $id);
-					if($my_json_ref->[$i]->{'id'} < $id) {
-						$m = $i;
-						last SMIX1; # got it
-					}
-				}
-				if ($m == -1) { # didn't find
-					push (@{ $my_json_ref }, $j);
-				} elsif ($m == 0) { # degenerate case
-					unshift (@{ $my_json_ref }, $j);
-				} else { # did find, so splice
-					splice(@{ $my_json_ref }, $m, 0,
-						$j);
-				} 
-				$l++;
-			}
-		}
-	}
-
-	($last_id, $crap) =
-		&tdisplay($my_json_ref, undef, $relative_last_id);
-	print
-	$stdout "-- id bookmark is $last_id, rollback is $relative_last_id.\n"
-		if ($verbose);
-	&$conclude;
-} 
-
-sub tdisplay { # used by both synchronous /again and asynchronous refreshes
-	my $my_json_ref = shift;
-	my $class = shift;
-	my $relative_last_id = shift;
-	my $mini_id = shift;
-	my $printed = 0;
-	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
-	my $i;
-	my $j;
-
-	if ($disp_max) { # null list may be valid if we get code 304
-		unless ($is_background) { # reset store hash each console
-			if ($mini_id) {
-#TODO
-# generalize this at some point instead of hardcoded menu codes
-# maybe an ma0-mz9?
-				$tweet_counter = $mini_split;
-				for(0..9) {
-					undef $store_hash{"z$_"};
-				}
-			} else {
-				$tweet_counter = $back_split;
-				%store_hash = ();
-			}
-		}
-		for($i = $disp_max; $i > 0; $i--) {
-			my $g = ($i-1);
-			$j = $my_json_ref->[$g];
-			my $id = $j->{'id'};
-
-			next if ($id <= $last_id);
-			next if (!length($j->{'user'}->{'screen_name'}));
-			if ($filter_c && &$filter_c(&descape($j->{'text'}))) {
-				$filtered++;
-				next;
-			}
-
-			$wrapseq++;
-			$key = substr($alphabet, $tweet_counter/10, 1) .
-				$tweet_counter % 10;
-			$tweet_counter = 
-				($tweet_counter == 259) ? $mini_split :
-				($tweet_counter == ($mini_split - 1))
-					? $back_split :
-				($tweet_counter == ($back_split - 1)) ? 0 :
-				($tweet_counter+1);
-			$j->{'menu_select'} = $key;
-			$store_hash{lc($key)} = $j;
-			$printed += &$handle($j,
-			($class || (($id <= $relative_last_id) ? 'again' :
-				undef)));
-		}
-	}
-	print $stdout "-- sorry, nothing to display.\n"
-		if (($interactive || $verbose) && !$printed);
-	return (&max(0+$my_json_ref->[0]->{'id'}, $last_id), $j);
+sub fix_geo_api_data {
+	my $ref = shift;
+	$ref->{'geo'}->{'coordinates'} ||= [ "undef", "undef" ];
+	return $ref;
 }
 
-sub dmrefresh {
-	my $interactive = shift;
-	if ($anonymous) {
-		print $stdout
-			"-- sorry, you can't read DMs if you're anonymous.\n"
-			if ($interactive);
-		return;
-	}
+sub is_fail_whale {
+	# is this actually the dump from a fail whale?
+	my $data = shift;
+	return ($data =~ m#<title>Twitter.+Over.+capacity.*</title>#i ||
+		$data =~ m#[\r\l\n\s]*DB_DataObject Error: Connect failed#s);
+}
 
-	# no point in doing this if we can't even get to our own timeline
-	# (unless user specifically requested it, or our timeline is off)
-	return if (!$interactive && !$last_id && !$notimeline); # NOT last_dm
-
-	my $my_json_ref = &grabjson($dmurl, $last_dm);
-	return if (!defined($my_json_ref)
-		|| ref($my_json_ref) ne 'ARRAY');
-
-	my $printed = 0;
-	my $max = 0;
-	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
-	my $i;
-	my $g;
-	my $key;
-
-	if ($disp_max) { # an empty list can be valid
-		if ($dm_first_time) {
-			print $stdout
-			"-- checking for most recent direct messages:\n";
-			$disp_max = 2;
-			$interactive = 1;
+sub is_json_error {
+	# is this actually a JSON error message? if so, extract it
+	my $data = shift;
+	if ($data =~ /(['"])(warning|errors?)\1\s*:\s*\1([^\1]*?)\1\}/s) {
+		my $probe = $3;
+		if ($data =~ /^\s*\{/s) { # JSON object?
+			my $dref = &parsejson($data);
+			return $dref->{'error'} if (length($dref->{'error'}));
+			return (split(/\\n/, $dref->{'errors'}))[0]
+				if(length($dref->{'errors'}));
 		}
-		for($i = $disp_max; $i > 0; $i--) {
-			$g = ($i-1);
-			my $j = $my_json_ref->[$g];
-			next if ($j->{'id'} <= $last_dm);
-			next if (!length($j->{'sender'}->{'screen_name'}));
-			$wrapseq++;
-			$key = substr($alphabet, $dm_counter/10, 1) .
-				$dm_counter % 10;
-			$dm_counter = 
-				($dm_counter == 259) ? 0 :
-				($dm_counter+1);
-			$j->{'menu_select'} = $key;
-			$dm_store_hash{lc($key)} = $j;
-			$printed += &$dmhandle($j);
-		}
-		$max = 0+$my_json_ref->[0]->{'id'};
+		return $probe;
 	}
-	print $stdout "-- sorry, no new direct messages.\n"
-		if (($interactive || $verbose) && !$printed);
-	$last_dm = &max($last_dm, $max);
-	$dm_first_time = 0 if ($last_dm || !scalar(@{ $my_json_ref }));
-	print $stdout "-- dm bookmark is $last_dm.\n" if ($verbose);
-	&$dmconclude;
-}	
+	return undef;
+}
+
+sub backticks {
+	# more efficient/flexible backticks system
+	my $comm = shift;
+	my $rerr = shift;
+	my $rout = shift;
+	my $resource = shift;
+	my $data = shift;
+	my $dont_do_auth = shift;
+	my $buf = '';
+	my $undersave = $_;
+	my $pid;
+	my $args;
+
+	($comm, $args, $data) = &$stringify_args($comm, $resource,
+		$data, $dont_do_auth, @_);
+	print $stdout "$comm\n$args\n$data\n" if ($superverbose);
+	if(open(BACTIX, '-|')) {
+		while(<BACTIX>) {
+			$buf .= $_;
+		} close(BACTIX);
+		$_ = $undersave;
+		return $buf; # and $? is still in $?
+	} else {
+		$in_backticks = 1;
+		&sigify(sub {
+			die(
+		"** user agent not honouring timeout (caught by sigalarm)\n");
+		}, qw(ALRM));
+		alarm 120; # this should be sufficient
+		if (length($rerr)) {
+			close(STDERR); 
+			open(STDERR, ">$rerr");
+		}
+		if (length($rout)) {
+			close(STDOUT);
+			open(STDOUT, ">$rout");
+		}
+		if(open(FRONTIX, "|$comm")) {
+			print FRONTIX "$args\n";
+			print FRONTIX "$data" if (length($data));
+			close(FRONTIX);
+		} else {
+			die(
+			"backticks() failure for $comm $rerr $rout @_: $!\n");
+		}
+		$rv = $? >> 8;
+		exit $rv;
+	}
+}
 
 sub wherecheck {
 	my ($prompt, $filename, $fatal) = (@_);
 	my (@paths) = split(/\:/, $ENV{'PATH'});
 	my $setv = '';
 
-	unshift(@paths, '/usr/bin'); # the usual place
+	push(@paths, '/usr/bin'); # the usual place
 	@paths = ('') if ($filename =~ m#^/#); # for absolute paths
 
-	print $stdout "$prompt ... ";
+	print $stdout "$prompt ... " unless ($silent);
 	foreach(@paths) {
 		if (-r "$_/$filename") {
 			$setv = "$_/$filename";
 			1 while $setv =~ s#//#/#;
-			print $stdout "$setv\n";
+			print $stdout "$setv\n" unless ($silent);
 			last;
 		}
 	}
@@ -3164,14 +6129,26 @@ sub descape {
 	if ($mode) { # this probably needs to be revised
 		$x =~ s/\\u([0-9a-fA-F]{4})/"&#" . hex($1) . ";"/eg;
 	} else {
+		# intermediate form if HTML entities get in
+		$x =~ s/\&\#([0-9]+);/'\u' . sprintf("%04x", $1)/eg;
+
 		$x =~ s/\\u2028/\\n/g;
 		if ($seven) {
+			# known UTF-8 entities (char for char only)
+			$x =~ s/\\u201[89]/\'/g;
+			$x =~ s/\\u201[cCdD]/\"/g;
+
+			# 7-bit entities (32-126) also ok
+	$x =~ s/\\u00([2-7][0-9a-fA-F])/chr(((hex($1)==127)?46:hex($1)))/eg;
+
+			# dot out the rest
 			$x =~ s/\\u([0-9a-fA-F]{4})/./g;
 			$x =~ s/[\x80-\xff]/./g;
 		} else {
 			# try to promote to UTF-8
-			eval 'utf8::decode($x)';
+			&$utf8_decode($x);
 			$x =~ s/\\u([0-9a-fA-F]{4})/chr(hex($1))/eg;
+			$x = &uforcemulti($x);
 		}
 		$x =~ s/\&quot;/"/g;
 		$x =~ s/\&apos;/'/g;
@@ -3188,8 +6165,31 @@ sub descape {
 
 sub max { return ($_[0] > $_[1]) ? $_[0] : $_[1]; }
 sub min { return ($_[0] < $_[1]) ? $_[0] : $_[1]; }
-# this is mostly a utility function for /eval
-sub a   { return (scalar(@_) ? ("('" . join("', '", @_) . "')") : "NULL"); }
+sub prolog { my $k = shift; 
+	return "" if (!scalar(@_));
+	my $l = shift; return (&$k($l) . &$k(@_)); }
+# this is mostly a utility function for /eval. it is a recursive descent
+# pretty printer.
+sub a {
+	my $w;
+	my $x;
+	return '' if(scalar(@_) < 1);
+	if(scalar(@_) > 1) { $x = "(";
+		foreach $w (@_) {
+			$x .= &a($w);
+		}
+		return $x."), ";
+	}
+	$w = shift;
+	if(ref($w) eq 'SCALAR') { return "\\\"". $$w . "\", "; }
+	if(ref($w) eq 'HASH') { my %m = %{ $w };
+		return "\n\t{".&prolog(\&a, %m)."}, "; }
+	if(ref($w) eq 'ARRAY') { return "\n\t[".&prolog(\&a, @{ $w })."], "; }
+	return "\"$w\", ";
+}
+sub ssa   { return (scalar(@_) ? ("('" . join("', '", @_) . "')") : "NULL"); }
+
+sub strim { my $x=shift; $x=~ s/^\s+//; $x=~ s/\s+$//; return $x; }
 
 sub wwrap {
 	return shift if (!$wrap);
@@ -3235,13 +6235,19 @@ sub wwrap {
 }
 
 # these subs look weird, but they're encoding-independent and run anywhere
-sub ulength { my @k; return (scalar(@k = unpack("C*", shift))); }
+sub uforcemulti { # forces multi-byte interpretation by abusing Perl
+	my $x = shift;
+	return $x if ($seven);
+	$x = "\x{263A}".$x;
+	return pack("${pack_magic}H*", substr(unpack("${pack_magic}H*",$x),6));
+}
+sub ulength { my @k; return (scalar(@k = unpack("${pack_magic}C*", shift))); }
 sub uhex {
 	# URL-encode an arbitrary string, even UTF-8
 	# more versatile than the miniature one in &updatest
 	my $k = '';
 	my $s = shift;
-	eval 'utf8::encode($s)' unless ($seven);
+	&$utf8_encode($s);
 
 	foreach(split(//, $s)) {
 		my $j = unpack("H256", $_);
@@ -3252,13 +6258,19 @@ sub uhex {
 	}
 	return $k;
 }
-sub usplit {
-	# take a string and return up to 140 bytes plus the rest.
+
+# take a string and return up to $linelength CHARS plus the rest.
+sub csplit { return &cosplit(@_, sub { return   length(shift); }); }
+# take a string and return up to $linelength BYTES plus the rest.
+sub usplit { return &cosplit(@_, sub { return &ulength(shift); }); }
+sub cosplit {
+	# this is the common code for &csplit and &usplit.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
         # we let Perl do the work since it internally knows where they end.
 	my $orig_k = shift;
-	my $z;
 	my $mode = shift;
+	my $lengthsub = shift;
+	my $z;
 	my @m;
 	my $q;
 	my $r;
@@ -3270,8 +6282,8 @@ sub usplit {
 	$k =~ s/^\s+//;
 	$k =~ s/\s+$//;
 	$k =~ s/\s+/ /g;
-	$z = &ulength($k);
-	return ($k) if ($z <= 140); # also handles the trivial case
+	$z = &$lengthsub($k);
+	return ($k) if ($z <= $linelength); # also handles the trivial case
 
 	# this needs to be reply-aware, so we put @'s at the beginning of
 	# the second half too (and also Ds for DMs)
@@ -3279,8 +6291,8 @@ sub usplit {
 			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # not while -- just one
 	$k = "$r$k";
 
-	my $i = 140;
-	$i-- while(($z = &ulength($q = substr($k, 0, $i))) > 140);
+	my $i = $linelength;
+	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > $linelength);
 	$m = substr($k, $i);
 
 	# if we just wanted split-on-byte, return now (mode = 1)
@@ -3296,16 +6308,400 @@ sub usplit {
 		($q =~ s/([^a-zA-Z0-9]+)$//) && ($m = "$1$m");
 		# optimize again in case we split on whitespace
 		$q =~ s/\s+$//;
-		return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+		return (&cosplit($orig_k, 1, $lengthsub))
+			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
-		if (&ulength($q) < 140) {
+		if (&$lengthsub($q) < $linelength) {
 			$m =~ s/^\s+//;
 			return($q, "$r$m")
 		}
 	}
 	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
-	return (&usplit($orig_k, 1)) if (!length($q) && !$mode);
+	return (&cosplit($orig_k, 1, $lengthsub)) if (!length($q) && !$mode);
 		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
 }
 
+### OAuth and xAuth methods, including our own homegrown SHA-1 and HMAC ###
+### no Digest:* required! ###
+### these routines are not byte-safe and need a use bytes; before you call ###
+
+# this is a modified, deciphered and deobfuscated version of the famous Perl
+# one-liner SHA-1 written by John Allen. hope he doesn't mind.
+sub sha1 {
+	my $string = shift;
+	print $stdout "string length: @{[ length($string) ]}\n"
+		if ($showwork);
+
+	my $constant = "D9T4C`>_-JXF8NMS^\$#)4=L/2X?!:\@GF9;MGKH8\\;O-S*8L'6";
+	my @A = unpack('N*', unpack('u', $constant));
+	my @K = splice(@A, 5, 4);
+	my $M  = sub { # 64-bit warning
+		my $x;
+		my $m;
+		($x = pop @_) - ($m=4294967296) * int($x / $m);
+	};
+	my $L = sub { # 64-bit warning
+		my $n = pop @_;
+		my $x;
+		((($x = pop @_) << $n) | ((2 ** $n - 1) & ($x >> 32 - $n))) &
+			4294967295;
+	};
+	my $l = '';
+	my $r;
+	my $a;
+	my $b;
+	my $c;
+	my $d;
+	my $e;
+	my $us;
+	my @nuA;
+	my $p = 0;
+	$string = unpack("H*", $string);
+
+	do {
+		my $i;
+		$us = substr($string, 0, 128);
+		$string = substr($string, 128);
+		$l += $r = (length($us) / 2);
+		print $stdout "pad length: $r\n" if ($showwork);
+		($r++, $us .= "80") if ($r < 64 && !$p++);
+		my @W = unpack('N16', pack("H*", $us) . "\000" x 7);
+		$W[15] = $l * 8 if ($r < 57);
+		foreach $i (16 .. 79) {
+		    push(@W,
+		&$L($W[$i - 3] ^ $W[$i - 8] ^ $W[$i - 14] ^ $W[$i - 16], 1));
+		}
+		($a, $b, $c, $d, $e) = @A;
+		foreach $i (0 .. 79) {
+		   my $qq = ($i < 20) ? ($b & ($c ^ $d) ^ $d) :
+				($i < 40) ? ($b ^ $c ^ $d) :
+				($i < 60) ? (($b | $c) & $d | $b & $c) :
+				($b ^ $c ^ $d);
+		    $t = &$M($qq + $e + $W[$i] + $K[$i / 20] + &$L($a, 5));
+		    $e = $d;
+		    $d = $c;
+		    $c = &$L($b, 30);
+		    $b = $a;
+		    $a = $t;
+		}
+		@nuA = ($a, $b, $c, $d, $e);
+		print $stdout "$a $b $c $d $e\n" if ($showwork);
+		$i = 0;
+		@A = map({ &$M($_ + $nuA[$i++]); } @A);
+	} while ($r > 56);
+	my $x = sprintf('%.8x' x 5, @A);
+	@A = unpack("C*", pack("H*", $x));
+	return($x, @A);
+}
+
+# heavily modified from MIME::Base64
+sub simple_encode_base64 {
+	my $result = '';
+	my $input = shift;
+
+	pos($input) = 0;
+	while($input =~ /(.{1,45})/gs) {
+		$result .= substr(pack("u", $1), 1);
+		chop($result);
+	}
+	$result =~ tr|` -_|AA-Za-z0-9+/|;
+	my $padding = (3 - length($input) % 3) % 3;
+	$result =~ s/.{$padding}$/("=" x $padding)/e if ($padding);
+
+	return $result;
+}
+
+# from RFC 2104/RFC 2202
+
+sub hmac_sha1 {
+	my $message = shift;
+	my @key = (@_);
+	my $opad;
+	my $ipad;
+	my $i;
+	my @j;
+	
+	# sha1 blocksize is 512, so key should be 64 bytes
+
+print $stdout " KEY HASH \n" if ($showwork);
+	($i, @key) = &sha1(pack("C*", @key)) while (scalar(@key) > 64);
+	push(@key, 0) while(scalar(@key) < 64);
+	$opad = pack("C*", map { ($_ ^ 92) } @key);
+	$ipad = pack("C*", map { ($_ ^ 54) } @key);
+
+print $stdout " MESSAGE HASH \n" if ($showwork);
+	($i, @j) = &sha1($ipad . $message);
+print $stdout " FINAL HASH \n" if ($showwork);
+	$i = pack("C*", @j); # output hash is 160 bits
+	($i, @j) = &sha1($opad . $i);
+	$i = &simple_encode_base64(pack("C20", @j));
+
+	return $i;
+}
+
+# simple encoder for OAuth modified URL encoding (used for lots of things,
+# actually)
+# this is NOT UTF-8 safe
+sub url_oauth_sub {
+	my $x = shift;
+	$x =~ s/([^-0-9a-zA-Z._~])/"%".uc(unpack("H2",$1))/eg; return $x;
+}
+
+# default method of getting password: ask for it. only relevant for xAuth
+# and Basic Auth, neither of which is our default.
+sub defaultgetpassword {
+	# original idea by @jcscoobyrs, heavily modified
+	my $k;
+	my $l;
+	my $pass;
+
+	$l = "no termios; password WILL";
+	if ($termios) {
+		$termios->getattr(fileno($stdin));
+		$k = $termios->getlflag;
+		$termios->setlflag($k ^ &POSIX::ECHO);
+		$termios->setattr(fileno($stdin));
+		$l = "password WILL NOT";
+	}
+	print $stdout "enter password for $whoami ($l be echoed): ";
+	chomp($pass = <$stdin>);
+	if ($termios) {
+		print $stdout "\n";
+		$termios->setlflag($k);
+		$termios->setattr(fileno($stdin));
+	}
+	return $pass;
+}
+
+# this returns an immutable token corresponding to the current authenticated
+# session. in the case of Basic Auth, it is simply the user:password pair.
+# in the case of xAuth, it executes a fetch for the token and token secret.
+# it does not handle OAuth -- that is run by a separate wizard.
+# the function then returns (token,secret) which for Basic Auth is token,undef.
+#
+# most of the time we will be using tokens in a keyfile, however, so this
+# function runs in that case as a stub.
+sub authtoken {
+	my @foo;
+	my $pass;
+	my $sig;
+	my $return;
+	my $tries = ($hold > 3) ? $hold : 3;
+		# give up on token if we don't get one
+
+	return (undef,undef) if ($anonymous);
+	return ($tokenkey,$tokensecret)
+		if (length($tokenkey) && length($tokensecret));
+	@foo = split(/:/, $user, 2);
+	$whoami = $foo[0];
+	die("choose -user=username[:password], or -anonymous.\n")
+		if (!length($whoami) || $whoami eq '1');
+	$pass = length($foo[1]) ? $foo[1] : &$getpassword;
+	die("a password must be specified.\n") if (!length($pass));
+	return ($whoami, $pass) if ($authtype eq 'basic');
+
+	print $stdout <<"EOF";
+>> WARNING: xAuth is now deprecated in TTYtter 1.2, and will be gone in 2.0
+>> if this is an issue for your application, notify ckaiser\@floodgap.com
+
+EOF
+
+	print $stdout "negotiating xAuth token ...";
+
+	my $rawtoken;
+	while($tries) {
+		$rawtoken = &backticks($baseagent,
+			'/dev/null',
+			undef,
+			$xauthurl,
+			("x_auth_mode=client_auth&" .
+			 "x_auth_password=" . &url_oauth_sub($pass) . "&".
+			 "x_auth_username=" . &url_oauth_sub($whoami)),
+			0, @wend);
+		my $i;
+		print $stdout ("token = $rawtoken\n") if ($superverbose);
+		my (@keyarr) = split(/\&/, $rawtoken);
+		my $got_token = '';
+		my $got_secret = '';
+		foreach $i (@keyarr) {
+			my $key;
+			my $value;
+
+			($key, $value) = split(/\=/, $i);
+			$got_token = $value if ($key eq 'oauth_token');
+			$got_secret = $value if ($key eq 'oauth_token_secret');
+			if (length($got_token) && length($got_secret)) {
+				print $stdout " SUCCEEDED!\n";
+				return ($got_token, $got_secret);
+			}
+		}
+		print $stdout ".";
+		$tries--;
+	}
+	print $stdout " FAILED!: \"$rawtoken\"\n";
+die("unable to fetch xAuth token. other possible reasons:\n".
+    " - root certificates are not updated (see documentation)\n".
+    " - your password is wrong\n".
+    " - your computer's clock is not set correctly\n" .
+    " - Twitter farted\n" .
+    "fix these possible problems, or try again later.\n");
+}
+
+# this is a sucky nonce generator. I was looking for an awesome nonce
+# generator, and then I realized it would only be used once, so who cares?
+# *rimshot*
+sub generate_nonce { unpack("H9000", pack("u", rand($$).$$.time())); }
+
+# this signs a request with the token and token secret. the result is undef if
+# Basic Auth. payload should already be URL encoded and *sorted*.
+# this is typically called by stringify_args to get authentication information.
+sub signrequest {
+
+	# this horrible kludge is needed to account for both 5.005, or for
+	# 5.6+ installs with no stdlibs and just a bare Perl, both of which
+	# we support. I hope Larry Wall will forgive me for messing with
+	# compiler internals next time I see him at church.
+	BEGIN { $^H |= 0x00000008 unless ($] < 5.006); }
+
+	my $resource = shift;
+	my $payload = shift;
+
+	# when we sign the initial request for an xAuth token, we obviously
+	# don't have one yet, so mytoken/mytokensecret can be null.
+
+	my $nonce = &generate_nonce;
+	my @keybytes;
+	my $sig_base;
+	my $timestamp = time();
+	return undef if ($authtype eq 'basic');
+
+	# stub for oAuth 2.0
+	return undef if (!length($oauthkey) || !length($oauthsecret));
+
+	(@keybytes) = map { ord($_) }
+		split(//, $oauthsecret.'&'.$mytokensecret);
+	if (ref($resource) eq 'ARRAY' || length($payload)) {
+		# split into _a and _b payloads lexically
+		my $payload_a = '';
+		my $payload_b = '';
+		my $payload_c = ''; # this is for a special case
+		my $w;
+		my $aorb = 0;
+		my $verifier = '';
+		my $method = "GET";
+		my $url;
+	
+		if (length($payload)) {
+			$method = "POST";
+			# this is a bit problematic since it won't be
+			# sorted. we'll deal with this as we need to.
+			if (ref($resource) eq 'ARRAY') {
+				$url = &url_oauth_sub($resource->[0]);
+				$payload .= "&" . $resource->[1];
+			} else {
+				$url = &url_oauth_sub($resource);
+			}
+		} elsif (ref($resource) eq 'ARRAY') {
+			$url = &url_oauth_sub($resource->[0]);
+			$payload = $resource->[1];
+		} else {
+			$url = &url_oauth_sub($resource);
+		}
+
+		# this is pretty simplistic but it's really all we need.
+		# the exception is oauth_verifier: that has to be wormed
+		# into the middle, and we assume it's just that.
+		if ($payload !~ /^oauth_verifier/) {
+			foreach $w (split(/\&/, $payload)) {
+				$aorb = 1 if
+					($w =~ /^[p-z]/ || $w =~ /^o[b-z]/);
+				$w = &url_oauth_sub("${w}&");
+				if ($aorb) {
+					$payload_b .= $w;
+				} else {
+					$payload_a .= $w;
+				}
+			}
+		} else {
+			$payload_c = &url_oauth_sub($payload) . "%26";
+			$payload_a = $payload_b = '';
+			$payload =~ s/^oauth_verifier=//;
+			$verifier = ' oauth_verifier=\\"' . $payload . '\\",';
+		}
+		$payload_b =~ s/%26$//;
+		$sig_base = $method . "&" .
+			$url . "&" .
+			(length($payload_a) ? $payload_a : '').
+			"oauth_consumer_key%3D" . $oauthkey . "%26" .
+			"oauth_nonce%3D" . $nonce . "%26" .
+			"oauth_signature_method%3DHMAC-SHA1%26" .
+			"oauth_timestamp%3D" . $timestamp . "%26" .
+			(length($mytoken) ? 
+				("oauth_token%3D" . $mytoken . "%26") : '') .
+			$payload_c .
+			"oauth_version%3D1.0" .
+			(length($payload_b) ? ("%26" . $payload_b) : '');
+	} else {
+		$sig_base = "GET&" .
+			&url_oauth_sub($resource) . "&" .
+			"oauth_consumer_key%3D" . $oauthkey . "%26" .
+			"oauth_nonce%3D" . $nonce . "%26" .
+			"oauth_signature_method%3DHMAC-SHA1%26" .
+			"oauth_timestamp%3D" . $timestamp . "%26" .
+			(length($mytoken) ? 
+				("oauth_token%3D" . $mytoken . "%26") : '') .
+			$payload_c . # could be part of it
+			"oauth_version%3D1.0" ;
+	}
+	print $stdout
+"token-secret: $mytokensecret\nconsumer-secret: $oauthsecret\nsig-base: $sig_base\n"
+		if ($superverbose);
+	return ($timestamp, $nonce,
+		&url_oauth_sub(&hmac_sha1($sig_base, @keybytes)),
+			$verifier);
+}
+
+# this takes a token request and "tries hard" to get it. this is descended
+# from the xAuth flow, but works for any generic token. please note: xAuth
+# is now deprecated as of 1.2.
+sub tryhardfortoken {
+	my $url = shift;
+	my $body = shift;
+	my $tries = shift;
+	my $rawtoken;
+	$tries ||= 3;
+
+	while($tries) {
+		my $i;
+		$rawtoken = &backticks($baseagent, '/dev/null', undef,
+			$url, $body, 0, @wend);
+		print $stdout ("token = $rawtoken\n")
+			if ($superverbose);
+		my (@keyarr) = split(/\&/, $rawtoken);
+		my $got_token = '';
+		my $got_secret = '';
+		foreach $i (@keyarr) {
+			my $key;
+			my $value;
+
+			($key, $value) = split(/\=/, $i);
+			$got_token = $value if ($key eq 'oauth_token');
+			$got_secret = $value if ($key eq 'oauth_token_secret');
+		}
+		if (length($got_token) && length($got_secret)) {
+			print $stdout " SUCCEEDED!\n";
+			return ($got_token, $got_secret);
+		}
+		print $stdout ".";
+		$tries--;
+	}
+	print $stdout " FAILED!: \"$rawtoken\"\n";
+die("unable to fetch token. here are some possible reasons:\n".
+    " - root certificates are not updated (see documentation)\n".
+    " - you entered your authentication information wrong\n".
+    " - your computer's clock is not set correctly\n" .
+    " - Twitter farted\n" .
+    "fix these possible problems, or try again later.\n");
+		exit;
+}
