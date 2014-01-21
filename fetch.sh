@@ -13,7 +13,7 @@ get_lines_from_changelog() {
 	changelog=$1
 	version=$2
 	#Find line number of change
-	start=`sed -n "/^##Changes in version $version:/=" $changelog`
+	start=`sed -n "/^##Changes in version $version[: ]/=" $changelog`
 	if ! [ -z "$start" ]; then
 		#Find line number of next change
 		startnext=`expr $start + 1`
@@ -52,10 +52,11 @@ while read line; do
 	DATE=`echo $line | awk '{print $2",", $4, $3, $6, $5}'`
 	TAG=`echo $line | awk '{print $1}' | sed 's/\.txt//g'`
 	TAG=`fixtag $TAG`
-	#Ensure don't add existing version
-	OK_TO_ADD=`git show-ref --tags | grep $TAG -c`
+	#Ensure don't add existing version, need to escape the periods!
+	ESCAPED_TAG=`echo $TAG | sed 's/\./\\\./g'`
+	OK_TO_ADD=`git show-ref --tags | grep $ESCAPED_TAG -c`
 	if [ $OK_TO_ADD -eq 0 ]; then
-		get_lines_from_changelog CHANGELOG.markdown $TAG
+		get_lines_from_changelog CHANGELOG.markdown $ESCAPED_TAG
 		curl $URL > ttytter.pl
 		git add ttytter.pl
 		git commit --file commit.tmp --date="$DATE" --author"=Cameron Kaiser <ckaiser@floodgap.com>"
