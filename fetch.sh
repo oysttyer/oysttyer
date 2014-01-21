@@ -46,15 +46,36 @@ fixtag() {
 	echo $fixedtag
 }
 
+#Since listings aren't always in order, do need to check order they are committed!
+ok_to_add() {
+	#I'm sure there is a more succint way...
+	this_major=`echo $1 | awk '{split($0,a,"."); print a[1]}'`
+	this_minor=`echo $1 | awk '{split($0,a,"."); print a[2]}'`
+	this_patch=`echo $1 | awk '{split($0,a,"."); print a[3]}'`
+	last_major=`echo $2 | awk '{split($0,a,"."); print a[1]}'`
+	last_minor=`echo $2 | awk '{split($0,a,"."); print a[2]}'`
+	last_patch=`echo $2 | awk '{split($0,a,"."); print a[3]}'`
+	if [ $this_major -gt $last_major ] || ( [ $this_major -eq $last_major ] && [ $this_minor -gt $last_minor ] ) || ( [ $this_major -eq $last_major ] && [ $this_minor -eq $last_minor ] && [ $this_patch -gt $last_patch ] ); then
+		ok=1
+	else
+		ok=0
+	fi
+	echo $ok 
+}
+
 curl $DIST_URL | grep bytes | sed 's/"/ /g' | awk '{print $4, $8, $9, $10, $11, $12}' > dist.txt
 while read line; do
 	URL=`echo $line | awk '{print dist_url $1}' dist_url=$DIST_URL`
 	DATE=`echo $line | awk '{print $2",", $4, $3, $6, $5}'`
 	TAG=`echo $line | awk '{print $1}' | sed 's/\.txt//g'`
 	TAG=`fixtag $TAG`
-	#Don't add existing version - not yet clever enough to prevent adding versions in wrong order; probably no point ever making it that clever
-	OK_TO_ADD=`git show-ref --tags | grep $TAG -c`
-	if [ $OK_TO_ADD -eq 0 ]; then
+	#Ensure versions are added in order.
+	LAST_TAG=`git tag --list | tail -n 1`
+	if [ -z "$LAST_TAG" ]; then
+		LAST_TAG="0.0"
+	fi
+	OK_TO_ADD=`ok_to_add $TAG $LAST_TAG` 
+	if [ $OK_TO_ADD -eq 1 ]; then
 		get_lines_from_changelog CHANGELOG.markdown $TAG
 		curl $URL > ttytter.pl
 		git add ttytter.pl
