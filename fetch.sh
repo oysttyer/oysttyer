@@ -13,7 +13,7 @@ get_lines_from_changelog() {
 	changelog=$1
 	version=$2
 	#Find line number of change
-	start=`sed -n "/^##Changes in version $version/=" $changelog`
+	start=`sed -n "/^##Changes in version $version:/=" $changelog`
 	if ! [ -z "$start" ]; then
 		#Find line number of next change
 		startnext=`expr $start + 1`
