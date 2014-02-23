@@ -5470,11 +5470,10 @@ sub standardevent {
 		"tweet ID# ".$ref->{'delete'}->{'status'}->{'id_str'}.
 			" deleted by server";
 	} elsif ($ref->{'status_withheld'}) {
-		# Twitter doesn't document id_str as available here. check.
-		if (!length($ref->{'status_withheld'}->{'id_str'})) {
-			# do nothing right now
+		if (scalar(@{$ref->{'status_withheld'}->{'withheld_in_countries'}}) == 0) {
+			# Silently handle cases when Twitter API sends status_witheld with no countries
 		} else { $g .=
-		"tweet ID# ".$ref->{'status_withheld'}->{'id_str'}.
+		"tweet ID# ".$ref->{'status_withheld'}->{'id'}.
 			" censored by server in your country";
 		}
 	} elsif ($ref->{'user_withheld'}) {
