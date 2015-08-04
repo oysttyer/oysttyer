@@ -5351,6 +5351,18 @@ sub standardtweet {
 	$tweet =~ s/\n*$//;
 	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
 
+	#This is very much based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	#but with a couple of modifications to the regex
+	#There really doesn't seem to be a better way of doing this than regexing
+	my @appended_tweets = ();
+	while ($tweet =~ m#\G.*?https*://twitter.com/\S+/\S+/(\d+)#sg) {
+		push @appended_tweets, get_tweet($1);
+	}
+	&tdisplay(\@appended_tweets);
+	#This displays above the tweet, because it is being processed mid-tweet.
+	#I think it would be nicer to display below though
+	#Also, it would be nice to format/mark it up a bit.
+
 	# highlight anything that we have in track
 	if(scalar(@tracktags)) { # I'm paranoid
 		foreach $h (@tracktags) {
