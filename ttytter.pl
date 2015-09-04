@@ -4045,9 +4045,12 @@ EOF
 			my $ds = $key->{'created_at'} || 'argh, no created_at';
 			$ds =~ s/\s/_/g;
 			my $src = $key->{'source'} || 'unknown';
+			#Figured out this is where the stream gets processed and TTYtter picks out the fields that get stored
+			#So quoted_status_id_str needed adding in here.
 			$src =~ s/\|//g; # shouldn't be any anyway.
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		($key->{'in_reply_to_status_id_str'})." ".
+		($key->{'quoted_status_id_str'})." ".
 		($key->{'retweeted_status'}->{'id_str'})." ".
 		($key->{'user'}->{'geo_enabled'} || "false") . " ".
 		($key->{'geo'}->{'coordinates'}->[0]). " ".
@@ -4893,7 +4896,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 
 			# finally store in menu code cache
 			$store_hash{$key} = $j;
-
+			
 			sleep 5 while ($suspend_output > 0);
 			&send_removereadline if ($termrl);
 			$wrapseq++;
@@ -5352,13 +5355,12 @@ sub standardtweet {
 	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
 
 	#This is very much based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-	#but with a couple of modifications to the regex
-	#There really doesn't seem to be a better way of doing this than regexing
-	my @appended_tweets = ();
-	while ($tweet =~ m#\G.*?https*://twitter.com/\S+/\S+/(\d+)#sg) {
-		push @appended_tweets, get_tweet($1);
-	}
-	&tdisplay(\@appended_tweets);
+	#But now without regexing
+	if ($ref->{'quoted_status_id_str'} > 0) {
+		my @appended_tweets = ();
+		push @appended_tweets, get_tweet($ref->{'quoted_status_id_str'});
+		&tdisplay(\@appended_tweets)
+	};
 	#This displays above the tweet, because it is being processed mid-tweet.
 	#I think it would be nicer to display below though
 	#Also, it would be nice to format/mark it up a bit.
@@ -6097,7 +6099,11 @@ sub get_tweet {
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	#And I think any additional field extracted from the stream also has to be added here as well.
+	#I.e quoted_status_id_str
+	#Need to increment the count in split at the end.
 	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
+		$w->{'quoted_status_id_str'},
 		$w->{'retweeted_status'}->{'id_str'},
 		$w->{'user'}->{'geo_enabled'},
 		$w->{'geo'}->{'coordinates'}->[0],
@@ -6110,7 +6116,7 @@ sub get_tweet {
 		$w->{'tag'}->{'payload'},
 		$w->{'retweet_count'}, 
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
-			$l) = split(/\s/, $k, 17);
+			$l) = split(/\s/, $k, 18);
 	($w->{'source'}, $k) = split(/\|/, $l, 2);
 	$w->{'text'} = pack("H*", $k);
 	$w->{'place'}->{'full_name'} = pack("H*",$w->{'place'}->{'full_name'});
