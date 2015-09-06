@@ -5779,18 +5779,20 @@ sub defaulthandle {
 	# Still based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
 	# But moved here so I can get the ordering correct
 	# TODO: Figure out looping for nested quoted tweets (If those can be a thing?)
+	# But how far down the rabbit-hole do we want to go?
+	# Maybe just stop at one.
 	if ($tweet_ref->{'quoted_status_id_str'} > 0) {
 		my @appended_tweets = ();
-		push @appended_tweets, get_tweet($tweet_ref->{'quoted_status_id_str'});
+		push @appended_tweets, $tweet_ref->{'quoted_status'};
 		&tdisplay(\@appended_tweets)
 	};
 	# Also, now no longer regexing, need to cascade through RTs. RTs don't have the quoted_status... 
 	# If it is a retweet, get the original status and check that for quoted_status	
 	if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
-		$rt_tweet_ref = get_tweet($tweet_ref->{'retweeted_status'}->{'id_str'});
+		$rt_tweet_ref = $tweet_ref->{'retweeted_status'};
 		if ($rt_tweet_ref->{'quoted_status_id_str'} > 0) {
 			my @appended_tweets = ();
-			push @appended_tweets, get_tweet($rt_tweet_ref->{'quoted_status_id_str'});
+			push @appended_tweets, $rt_tweet_ref->{'quoted_status'};
 			&tdisplay(\@appended_tweets)
 		};
 	};
