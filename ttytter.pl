@@ -5782,18 +5782,14 @@ sub defaulthandle {
 	# But how far down the rabbit-hole do we want to go?
 	# Maybe just stop at one.
 	if ($tweet_ref->{'quoted_status_id_str'} > 0) {
-		my @appended_tweets = ();
-		push @appended_tweets, $tweet_ref->{'quoted_status'};
-		&tdisplay(\@appended_tweets)
+		&tdisplay(\@{[$tweet_ref->{'quoted_status'}]})
 	};
 	# Also, now no longer regexing, need to cascade through RTs. RTs don't have the quoted_status... 
 	# If it is a retweet, get the original status and check that for quoted_status	
 	if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
 		$rt_tweet_ref = $tweet_ref->{'retweeted_status'};
 		if ($rt_tweet_ref->{'quoted_status_id_str'} > 0) {
-			my @appended_tweets = ();
-			push @appended_tweets, $rt_tweet_ref->{'quoted_status'};
-			&tdisplay(\@appended_tweets)
+			&tdisplay(\@{[$rt_tweet_ref->{'quoted_status'}]})
 		};
 	};
 
