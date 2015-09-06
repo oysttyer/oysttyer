@@ -5330,6 +5330,8 @@ sub standardtweet {
 		length($ref->{'geo'}->{'coordinates'}->[0])) ||
 		length($ref->{'place'}->{'id'})));
 	$sn = "%$sn" if (length($ref->{'retweeted_status'}->{'id_str'}));
+	# is_quote_status seems to be undocumented, should we badge the quoted tweet or the tweet that quotes it?
+	$sn = "\"$sn" if ($ref->{'is_quote_status'} eq 'true');
 	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
 	# prepend list information, if this tweet originated from a list
 	$sn = "($ref->{'tag'}->{'payload'})$sn"	
@@ -5354,16 +5356,6 @@ sub standardtweet {
 	$tweet =~ s/\n*$//;
 	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
 
-	#This is very much based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-	#But now without regexing
-	if ($ref->{'quoted_status_id_str'} > 0) {
-		my @appended_tweets = ();
-		push @appended_tweets, get_tweet($ref->{'quoted_status_id_str'});
-		&tdisplay(\@appended_tweets)
-	};
-	#This displays above the tweet, because it is being processed mid-tweet.
-	#I think it would be nicer to display below though
-	#Also, it would be nice to format/mark it up a bit.
 
 	# highlight anything that we have in track
 	if(scalar(@tracktags)) { # I'm paranoid
@@ -5783,6 +5775,17 @@ sub defaulthandle {
 
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
+
+	# Still based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	# But moved here so I can get the ordering correct
+	# Is there more than one place this needs to be done? I.e. streaming vs none?
+	# Also, now no longer regexing, need to cascade through RTs. RTs don't have the quoted_status... 
+	# Figure out looping for nested quoted tweets (If those can be a thing?)
+	if ($tweet_ref->{'quoted_status_id_str'} > 0) {
+		my @appended_tweets = ();
+		push @appended_tweets, get_tweet($tweet_ref->{'quoted_status_id_str'});
+		&tdisplay(\@appended_tweets)
+	};
 	return 1;
 }
 sub defaultuserhandle {
