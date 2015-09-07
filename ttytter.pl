@@ -5776,21 +5776,16 @@ sub defaulthandle {
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
 
-	# Still based on: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	# Still inspired by: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
 	# But moved here so I can get the ordering correct
-	# TODO: Figure out looping for nested quoted tweets (If those can be a thing?)
-	# But how far down the rabbit-hole do we want to go?
-	# Maybe just stop at one.
-	if ($tweet_ref->{'quoted_status_id_str'} > 0) {
-		&tdisplay(\@{[$tweet_ref->{'quoted_status'}]})
-	};
-	# Also, now no longer regexing, need to cascade through RTs. RTs don't have the quoted_status... 
-	# If it is a retweet, get the original status and check that for quoted_status	
-	if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
-		$rt_tweet_ref = $tweet_ref->{'retweeted_status'};
-		if ($rt_tweet_ref->{'quoted_status_id_str'} > 0) {
-			&tdisplay(\@{[$rt_tweet_ref->{'quoted_status'}]})
+	# Twitter website only displays one level of quotation so no looping through
+	# TODO: Make sure supporting commands (such as /thread) provide away to get further quotations. I.e. quotations of quotations.
+	if ((length($tweet_ref->{'quoted_status_id_str'})) || (length($tweet_ref->{'retweeted_status'}->{'id_str'}))) {
+		# If it is a retweet, get the original status and check that for quoted_status	
+		if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
+			$tweet_ref = $tweet_ref->{'retweeted_status'};
 		};
+		&tdisplay(\@{[$tweet_ref->{'quoted_status'}]})
 	};
 
 	return 1;
