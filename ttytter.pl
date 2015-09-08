@@ -1708,6 +1708,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 	}
 
 	$in_reply_to = 0;
+	$quoted_status_url = undef;
 	chomp;
 	$_ = &$precommand($_);
 	s/^\s+//;
@@ -3067,6 +3068,24 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		goto TWEETPRINT; # fugly! FUGLY!
 	}
 
+	# Quoted tweets
+	if (s#^/qu(ote) ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
+		my $code = lc($2);
+		my $tweet = &get_tweet($code);
+		if (!defined($tweet)) {
+			print $stdout "-- no such tweet (yet?): $code\n";
+			return 0;
+		}
+		#Need to not quote dms
+		# Just need to append url of tweet to end of status.
+		# But to make life MUCH easier, that will be done in common_split_post
+		$sn = &descape($tweet->{'user'}->{'screen_name'});
+		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
+		#What does the below do?
+		#$readline_completion{'@'.lc($target)}++ if ($termrl);
+		goto TWEETPRINT; # fugly! FUGLY!
+	}
+
         if (m#^/(re)?rts?of?me?(\s+\+\d+)?$# && !$nonewrts) {
 #TODO
 # when more fields are added, integrate them over the JSON_ref
@@ -3327,7 +3346,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		return 0;
 	}
 	if (s#^/dm \@?([^\s]+)\s+## && length)  {
-		return &common_split_post($_, undef, $1);
+		return &common_split_post($_, undef, undef, $1);
 	}
 
 	# follow and leave users
@@ -3653,12 +3672,15 @@ EOF
 	}
 
 TWEETPRINT: # fugly! FUGLY!
-	return &common_split_post($_, $in_reply_to, undef);
+	return &common_split_post($_, $quoted_status_url, $in_reply_to, undef);
 }
 
 # this is the common code used by standard updates and by the /dm command.
 sub common_split_post {
+	#Maybe add another arg here for $quoted_status_id
+	#That way don't have to pass through as part of the character count.
 	my $k = shift;
+	my $quoted_status_url = shift;
 	my $in_reply_to = shift;
 	my $dm_user = shift;
 	
@@ -3681,11 +3703,17 @@ sub common_split_post {
 		print $stdout &wwrap(
 			"*** over $linelength; autosplitting to \"$l\"\n");
 	}
+	# If a quoted status need to append that on after the length checking.
+	# You get 116 chars with a quoted status
+	if ($quoted_status_url) {
+		$m = $m . " " . $quoted_status_url	
+	}
 	# there was an error; stop autosplit, restore original command
 	if (&updatest($m, 1, $in_reply_to, $dm_user)) {
 		$history[0] = $ol;
 		return 0;
 	}
+	#Perhaps also need to think about quoted tweets in the below.
 	if (scalar(@tweetstack)) {
 		$k = shift(@tweetstack);
 		$l = "$dm_lead$k";
