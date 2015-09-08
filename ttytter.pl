@@ -3031,7 +3031,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		}
 	}
 
-	# Retweet API and manual RTs
+	# Retweet API (including quoted tweets) and manual RTs
 	if (s#^/([oe]?)r(etweet|t) ([zZ]?[a-zA-Z]?[0-9]+)\s*##) {
 		my $mode = $1;
 		my $code = lc($3);
@@ -3053,36 +3053,23 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 			return 0;
 		}
 		# we can't or user requested /ert /ort
-		$retweet = "RT @" .
-			&descape($tweet->{'user'}->{'screen_name'}) .
-			": " . &descape($tweet->{'text'});
-		if ($mode eq 'e') {
-			&add_history($retweet);
-			print $stdout &wwrap(
-				"-- ok, %RT% and %% are now \"$retweet\"\n");
-			return 0;
+		if (($mode eq 'o') || ($mode eq 'e') || $nonewrts ) {
+			$retweet = "RT @" .
+				&descape($tweet->{'user'}->{'screen_name'}) .
+				": " . &descape($tweet->{'text'});
+			if ($mode eq 'e') {
+				&add_history($retweet);
+				print $stdout &wwrap(
+					"-- ok, %RT% and %% are now \"$retweet\"\n");
+				return 0;
+			}
 		}
-		$_ = (length) ? "$retweet $_" : $retweet;
-		print $stdout &wwrap("(expanded to \"$_\")");
-		print $stdout "\n";
-		goto TWEETPRINT; # fugly! FUGLY!
-	}
-
-	# Quoted tweets
-	if (s#^/qu(ote) ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
-		my $code = lc($2);
-		my $tweet = &get_tweet($code);
-		if (!defined($tweet)) {
-			print $stdout "-- no such tweet (yet?): $code\n";
-			return 0;
-		}
-		#Need to not quote dms
-		# Just need to append url of tweet to end of status.
-		# But to make life MUCH easier, that will be done in common_split_post
+		# otherwise it is a quote tweet
 		$sn = &descape($tweet->{'user'}->{'screen_name'});
 		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
-		#What does the below do?
-		#$readline_completion{'@'.lc($target)}++ if ($termrl);
+		#$_ = (length) ? "$retweet $_" : $retweet;
+		print $stdout &wwrap("(expanded to \"$_\")");
+		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
 	}
 
