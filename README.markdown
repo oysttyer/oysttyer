@@ -1,6 +1,8 @@
 # TTYtter
 
-Mirror of [Floodgap's TTYtter](http://www.floodgap.com/software/ttytter/).
+Unofficial maintenance and mirror of [Floodgap's TTYtter](http://www.floodgap.com/software/ttytter/).
+
+The master branch will be pretty much what I'm running. The mirror branch will be updated if any official updates are made.
 
 Putting this here since Floodgap don't provide a public version control system, just [directories](http://www.floodgap.com/software/ttytter/old/) of [previous](http://www.floodgap.com/software/ttytter/dist1/) [versions](http://www.floodgap.com/software/ttytter/dist2/).
 
@@ -12,6 +14,6 @@ Also, as an avid user I was/am concerned TTYtter may now become [abandonware](ht
 
 ...but in the process of compiling this repository I noticed that TTYtter had indeed been updated as recently as 14-Jan-2014 (making `ssl=1` the default; and a few [other small changes](https://gist.github.com/atomicules/8699347/revisions)) it's just that the version number was not changed from the 27-December-2012 2.1.0 release. However, since it took a bit of effort getting this into Git I'm still going ahead with the mirror. If development does pick up I can at least keep the mirror up to date easily and perhaps I can focus on point 2.
 
-##Status 2015-06-11
+##Status 2015-09-09
 
-I still use TTYtter everyday, but I am a user not a developer. I am interested in maintaining, but I'm only going to really start trying to fix things when it breaks for me because I have about zero free time. I may occasionally add issues, but they are more like todos/reminders for me for sometime in the future.
+Decided to pull my finger and start maintaining. Taking baby steps though.
