@@ -97,7 +97,7 @@ BEGIN {
 		favurl favdelurl slowpost notifies filter colourdefault
 		followurl leaveurl dmupdate mentions backload
 		lat long location searchhits blockurl blockdelurl woeid
-		nocounter linelength friendsurl followersurl lists
+		nocounter linelength quotelinelength friendsurl followersurl lists
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
 		creliurl delliurl deluliurl crefliurl delfliurl atrendurl
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
@@ -645,6 +645,7 @@ $lat ||= undef;
 $long ||= undef;
 $location ||= 0;
 $linelength ||= 140;
+$quotelinelength ||= 116;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
 $apibase ||= "${http_proto}://api.twitter.com/1.1";
@@ -3664,8 +3665,6 @@ TWEETPRINT: # fugly! FUGLY!
 
 # this is the common code used by standard updates and by the /dm command.
 sub common_split_post {
-	#Maybe add another arg here for $quoted_status_id
-	#That way don't have to pass through as part of the character count.
 	my $k = shift;
 	my $quoted_status_url = shift;
 	my $in_reply_to = shift;
@@ -3673,9 +3672,13 @@ sub common_split_post {
 	
 	my $dm_lead = (length($dm_user)) ? "/dm $dm_user " : '';
 	my $ol = "$dm_lead$k";
+	my $maxchars = $linelength;
 
+	if ($quoted_status_url) {
+		$maxchars = $quotelinelength;
+	}
 	my (@tweetstack) = &csplit($k, ($autosplit eq 'char' ||
-		$autosplit eq 'cut') ? 1 : 0);
+		$autosplit eq 'cut') ? 1 : 0, $maxchars);
 	my $m = shift(@tweetstack);
 	if (scalar(@tweetstack)) {
 		$l = "$dm_lead$m";
@@ -3688,10 +3691,9 @@ sub common_split_post {
 			return 0;
 		}
 		print $stdout &wwrap(
-			"*** over $linelength; autosplitting to \"$l\"\n");
+			"*** over $maxchars; autosplitting to \"$l\"\n");
 	}
 	# If a quoted status need to append that on after the length checking.
-	# You get 116 chars with a quoted status
 	if ($quoted_status_url) {
 		$m = $m . " " . $quoted_status_url	
 	}
@@ -7630,21 +7632,33 @@ sub length_tco {
 	my $w = shift;
 	return length(($notco) ? $w : &turntotco($w));
 }
-# take a string and return up to $linelength CHARS plus the rest.
-sub csplit { return &cosplit(@_, sub { return  &length_tco(shift); }); }
+# take a string and return up to $maxchars CHARS plus the rest.
+sub csplit { 
+	my ($orig_k, $mode, $maxchars) = @_;
+	return &cosplit($orig_k, $mode, $maxchars, sub { return  &length_tco(shift); });
+}
 # take a string and return up to $linelength BYTES plus the rest.
-sub usplit { return &cosplit(@_, sub { return &ulength_tco(shift); }); }
+# usplit isn't used, but best change it as well
+sub usplit {
+	my ($orig_k, $mode, $maxchars) = @_;
+	return &cosplit(@_, sub { return &ulength_tco(shift); });
+}
 sub cosplit {
 	# this is the common code for &csplit and &usplit.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
         # we let Perl do the work since it internally knows where they end.
 	my $orig_k = shift;
 	my $mode = shift;
+	my $maxchars = shift;
 	my $lengthsub = shift;
 	my $z;
 	my @m;
 	my $q;
 	my $r;
+
+	unless ($maxchars) {
+		$maxchars = $linelength;
+	}
 
 	$mode += 0;
 	$k = $orig_k;
@@ -7654,7 +7668,7 @@ sub cosplit {
 	$k =~ s/\s+$//;
 	$k =~ s/\s+/ /g;
 	$z = &$lengthsub($k);
-	return ($k) if ($z <= $linelength); # also handles the trivial case
+	return ($k) if ($z <= $maxchars); # also handles the trivial case
 
 	# this needs to be reply-aware, so we put @'s at the beginning of
 	# the second half too (and also Ds for DMs)
@@ -7662,8 +7676,8 @@ sub cosplit {
 			$k =~ s/^(D\s+[^\s]+\s)\s*//);  # we have r/a, so while
 	$k = "$r$k";
 
-	my $i = $linelength;
-	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > $linelength);
+	my $i = $maxchars;
+	$i-- while(($z = &$lengthsub($q = substr($k, 0, $i))) > $maxchars);
 	$m = substr($k, $i);
 
 	# if we just wanted split-on-byte, return now (mode = 1)
@@ -7682,7 +7696,7 @@ sub cosplit {
 		return (&cosplit($orig_k, 1, $lengthsub))
 			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
-		if (&$lengthsub($q) < $linelength) {
+		if (&$lengthsub($q) < $maxchars) {
 			$m =~ s/^\s+//;
 			return($q, "$r$m")
 		}
