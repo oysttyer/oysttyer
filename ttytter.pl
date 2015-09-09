@@ -4045,9 +4045,12 @@ EOF
 			my $ds = $key->{'created_at'} || 'argh, no created_at';
 			$ds =~ s/\s/_/g;
 			my $src = $key->{'source'} || 'unknown';
+			#Figured out this is where the stream gets processed and TTYtter picks out the fields that get stored
+			#So quoted_status_id_str needed adding in here.
 			$src =~ s/\|//g; # shouldn't be any anyway.
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		($key->{'in_reply_to_status_id_str'})." ".
+		($key->{'quoted_status_id_str'})." ".
 		($key->{'retweeted_status'}->{'id_str'})." ".
 		($key->{'user'}->{'geo_enabled'} || "false") . " ".
 		($key->{'geo'}->{'coordinates'}->[0]). " ".
@@ -4851,7 +4854,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			# second, filterrts. this is almost as fast.
 			(&killtw($j), next) if
 				($filterrts_sub &&
-				 length($j->{'retweeted_status'}->{'id_str'})&&
+				 (length($j->{'retweeted_status'}->{'id_str'}) || length($j->{'quoted_status_id_str'}))&&
 				&$filterrts_sub($sn));
 
 			# third, filteratonly. this has a fast case and a
@@ -4893,7 +4896,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 
 			# finally store in menu code cache
 			$store_hash{$key} = $j;
-
+			
 			sleep 5 while ($suspend_output > 0);
 			&send_removereadline if ($termrl);
 			$wrapseq++;
@@ -5327,6 +5330,8 @@ sub standardtweet {
 		length($ref->{'geo'}->{'coordinates'}->[0])) ||
 		length($ref->{'place'}->{'id'})));
 	$sn = "%$sn" if (length($ref->{'retweeted_status'}->{'id_str'}));
+	# is_quote_status seems to be undocumented, should we badge the quoted tweet or the tweet that quotes it?
+	$sn = "\"$sn" if ($ref->{'is_quote_status'} eq 'true');
 	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
 	# prepend list information, if this tweet originated from a list
 	$sn = "($ref->{'tag'}->{'payload'})$sn"	
@@ -5350,6 +5355,7 @@ sub standardtweet {
 		unless ($nocolour);
 	$tweet =~ s/\n*$//;
 	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
+
 
 	# highlight anything that we have in track
 	if(scalar(@tracktags)) { # I'm paranoid
@@ -5769,6 +5775,19 @@ sub defaulthandle {
 
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
+
+	# Still inspired by: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	# But moved here so I can get the ordering correct
+	# Twitter website only displays one level of quotation so no looping through
+	# TODO: Make sure supporting commands (such as /thread) provide away to get further quotations. I.e. quotations of quotations.
+	if ((length($tweet_ref->{'quoted_status_id_str'})) || (length($tweet_ref->{'retweeted_status'}->{'id_str'}))) {
+		# If it is a retweet, get the original status and check that for quoted_status	
+		if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
+			$tweet_ref = $tweet_ref->{'retweeted_status'};
+		};
+		&tdisplay(\@{[$tweet_ref->{'quoted_status'}]})
+	};
+
 	return 1;
 }
 sub defaultuserhandle {
@@ -6085,7 +6104,11 @@ sub get_tweet {
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
+	#And I think any additional field extracted from the stream also has to be added here as well.
+	#I.e quoted_status_id_str
+	#Need to increment the count in split at the end.
 	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
+		$w->{'quoted_status_id_str'},
 		$w->{'retweeted_status'}->{'id_str'},
 		$w->{'user'}->{'geo_enabled'},
 		$w->{'geo'}->{'coordinates'}->[0],
@@ -6098,7 +6121,7 @@ sub get_tweet {
 		$w->{'tag'}->{'payload'},
 		$w->{'retweet_count'}, 
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
-			$l) = split(/\s/, $k, 17);
+			$l) = split(/\s/, $k, 18);
 	($w->{'source'}, $k) = split(/\|/, $l, 2);
 	$w->{'text'} = pack("H*", $k);
 	$w->{'place'}->{'full_name'} = pack("H*",$w->{'place'}->{'full_name'});
