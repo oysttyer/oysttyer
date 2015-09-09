@@ -4854,7 +4854,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			# second, filterrts. this is almost as fast.
 			(&killtw($j), next) if
 				($filterrts_sub &&
-				 length($j->{'retweeted_status'}->{'id_str'})&&
+				 (length($j->{'retweeted_status'}->{'id_str'}) || length($j->{'quoted_status_id_str'}))&&
 				&$filterrts_sub($sn));
 
 			# third, filteratonly. this has a fast case and a
