@@ -4822,6 +4822,34 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $save_counter = -1;
 	my $i;
 	my $j;
+	my $t;
+	my $ids;
+	my $injected_json_ref = [];
+
+	#Build hash of IDs passed to this subroutine
+	foreach $t (@{ $my_json_ref }) {
+		$ids{ $t->{'id_str'} } = 1;
+	}
+	#Inject quote tweets, but only if not already at parent level in $my_json_ref
+	#This prevents /thread from displaying them twice
+	#Twitter website only displays one level of quotation so no looping through, use /thread for more
+	foreach $t (@{ $my_json_ref }) {
+		$parent_t = $t;
+		if ((length($t->{'quoted_status_id_str'})) || (length($t->{'retweeted_status'}->{'id_str'}))) {
+			# If it is a retweet, get the original status and check that for quoted_status
+			if (length($t->{'retweeted_status'}->{'id_str'})) {
+				$t = $t->{'retweeted_status'};
+			};
+			$t = $t->{'quoted_status'};
+			#Using smartmatch would be easier, but we are kind on older versions of Perl
+			if (($t) && !exists($ids{$t->{'id_str'}})) {
+				push(@{ $injected_json_ref }, $t);
+			}
+		}
+		#Push the parent after the quote to get ordering correct
+		push(@{ $injected_json_ref }, $parent_t);
+	}
+	$my_json_ref = $injected_json_ref;
 
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
@@ -5794,18 +5822,6 @@ sub defaulthandle {
 
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
-
-	# Still inspired by: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-	# But moved here so I can get the ordering correct
-	# Twitter website only displays one level of quotation so no looping through
-	# TODO: Make sure supporting commands (such as /thread) provide away to get further quotations. I.e. quotations of quotations.
-	if ((length($tweet_ref->{'quoted_status_id_str'})) || (length($tweet_ref->{'retweeted_status'}->{'id_str'}))) {
-		# If it is a retweet, get the original status and check that for quoted_status	
-		if (length($tweet_ref->{'retweeted_status'}->{'id_str'})) {
-			$tweet_ref = $tweet_ref->{'retweeted_status'};
-		};
-		&tdisplay(\@{[$tweet_ref->{'quoted_status'}]})
-	};
 
 	return 1;
 }
