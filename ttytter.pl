@@ -2773,7 +2773,8 @@ EOF
 		}
 		my $limit = 9;
 		my $id = $tweet->{'retweeted_status'}->{'id_str'} ||
-			$tweet->{'in_reply_to_status_id_str'};
+			$tweet->{'in_reply_to_status_id_str'} ||
+			$tweet->{'quoted_status_id_str'};
 		my $thread_ref = [ $tweet ];
 		while ($id && $limit) {
 			print $stdout "-- thread: fetching $id\n"
@@ -2787,6 +2788,7 @@ EOF
 					&fix_geo_api_data($next));
 				$id = $next->{'retweeted_status'}->{'id_str'}
 					|| $next->{'in_reply_to_status_id_str'}
+					|| $next->{'quoted_status_id_str'}
 					|| 0;
 			}
 		}
