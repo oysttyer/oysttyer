@@ -2,7 +2,7 @@
 
 Unofficial maintenance and mirror of [Floodgap's TTYtter](http://www.floodgap.com/software/ttytter/).
 
-The master branch will be pretty much what I'm running. The mirror branch will be updated if any official updates are made.
+The master branch will be pretty much what I'm running, but that doesn't mean I've not managed to break it in someway. The mirror branch will be updated if any official updates are made.
 
 Putting this here since Floodgap don't provide a public version control system, just [directories](http://www.floodgap.com/software/ttytter/old/) of [previous](http://www.floodgap.com/software/ttytter/dist1/) [versions](http://www.floodgap.com/software/ttytter/dist2/).
 
