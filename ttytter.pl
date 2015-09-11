@@ -3070,7 +3070,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		# otherwise it is a quote tweet
 		$sn = &descape($tweet->{'user'}->{'screen_name'});
 		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
-		#$_ = (length) ? "$retweet $_" : $retweet;
+		# $_ = (length) ? "$retweet $_" : $retweet;
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -3704,7 +3704,7 @@ sub common_split_post {
 		$history[0] = $ol;
 		return 0;
 	}
-	#Perhaps also need to think about quoted tweets in the below.
+	# Perhaps also need to think about quoted tweets in the below.
 	if (scalar(@tweetstack)) {
 		$k = shift(@tweetstack);
 		$l = "$dm_lead$k";
@@ -4064,8 +4064,8 @@ EOF
 			my $ds = $key->{'created_at'} || 'argh, no created_at';
 			$ds =~ s/\s/_/g;
 			my $src = $key->{'source'} || 'unknown';
-			#Figured out this is where the stream gets processed and TTYtter picks out the fields that get stored
-			#So quoted_status_id_str needed adding in here.
+			# Figured out this is where the stream gets processed and TTYtter picks out the fields that get stored
+			# So quoted_status_id_str needed adding in here.
 			$src =~ s/\|//g; # shouldn't be any anyway.
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		($key->{'in_reply_to_status_id_str'})." ".
@@ -4827,19 +4827,19 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my %ids;
 	my $injected_json_ref = [];
 	
-	#This is a little messy, but I can't think of a better way until I properly understand return values from tdisplay
-	#Set return values based on original json structure
-	#Note: Where does $last_id come from?
+	# This is a little messy, but I can't think of a better way until I properly understand return values from tdisplay
+	# Set return values based on original json structure
+	# Note: Where does $last_id come from?
 	$return_j = $my_json_ref->[0];
 	$return_max = &max($my_json_ref->[0]->{'id_str'}, $last_id);
 
-	#Build hash of IDs passed to this subroutine
+	# Build hash of IDs passed to this subroutine
 	foreach $t (@{ $my_json_ref }) {
 		$ids{ $t->{'id_str'} } = 1;
 	}
-	#Inject quote tweets, but only if not already at parent level in $my_json_ref
-	#This prevents /thread from displaying them twice
-	#Twitter website only displays one level of quotation so no looping through, use /thread for more
+	# Inject quote tweets, but only if not already at parent level in $my_json_ref
+	# This prevents /thread from displaying them twice
+	# Twitter website only displays one level of quotation so no looping through, use /thread for more
 	foreach $t (@{ $my_json_ref }) {
 		$parent_t = $t;
 		if ((length($t->{'quoted_status_id_str'})) || (length($t->{'retweeted_status'}->{'id_str'}))) {
@@ -4848,17 +4848,17 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 				$t = $t->{'retweeted_status'};
 			};
 			$t = $t->{'quoted_status'};
-			#Using smartmatch would be easier, but we are kind on older versions of Perl
+			# Using smartmatch would be easier, but we are kind on older versions of Perl
 			if (($t) && !exists($ids{$t->{'id_str'}})) {
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
-		#Push the parent after the quote to get ordering correct
-		#Don't remove the url from the parent tweet though: https://twittercommunity.com/t/api-returns-url-to-twitters-status-update-at-the-end-of-the-text/50424/8
+		# Push the parent after the quote to get ordering correct
+		# Don't remove the url from the parent tweet though: https://twittercommunity.com/t/api-returns-url-to-twitters-status-update-at-the-end-of-the-text/50424/8
 		push(@{ $injected_json_ref }, $parent_t);
 	}
 	$my_json_ref = $injected_json_ref;
-	#Set display max to suit injected json
+	# Set display max to suit injected json
 	$disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 
 	if ($disp_max) { # null list may be valid if we get code 304
@@ -5413,7 +5413,6 @@ sub standardtweet {
 	$tweet =~ s/\n*$//;
 	$tweet .= ($nocolour) ? "\n" : "$OFF\n";
 
-
 	# highlight anything that we have in track
 	if(scalar(@tracktags)) { # I'm paranoid
 		foreach $h (@tracktags) {
@@ -5832,7 +5831,6 @@ sub defaulthandle {
 
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
-
 	return 1;
 }
 sub defaultuserhandle {
@@ -6149,9 +6147,9 @@ sub get_tweet {
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
-	#And I think any additional field extracted from the stream also has to be added here as well.
-	#I.e quoted_status_id_str
-	#Need to increment the count in split at the end.
+	# And I think any additional field extracted from the stream also has to be added here as well.
+	# I.e quoted_status_id_str
+	# Need to increment the count in split at the end.
 	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
 		$w->{'quoted_status_id_str'},
 		$w->{'retweeted_status'}->{'id_str'},
