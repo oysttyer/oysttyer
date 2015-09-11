@@ -3066,11 +3066,11 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 					"-- ok, %RT% and %% are now \"$retweet\"\n");
 				return 0;
 			}
+			$_ = (length) ? "$retweet $_" : $retweet;
 		}
 		# otherwise it is a quote tweet
 		$sn = &descape($tweet->{'user'}->{'screen_name'});
 		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
-		# $_ = (length) ? "$retweet $_" : $retweet;
 		print $stdout &wwrap("(expanded to \"$_\")");
 		print $stdout "\n";
 		goto TWEETPRINT; # fugly! FUGLY!
@@ -3704,7 +3704,7 @@ sub common_split_post {
 		$history[0] = $ol;
 		return 0;
 	}
-	# Perhaps also need to think about quoted tweets in the below.
+	# TODO: Perhaps also need to think about quoted tweets in the below.
 	if (scalar(@tweetstack)) {
 		$k = shift(@tweetstack);
 		$l = "$dm_lead$k";
