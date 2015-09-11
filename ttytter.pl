@@ -4854,6 +4854,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			}
 		}
 		#Push the parent after the quote to get ordering correct
+		#Don't remove the url from the parent tweet though: https://twittercommunity.com/t/api-returns-url-to-twitters-status-update-at-the-end-of-the-text/50424/8
 		push(@{ $injected_json_ref }, $parent_t);
 	}
 	$my_json_ref = $injected_json_ref;
