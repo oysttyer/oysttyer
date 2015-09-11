@@ -4818,13 +4818,20 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	my $relative_last_id = shift;
 	my $mini_id = shift;
 	my $printed = 0;
-	my $disp_max = &min($print_max, scalar(@{ $my_json_ref }));
+	my $disp_max;
 	my $save_counter = -1;
 	my $i;
 	my $j;
+	my $return_j;
 	my $t;
-	my $ids;
+	my %ids;
 	my $injected_json_ref = [];
+	
+	#This is a little messy, but I can't think of a better way until I properly understand return values from tdisplay
+	#Set return values based on original json structure
+	#Note: Where does $last_id come from?
+	$return_j = $my_json_ref->[0];
+	$return_max = &max($my_json_ref->[0]->{'id_str'}, $last_id);
 
 	#Build hash of IDs passed to this subroutine
 	foreach $t (@{ $my_json_ref }) {
@@ -4850,6 +4857,8 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		push(@{ $injected_json_ref }, $parent_t);
 	}
 	$my_json_ref = $injected_json_ref;
+	#Set display max to suit injected json
+	$disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
@@ -4962,7 +4971,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		print $stdout "-- sorry, nothing to display.\n";
 		$wrapseq = 1;
 	}
-	return (&max($my_json_ref->[0]->{'id_str'}, $last_id), $j);
+	return ($return_max, $return_j);
 }
 
 sub dt_tdisplay {
