@@ -1,5 +1,15 @@
 #CHANGELOG
 
+##Changes in version 2.2.0:
+
+This unofficial version is my first attempt at maintaining TTYtter and introduces quoted tweet support.
+
+- Create quoted tweets. Simply append text to the /retweet command. You are allowed 116 chars and TTYtter should check and warn if you go over.
+- Displays quoted tweets automatically. Parent tweets are identified with a quote mark (") whereas standard retweets keep the percentage symbol (%). The quoted tweet will be displayed immediately below the parent tweet as a fully functioning tweet (i.e. it gets a menu code). Straight retweets of quoted tweets also display the quoted tweets. However, like the Twitter website, no further recursion of quoted tweets are made, i.e. a quoted, quoted tweet isn't displayed. For that use the /thread command.
+- filterrts extended to also apply to quoted tweets, etc.
+- /thread command extended to support quoted tweets and recurse through for the same amount as it does for replies, etc.
+- version checking of TTYtter disabled since this is all unofficial.
+
 ##Changes in version 2.1.0:
 
 This version of TTYtter requires Twitter API 1.1. Twitter-alike services not compliant with API 1.1 will not work with this or any future version of TTYtter. If you need API 1.0 support, you must use 2.0.4 for as long as that support is available.
