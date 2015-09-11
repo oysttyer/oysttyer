@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v2.1 (c)2007-2012 cameron kaiser (and contributors).
+# TTYtter v2.2 (c)2007-2015 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -30,7 +30,7 @@ BEGIN {
 	}
 	
 	$command_line = $0; $0 = "TTYtter";
-	$TTYtter_VERSION = "2.1";
+	$TTYtter_VERSION = "2.2";
 	$TTYtter_PATCH_VERSION = 0;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
@@ -1493,7 +1493,7 @@ unless ($simplestart) {
 	print <<"EOF";
 
 ######################################################        +oo=========oo+ 
-         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2012 cameron kaiser${OFF}                @             @
+         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2015 cameron kaiser${OFF}                @             @
 EOF
 	$e = <<'EOF';
                  ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
@@ -1514,7 +1514,7 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2012 cameron kaiser
+TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2015 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
 
@@ -2441,7 +2441,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: http://www.floodgap.com/software/ttytter/
 
- TTYtter $TTYtter_VERSION is (c)2012 cameron kaiser + contributors.
+ TTYtter $TTYtter_VERSION is (c)2015 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
 
@@ -6731,7 +6731,11 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 			}
 		}
 	}
+	
+	print $stdout "-- version checking of TTYtter disabled for now.\n";
+	print $stdout "-- check manually at: https://github.com/atomicules/TTYtter/\n";
 
+=begin comment
 	print $stdout "-- checking TTYtter version: $vcheck_url\n";
 	$vvs = `$simple_agent $vcheck_url`;
 	print $stdout "-- server response: $vvs\n" if ($verbose);
@@ -6809,6 +6813,12 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 		$urlshort = $update_trlt;
 		$vs .= "-- %URL% is now $urlshort (/short shortens, /url opens)\n";
 	}
+	return $vs;
+
+=end comment
+
+=cut
+	$vs .= "-- your unofficial version of TTYtter is ($my_version_string)\n";
 	return $vs;
 }
 
