@@ -16,4 +16,4 @@ Also, as an avid user I was/am concerned TTYtter may now become [abandonware](ht
 
 ##Status 2015-09-09
 
-Decided to pull my finger and start maintaining. Taking baby steps though.
+Decided to pull my finger out and start maintaining. Taking baby steps though.
