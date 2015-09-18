@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.2.1:
+
+- Destroy tco in quoted tweets. Missed this under 2.2.0
+
 ##Changes in version 2.2.0:
 
 This unofficial version is my first attempt at maintaining TTYtter and introduces quoted tweet support.
