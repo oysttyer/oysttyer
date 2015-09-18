@@ -7201,6 +7201,11 @@ sub normalizejson {
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 	}
+	# normalize quote tweets
+	if ($qt = $i->{'quoted_status'}) {
+		$qt = &destroy_all_tco($qt);
+		$i->{'quoted_status'} = $qt;
+	}
 
 	return &destroy_all_tco($i);
 }
