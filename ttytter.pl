@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.2";
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_PATCH_VERSION = 2;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -7200,6 +7200,11 @@ sub normalizejson {
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
+		#Nested quote tweets, since displaying those
+		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
+			$qt = &destroy_all_tco($qt);
+			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
+		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {

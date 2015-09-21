@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.2.2:
+
+- Destroy tco in quoted tweets that are nested in new RTs. Missed this under 2.2.1
+
 ##Changes in version 2.2.1:
 
 - Destroy tco in quoted tweets. Missed this under 2.2.0
