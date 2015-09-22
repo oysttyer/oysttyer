@@ -7203,12 +7203,14 @@ sub normalizejson {
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
 			$qt = &destroy_all_tco($qt);
+			$qt = &fix_geo_api_data($qt);
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
 		$qt = &destroy_all_tco($qt);
+		$qt = &fix_geo_api_data($qt);
 		$i->{'quoted_status'} = $qt;
 	}
 
