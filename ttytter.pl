@@ -4850,6 +4850,8 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			$t = $t->{'quoted_status'};
 			# Using smartmatch would be easier, but we are kind on older versions of Perl
 			if (($t) && !exists($ids{$t->{'id_str'}})) {
+				# Add reference to allow badging in standardtweet
+				$t->{'ttytter_quoted'} = 'true';
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
@@ -5369,6 +5371,7 @@ sub standardtweet {
 	my $colour;
 	my $g;
 	my $h;
+	my $quote_badge = &descape("↑");
 
 	# wordwrap really ruins our day here, thanks a lot, @augmentedfourth
 	# have to insinuate the ansi sequences after the string is wordwrapped
@@ -5387,8 +5390,10 @@ sub standardtweet {
 		length($ref->{'geo'}->{'coordinates'}->[0])) ||
 		length($ref->{'place'}->{'id'})));
 	$sn = "%$sn" if (length($ref->{'retweeted_status'}->{'id_str'}));
-	# is_quote_status seems to be undocumented, should we badge the quoted tweet or the tweet that quotes it?
+	# badge the parent of the quoted tweet. Note: is_quote_status seems to be undocumented?
 	$sn = "\"$sn" if ($ref->{'is_quote_status'} eq 'true');
+	# badge quoted statuses themselves
+	$sn = ($quote_badge . $sn) if ($ref->{'ttytter_quoted'} eq 'true');
 	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
 	# prepend list information, if this tweet originated from a list
 	$sn = "($ref->{'tag'}->{'payload'})$sn"	
