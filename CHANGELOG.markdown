@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.2.4:
+
+- No changes, I just forget to change version in ttytter.pl. Constantly distracted.
+
 ##Changes in version 2.2.3:
 
 - Fix empty geo coordinates for quoted tweets
