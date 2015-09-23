@@ -1,5 +1,10 @@
 #CHANGELOG
 
+##Changes in version 2.2.3:
+
+- Fix empty geo coordinates for quoted tweets
+- Badge quoted tweets themselves as well as the parent
+
 ##Changes in version 2.2.2:
 
 - Destroy tco in quoted tweets that are nested in new RTs. Missed this under 2.2.1
