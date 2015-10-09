@@ -2840,8 +2840,10 @@ EOF
 		
 		my $didprint = 0;
 		# Twitter puts entities in multiple fields.
+		# Target extended_entities, thanks to @myshkin (github) / @justarobert (twitter)
+		# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
 		foreach $w (qw(media urls)) {
-			my $p = $hash->{'entities'}->{$w};
+			my $p = $hash->{'extended_entities'}->{$w};
 			next if (!defined($p) || ref($p) ne 'ARRAY');
 			foreach $v (@{ $p }) {
 				next if (!defined($v) || ref($v) ne 'HASH');
@@ -5400,6 +5402,20 @@ sub standardtweet {
 		if (length($ref->{'tag'}->{'payload'}) &&
 			$ref->{'tag'}->{'type'} eq 'list');
 	$tweet = "<$sn> $tweet";
+
+	# Handle multiple entities, thanks to @myshkin (github) / @justarobert (twitter)
+	# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	my $mediacount = scalar @{$ref->{'extended_entities'}->{'media'}};
+	if ($mediacount > 1) {
+		foreach my $v (@{$ref->{'extended_entities'}->{'media'}}[1..$mediacount-1]) {
+			next if (!defined($v) || ref($v) ne 'HASH');
+			my $url = $v->{'media_url_https'} ||
+				$v->{'media_url'} ||
+				$v->{'expanded_url'};
+			next if (!length($url));
+			$tweet .= " " . &descape($url);
+		}
+	}
 	# twitter doesn't always do this right.
 	$h = $ref->{'retweet_count'}; $h += 0; #$h = "${h}+" if ($h >= 100);
 	# twitter doesn't always handle single retweets right. good f'n grief.
@@ -7108,20 +7124,24 @@ sub destroy_all_tco {
 	my $w;
 
 	# Twitter puts entities in multiple fields.
-	foreach $w (qw(media urls)) {
-		my $p = $hash->{'entities'}->{$w};
-		next if (!defined($p) || ref($p) ne 'ARRAY');
-		foreach $v (@{ $p }) {
-			next if (!defined($v) || ref($v) ne 'HASH');
-			next if (!length($v->{'url'}) ||
-				(!length($v->{'expanded_url'}) &&
-				 !length($v->{'media_url'})));
-			my $u1 = quotemeta($v->{'url'});
-			my $u2 = $v->{'expanded_url'};
-			my $u3 = $v->{'media_url'};
-			my $u4 = $v->{'media_url_https'};
-			$u2 = $u4 || $u3 || $u2;
-			$hash->{'text'} =~ s/$u1/$u2/;
+	# Target extended_entities as well, thanks to @myshkin (github) / @justarobert (twitter)
+	# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+	foreach my $field (qw(entities extended_entities)) {
+		foreach $w (qw(media urls)) {
+			my $p = $hash->{$field}->{$w};
+			next if (!defined($p) || ref($p) ne 'ARRAY');
+			foreach $v (@{ $p }) {
+				next if (!defined($v) || ref($v) ne 'HASH');
+				next if (!length($v->{'url'}) ||
+					(!length($v->{'expanded_url'}) &&
+					 !length($v->{'media_url'})));
+				my $u1 = quotemeta($v->{'url'});
+				my $u2 = $v->{'expanded_url'};
+				my $u3 = $v->{'media_url'};
+				my $u4 = $v->{'media_url_https'};
+				$u2 = $u4 || $u3 || $u2;
+				$hash->{'text'} =~ s/$u1/$u2/;
+			}
 		}
 	}
 	return $hash;
