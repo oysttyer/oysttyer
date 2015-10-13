@@ -1,5 +1,12 @@
 #CHANGELOG
 
+##Changes in version 2.3.0:
+
+- "Displays" multiple images if a tweet includes them; the urls of the additional images are appended to the tweet text
+- /entities command now lists out both entities and extended\_entities.
+- /url and /open open links from extended\_entities as well as entities. Duplicated links aren't opened.
+	- Note: Due to perceived compliance with Twitter's Terms of Service the t.co links are opened for multiple images which unfortunately means that just one link gets opened no matter how many images are attached. Whether or not this is strictly required will be investigated and if we can open the links directly to the image files TTYtter will be updated to suit.
+
 ##Changes in version 2.2.4:
 
 - No changes, I just forget to change version in ttytter.pl. Constantly distracted.
