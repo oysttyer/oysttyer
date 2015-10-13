@@ -2839,25 +2839,34 @@ EOF
 				ref($hash->{'retweeted_status'}) eq 'HASH');
 		
 		my $didprint = 0;
+		my $fieldprint = 0;
 		# Twitter puts entities in multiple fields.
 		# Target extended_entities, thanks to @myshkin (github) / @justarobert (twitter)
 		# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-		foreach $w (qw(media urls)) {
-			my $p = $hash->{'extended_entities'}->{$w};
-			next if (!defined($p) || ref($p) ne 'ARRAY');
-			foreach $v (@{ $p }) {
-				next if (!defined($v) || ref($v) ne 'HASH');
-				next if (!length($v->{'url'}) ||
-					(!length($v->{'expanded_url'}) &&
-					 !length($v->{'media_url'})));
-				my $u1 = &descape($v->{'url'});
-				my $u2 = &descape($v->{'expanded_url'});
-				my $u3 = &descape($v->{'media_url'});
-				my $u4 = &descape($v->{'media_url_https'});
-				$u2 = $u4 || $u3 || $u2;
-				print $stdout "$u1 => $u2\n";
-				$urlshort = $u4 || $u3 || $u1;
-				$didprint++;
+		# But do both entities and extended
+		foreach my $field (qw(entities extended_entities)) {
+			$fieldprint = 1;
+			foreach $w (qw(media urls)) {
+				my $p = $hash->{$field}->{$w};
+				next if (!defined($p) || ref($p) ne 'ARRAY');
+				foreach $v (@{ $p }) {
+					next if (!defined($v) || ref($v) ne 'HASH');
+					next if (!length($v->{'url'}) ||
+						(!length($v->{'expanded_url'}) &&
+						 !length($v->{'media_url'})));
+					my $u1 = &descape($v->{'url'});
+					my $u2 = &descape($v->{'expanded_url'});
+					my $u3 = &descape($v->{'media_url'});
+					my $u4 = &descape($v->{'media_url_https'});
+					$u2 = $u4 || $u3 || $u2;
+					if ($fieldprint) {
+						print $stdout "$field:\n";
+						$fieldprint = 0;
+					}
+					print $stdout "$u1 => $u2\n";
+					$urlshort = $u4 || $u3 || $u1;
+					$didprint++;
+				}
 			}
 		}
 		if ($didprint) {
@@ -2926,20 +2935,29 @@ EOF
 				my $didprint = 0;
 
 				# Twitter puts entities in multiple fields.
-				foreach $w (qw(media urls)) {
-					my $p = $hash->{'entities'}->{$w};
-					next if (!defined($p) ||
-						ref($p) ne 'ARRAY');
-					foreach $v (@{ $p }) {
-						next if (!defined($v) ||
-							ref($v) ne 'HASH');
-						next if (!length($v->{'url'}) ||
-							(!length($v->{'expanded_url'}) &&
-					 		!length($v->{'media_url'})));
-						my $u1 = &descape($v->{'url'});
-						&openurl($u1);
-						$didprint++;
+				# Also target extended_entities
+				# Unfortunately if TOS-compliance means opening t.co links then Twitter uses one link for all photos
+				# so... no point opening multiple links if the same. Use hash to avoid duplicates
+				my $links = {};
+				foreach my $field (qw(entities extended_entities)) {
+					foreach $w (qw(media urls)) {
+						my $p = $hash->{$field}->{$w};
+						next if (!defined($p) ||
+							ref($p) ne 'ARRAY');
+						foreach $v (@{ $p }) {
+							next if (!defined($v) ||
+								ref($v) ne 'HASH');
+							next if (!length($v->{'url'}) ||
+								(!length($v->{'expanded_url'}) &&
+								!length($v->{'media_url'})));
+							my $u1 = &descape($v->{'url'});
+							$links->{$u1} = 1;
+						}
 					}
+				}
+				while (( $link, $_l ) = each %$links ) {
+					&openurl($link);
+					$didprint++;
 				}
 				print $stdout
 				"-- sorry, couldn't find any URL.\n"
@@ -5407,6 +5425,7 @@ sub standardtweet {
 	# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
 	my $mediacount = scalar @{$ref->{'extended_entities'}->{'media'}};
 	if ($mediacount > 1) {
+		#Append everything from the second item in the extended_entities onwards since first is included in the tweet text
 		foreach my $v (@{$ref->{'extended_entities'}->{'media'}}[1..$mediacount-1]) {
 			next if (!defined($v) || ref($v) ne 'HASH');
 			my $url = $v->{'media_url_https'} ||
