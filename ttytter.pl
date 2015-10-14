@@ -2417,12 +2417,17 @@ EOF
 |      example: /reply a5 I also like Dr Pepper                              |
 |      becomes  \@ttytter I also like Dr Pepper     (and is threaded)         |
 | /thread a5                        if a5 is part of a thread (the username  |
-|                                    has a \@) then show all posts up to that |
+|                                   has a \@ or \") then show all posts up     |
+|                                   to that                                  |
 | /url a5                           opens all URLs in tweet a5               |
 |      Mac OS X users, do first: /set urlopen open %U                        |
 |      Dummy terminal users, try /set urlopen lynx -dump %U | more           |
 | /delete a5                        deletes tweet a5, if it's your tweet     |
-| /rt a5                            retweets tweet a5: RT \@tytter: Send me...|
+| /rt a5 <optional message>         retweets (or quotes) tweet a5            |
+|      example: /rt a5                                                       |
+|      becomes: RT \@tytter: Send me...                                       |
+|      example: /rt a5 message                                               |
+|      becomes: Some smart comment about [tweet a5]                          |
 +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
 =====> /reply, /delete and /url work for direct message menu codes too! <=====
 EOF
