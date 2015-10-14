@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.3.1:
+
+- Update built-in help to reflect that /rt can be used to create quote tweets
+
 ##Changes in version 2.3.0:
 
 - "Displays" multiple images if a tweet includes them; the urls of the additional images are appended to the tweet text
