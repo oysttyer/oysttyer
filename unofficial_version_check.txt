@@ -1,0 +1,4 @@
+ttytter;2.4.0;;;https://raw.githubusercontent.com/atomicules/TTYtter/master/ttytter.pl;
+--__--
+--__--
+--__--
