@@ -1,7 +1,7 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v2.2 (c)2007-2015 cameron kaiser (and contributors).
+# TTYtter v2.4 (c)2007-2015 cameron kaiser (and contributors).
 # all rights reserved.
 # http://www.floodgap.com/software/ttytter/
 #
@@ -30,8 +30,8 @@ BEGIN {
 	}
 	
 	$command_line = $0; $0 = "TTYtter";
-	$TTYtter_VERSION = "2.3";
-	$TTYtter_PATCH_VERSION = 1;
+	$TTYtter_VERSION = "2.4";
+	$TTYtter_PATCH_VERSION = 0;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
@@ -6733,7 +6733,8 @@ EOF
 
 sub updatecheck {
 	my $vcheck_url =
-		"http://www.floodgap.com/software/ttytter/02current.txt";
+		"https://raw.githubusercontent.com/atomicules/TTYtter/master/unofficial_version_check.txt";
+		#Official version check url: "http://www.floodgap.com/software/ttytter/02current.txt";
 	my $vrlcheck_url =
 		"http://www.floodgap.com/software/ttytter/01readlin.txt";
 	my $update_url = shift;
@@ -6777,11 +6778,8 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 		}
 	}
 	
-	print $stdout "-- version checking of TTYtter disabled for now.\n";
-	print $stdout "-- check manually at: https://github.com/atomicules/TTYtter/\n";
-
-=begin comment
-	print $stdout "-- checking TTYtter version: $vcheck_url\n";
+	
+	print $stdout "-- checking TTYtter unofficial version: $vcheck_url\n";
 	$vvs = `$simple_agent $vcheck_url`;
 	print $stdout "-- server response: $vvs\n" if ($verbose);
 	($vvs, $s1, $s2, $s3) = split(/--__--\n/s, $vvs);
@@ -6848,7 +6846,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	"** unable to identify your version of TTYtter\n$s1";
 		} else {
 			$vs .=
-	"-- your version of TTYtter is up to date ($inversion)\n$s1";
+	"-- your unofficial version of TTYtter is up to date ($inversion)\n$s1";
 		}
 	}
 
@@ -6860,9 +6858,6 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	}
 	return $vs;
 
-=end comment
-
-=cut
 	$vs .= "-- your unofficial version of TTYtter is ($my_version_string)\n";
 	return $vs;
 }

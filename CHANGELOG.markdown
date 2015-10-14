@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.4.0:
+
+- Version checking url changed to this repo on Github so I don't have to spam Twitter everytime I've updated
+
 ##Changes in version 2.3.1:
 
 - Update built-in help to reflect that /rt can be used to create quote tweets
