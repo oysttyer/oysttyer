@@ -4888,6 +4888,26 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	# Set display max to suit injected json
 	$disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 
+	# Handle multiple entities, thanks to @myshkin (github) / @justarobert (twitter)
+	# But moved here instead of standardtweet
+	# Note: The search api does not include extended_entities
+	foreach $t (@{ $my_json_ref }) {
+		# Loop again until I can work this down to one loop
+		# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
+		my $mediacount = scalar @{$t->{'extended_entities'}->{'media'}};
+		#print $stdout "Tweet: $t->{'id_str'} Media count: $mediacount\n";
+		if ($mediacount > 1) {
+			#Append everything from the second item in the extended_entities onwards since first is included in the tweet text
+			foreach my $v (@{$t->{'extended_entities'}->{'media'}}[1..$mediacount-1]) {
+				next if (!defined($v) || ref($v) ne 'HASH');
+				my $url = $v->{'media_url_https'} ||
+					$v->{'media_url'} ||
+					$v->{'expanded_url'};
+				next if (!length($url));
+				$t->{'text'} .= " " . &descape($url);
+			}
+		}
+	}
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
 			if ($mini_id) {
@@ -5426,20 +5446,6 @@ sub standardtweet {
 			$ref->{'tag'}->{'type'} eq 'list');
 	$tweet = "<$sn> $tweet";
 
-	# Handle multiple entities, thanks to @myshkin (github) / @justarobert (twitter)
-	# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-	my $mediacount = scalar @{$ref->{'extended_entities'}->{'media'}};
-	if ($mediacount > 1) {
-		#Append everything from the second item in the extended_entities onwards since first is included in the tweet text
-		foreach my $v (@{$ref->{'extended_entities'}->{'media'}}[1..$mediacount-1]) {
-			next if (!defined($v) || ref($v) ne 'HASH');
-			my $url = $v->{'media_url_https'} ||
-				$v->{'media_url'} ||
-				$v->{'expanded_url'};
-			next if (!length($url));
-			$tweet .= " " . &descape($url);
-		}
-	}
 	# twitter doesn't always do this right.
 	$h = $ref->{'retweet_count'}; $h += 0; #$h = "${h}+" if ($h >= 100);
 	# twitter doesn't always handle single retweets right. good f'n grief.
