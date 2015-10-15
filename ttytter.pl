@@ -31,7 +31,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "TTYtter";
 	$TTYtter_VERSION = "2.4";
-	$TTYtter_PATCH_VERSION = 0;
+	$TTYtter_PATCH_VERSION = 1;
 	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||

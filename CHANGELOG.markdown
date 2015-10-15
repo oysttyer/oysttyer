@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.4.1:
+
+- Fix "display" of multiple images in tweets so extensions can pick them up. Specifically so deshortify can underline them.
+
 ##Changes in version 2.4.0:
 
 - Version checking url changed to this repo on Github so I don't have to spam Twitter everytime I've updated
