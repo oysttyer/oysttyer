@@ -4890,6 +4890,8 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 
 	# Handle multiple entities, thanks to @myshkin (github) / @justarobert (twitter)
 	# But moved here instead of standardtweet
+	# This means we are actually modifying the text of the tweet, but that is only going to affect old style retweets which is ok I think
+	# TODO: For old-style retweets should manipulate and replace image urls with the t.co one
 	# Note: The search api does not include extended_entities
 	foreach $t (@{ $my_json_ref }) {
 		# Loop again until I can work this down to one loop
