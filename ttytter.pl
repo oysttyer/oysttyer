@@ -3240,7 +3240,7 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 			return 0;
 		}
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
-		$_ = '@' . $target . " $_";
+		unless (lc($target) eq lc($whoami)) { $_ = '@' . $target . " $_"; }
 		unless ($mode eq 'v') {
 			$in_reply_to = $tweet->{'id_str'};
 			$expected_tweet_ref = $tweet;
@@ -3286,7 +3286,11 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		}
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
 		my $text = $_;
-		$_ = '@' . $target;
+		if (lc($target) eq lc($whoami)) {
+			$_ = '';
+		} else {
+			$_ = '@' . $target;
+		}
 		unless ($mode eq 'v') {
 			$in_reply_to = $tweet->{'id_str'};
 			$expected_tweet_ref = $tweet;
@@ -3302,7 +3306,12 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 			my $name = $1;
 			my $mame = lc($name); # preserve camel case
 			next if ($mame eq $whoami || $did_mentions{$mame}++);
-			$_ .= " \@$name";
+			if ( $_ eq '.' ) {
+				# Save a character. They're precious.
+				$_ .= "\@$name";
+			} else {
+				$_ .= " \@$name";
+			}
 		}
 		$_ .= " $text";
 
