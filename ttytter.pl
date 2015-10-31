@@ -3713,6 +3713,10 @@ sub common_split_post {
 	if ($quoted_status_url) {
 		$maxchars = $quotelinelength;
 	}
+	# Direct messages allegedly have no length restrictions now
+	if ( $dm_lead ne '' || $k =~ m/^[dD] / ) {
+		$maxchars = 2**53
+	}
 	my (@tweetstack) = &csplit($k, ($autosplit eq 'char' ||
 		$autosplit eq 'cut') ? 1 : 0, $maxchars);
 	my $m = shift(@tweetstack);
