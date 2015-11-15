@@ -5198,16 +5198,52 @@ sub updatest {
 			return 97;
 		}
 	}
-
 	unless ($rt_id) {
 		$urle = '';
+		#newlinehandler. New lines will indicated by "\n", which is two characters in the string
+		#so need to keep track of backslashes that come up
+		my $nlh = 'false';
+		#TODO: How do we send a literal "\" followed by a "n"?
+		#TODO: Would be nice to remove some of the duplication below.
 		foreach $i (unpack("${pack_magic}C*", $string)) {
 			my $k = chr($i);
-			if ($k =~ /[-._~a-zA-Z0-9]/) {
-				$urle .= $k;
+			if ($nlh eq 'true') {
+				#Then already have a slash and need to check for an "n"
+				if ($k eq "n") {
+					#Encoding for a newline
+					$urle .= "%0A";
+					$nlh = 'false';
+				} else {
+					#There is no "n" so need to send the slash we've been holding onto and maybe the next character
+					#Encoding for a slash
+					$urle .= "%5C";
+					if ($k eq "\\") {
+						#But could also be the start of another new line
+						$nlh = 'true';
+					} elsif ($k =~ /[-._~a-zA-Z0-9]/) {
+						$urle .= $k;
+						#Clear handler
+						$nlh = 'false';
+					} else {
+						$k = sprintf("%02X", $i);
+						$urle .= "%$k";
+						#Clear handler
+						$nlh = 'false';
+					}
+				}
+			} elsif ($k eq "\\") {
+				#Could be the start of a new line
+				$nlh = 'true';
 			} else {
-				$k = sprintf("%02X", $i);
-				$urle .= "%$k";
+				#Handle how we've always handled it
+				if ($k =~ /[-._~a-zA-Z0-9]/) {
+					$urle .= $k;
+				} else {
+					$k = sprintf("%02X", $i);
+					$urle .= "%$k";
+				}
+				#Clear handler
+				$nlh = 'false';
 			}
 		}
 	}
