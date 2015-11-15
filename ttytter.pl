@@ -5203,7 +5203,8 @@ sub updatest {
 		#newlinehandler. New lines will indicated by "\n", which is two characters in the string
 		#so need to keep track of backslashes that come up
 		my $nlh = 'false';
-		#TODO: How do we send a literal "\" followed by a "n"?
+		#To send a literal "\" followed by an "n" prefix with another "\". I.e. "\\n"
+		#Therefore two "\\" should always work out to be just one "\"
 		#TODO: Would be nice to remove some of the duplication below.
 		foreach $i (unpack("${pack_magic}C*", $string)) {
 			my $k = chr($i);
@@ -5214,22 +5215,20 @@ sub updatest {
 					$urle .= "%0A";
 					$nlh = 'false';
 				} else {
-					#There is no "n" so need to send the slash we've been holding onto and maybe the next character
-					#Encoding for a slash
-					$urle .= "%5C";
-					if ($k eq "\\") {
-						#But could also be the start of another new line
-						$nlh = 'true';
-					} elsif ($k =~ /[-._~a-zA-Z0-9]/) {
+					#There is no "n" so might need to send the slash we've been holding onto and next character
+					if ($k ne "\\") {
+						#If it isn't another slash send the slash we held onto
+						$urle .= "%5C";
+					}
+					#Then send the character itself
+					if ($k =~ /[-._~a-zA-Z0-9]/) {
 						$urle .= $k;
-						#Clear handler
-						$nlh = 'false';
 					} else {
 						$k = sprintf("%02X", $i);
 						$urle .= "%$k";
-						#Clear handler
-						$nlh = 'false';
 					}
+					#Clear handler
+					$nlh = 'false';
 				}
 			} elsif ($k eq "\\") {
 				#Could be the start of a new line
@@ -5246,6 +5245,10 @@ sub updatest {
 				$nlh = 'false';
 			}
 		}
+	}
+	if ($nlh eq 'true') {
+		#Then last one was a slash	
+		$urle .= "%5C";
 	}
 
 	$user_name_dm = (length($user_name_dm)) ?
