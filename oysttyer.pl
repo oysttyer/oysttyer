@@ -1,9 +1,11 @@
 #!/usr/bin/perl -s
 #########################################################################
 #
-# TTYtter v2.4 (c)2007-2015 cameron kaiser (and contributors).
+# oysttyer v2.4 (c)2015-     oysttyer orginistion
+#               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
-# http://www.floodgap.com/software/ttytter/
+#
+# http://oysttyer.github.io/oysttyer/
 #
 # distributed under the floodgap free software license
 # http://www.floodgap.com/software/ffsl/
@@ -29,14 +31,14 @@ BEGIN {
 		$ENV{'PERL_SIGNALS'} = 'unsafe';
 	}
 	
-	$command_line = $0; $0 = "TTYtter";
-	$TTYtter_VERSION = "2.4";
-	$TTYtter_PATCH_VERSION = 2;
-	$TTYtter_RC_NUMBER = 0; # non-zero for release candidate
+	$command_line = $0; $0 = "oysttyer";
+	$oysttyer_VERSION = "2.5";
+	$oysttyer_PATCH_VERSION = 0;
+	$oysttyer_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
 			$ENV{'ALL'};
-	$my_version_string = "${TTYtter_VERSION}.${TTYtter_PATCH_VERSION}";
+	$my_version_string = "${oysttyer_VERSION}.${oysttyer_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
 
 	$space_pad = " " x 1024;
@@ -49,10 +51,10 @@ BEGIN {
 	undef $master_store;
 	undef %push_stack;
 
-	$padded_patch_version = substr($TTYtter_PATCH_VERSION . " ", 0, 2);
+	$padded_patch_version = substr($oysttyer_PATCH_VERSION . " ", 0, 2);
 
 	%opts_boolean = map { $_ => 1 } qw(
-		ansi noansi verbose superverbose ttytteristas noprompt
+		ansi noansi verbose superverbose oysttyeristas noprompt
 		seven silent hold daemon script anonymous readline ssl
 		newline vcheck verify noratelimit notrack nonewrts notimeline
 		synch exception_is_maskable mentions simplestart
@@ -60,7 +62,7 @@ BEGIN {
 		signals_use_posix dostream nostreamreplies streamallreplies
 		nofilter
 	); %opts_sync = map { $_ => 1 } qw(
-		ansi pause dmpause ttytteristas verbose superverbose
+		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
 		queryurl track colourprompt colourme notrack
 		colourdm colourreply colourwarn coloursearch colourlist idurl
@@ -79,7 +81,7 @@ BEGIN {
 		oauthurl oauthauthurl oauthaccurl oauthbase wtrendurl
 		atrendurl frupdurl lookupidurl rtsofmeurl
 	); %opts_secret = map { $_ => 1} qw(
-		superverbose ttytteristas
+		superverbose oysttyeristas
 	); %opts_comma_delimit = map { $_ => 1 } qw(
 		lists notifytype notifies filterflags filterrts filterats
 		filterusers filteratonly
@@ -89,7 +91,7 @@ BEGIN {
 
 	   %opts_can_set = map { $_ => 1 } qw(
 		url pause dmurl dmpause superverbose ansi verbose
-		update uurl rurl wurl avatar ttytteristas frurl track
+		update uurl rurl wurl avatar oysttyeristas frurl track
 		rlurl noprompt shorturl newline wrap verify autosplit
 		notimeline queryurl colourprompt colourme
 		colourdm colourreply colourwarn coloursearch colourlist idurl
@@ -117,7 +119,7 @@ BEGIN {
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
 		my $rcf =
-			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.ttytterrc${rc}";
+			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyerrc${rc}";
 		if (open(W, $rcf)) {
 			# 5.14 sets this lazily, so this gives us a way out
 			eval 'binmode(W, ":utf8")' unless ($seven);
@@ -160,12 +162,12 @@ BEGIN {
 		die(<<"EOF");
 
 *** you are using a version of Perl in "extended" support: $] ***
-the minimum tested version of Perl now required by TTYtter is 5.8.6.
+the minimum tested version of Perl now required by oysttyer is 5.8.6.
 
-Perl 5.005 thru 5.8.5 probably can still run TTYtter, but they are not
+Perl 5.005 thru 5.8.5 probably can still run oysttyer, but they are not
 tested with it. if you want to suppress this warning, specify -oldperl on
-the command line, or put oldperl=1 in your .ttytterrc. bug patches will 
-still be accepted for older Perls; see the TTYtter home page for info.
+the command line, or put oldperl=1 in your .oysttyerrc. bug patches will 
+still be accepted for older Perls; see the oysttyer home page for info.
 
 for Perl 5.005, remember to also specify -seven.
 
@@ -184,8 +186,8 @@ EOF
 	# try to find an OAuth keyfile if we haven't specified key+secret
 	# no worries if this fails; we could be Basic Auth, after all
 	$whine = (length($keyf)) ? 1 : 0;
-	$keyf ||= "$ENV{'HOME'}/.ttytterkey";
-	$keyf = "$ENV{'HOME'}/.ttytterkey${keyf}" if ($keyf !~ m#/#);
+	$keyf ||= "$ENV{'HOME'}/.oysttyerkey";
+	$keyf = "$ENV{'HOME'}/.oysttyerkey${keyf}" if ($keyf !~ m#/#);
 	$attempted_keyf = $keyf;
 	if (!length($oauthkey) && !length($oauthsecret) # set later
 			&& !length($tokenkey)
@@ -336,14 +338,14 @@ your configuration requires using POSIX signalling (either Perl 5.14+ or
 you specifically asked with -signals_use_posix). however, either you don't
 have POSIX.pm, or it doesn't work. 
 
-TTYtter requires 'unsafe' Perl signals (which are of course for its
+oysttyer requires 'unsafe' Perl signals (which are of course for its
 purposes perfectly safe). unfortunately, due to Perl bug 92246 5.14+ must
-use POSIX.pm, or have the switch set before starting TTYtter. run one of
+use POSIX.pm, or have the switch set before starting oysttyer. run one of
  
 export PERL_SIGNALS=unsafe # sh, bash, ksh, etc.
 setenv PERL_SIGNALS unsafe # csh, tcsh, etc.
  
-and restart TTYtter, or use Perl 5.12 or earlier (without specifying
+and restart oysttyer, or use Perl 5.12 or earlier (without specifying
 -signals_use_posix).
 EOF
 }
@@ -358,7 +360,7 @@ if ($termrl && $termrl->ReadLine eq 'Term::ReadLine::TTYtter') {
 	die (<<"EOF") if (length($trlv) && 0+$trlv < 1.3);
 *** death permeates me ***
 you need to upgrade your Term::ReadLine::TTYtter to at least version 1.3
-to use TTYtter 2.x, or bad things will happen such as signal mismatches,
+to use oysttyer 2.x, or bad things will happen such as signal mismatches,
 unexpected quits, and dogs and cats living peacefully in the same house.
 
 EOF
@@ -412,7 +414,7 @@ if ($script) {
 	$pause = $vcheck = $slowpost = $verify = 0;
 }
 
-### now instantiate the TTYtter dynamic API ###
+### now instantiate the oysttyer dynamic API ###
 ### based off the defaults later in script. ####
 
 # first we need to load any extensions specified by -exts.
@@ -491,7 +493,7 @@ if (length($exts) && $exts ne '0') {
 			}
 		}
 	}
-	# success! enable multi-module support in the TTYtter API and then
+	# success! enable multi-module support in the oysttyer API and then
 	# dispatch calls through the multi-module system instead.
 	$multi_module_mode = 1; # mark as completed loader
 
@@ -788,7 +790,7 @@ if ($lynx) {
 		print $stdout "Lynx forced to $wend\n";
 	} else {
 		$wend = &wherecheck("trying to find Lynx", "lynx",
-"specify -curl to use curl instead, or just let TTYtter autodetect stuff.\n");
+"specify -curl to use curl instead, or just let oysttyer autodetect stuff.\n");
 	}
 } else {
 	if (length($curl) > 1 && -x "/$curl") {
@@ -796,12 +798,12 @@ if ($lynx) {
 		print $stdout "cURL forced to $wend\n";
 	} else {
 		$wend = (($curl) ? &wherecheck("trying to find cURL", "curl",
-"specify -lynx to use Lynx instead, or just let TTYtter autodetect stuff.\n")
+"specify -lynx to use Lynx instead, or just let oysttyer autodetect stuff.\n")
 			: &wherecheck("trying to find cURL", "curl"));
 		if (!$curl && !length($wend)) {
 			$wend = &wherecheck("failed. trying to find Lynx",
 				"lynx",
-	"you must have either Lynx or cURL installed to use TTYtter.\n")
+	"you must have either Lynx or cURL installed to use oysttyer.\n")
 					if (!length($wend));
 			$lynx = 1;
 		} else {
@@ -829,7 +831,7 @@ if (!$dostream || $authtype eq 'basic' || !$ssl || $script || $anonymous || $syn
 			: ($authtype eq 'basic') ? "(no OAuth)"
 			: "(it's funkatron's fault)";
 		print $stdout
-	"-- Streaming API disabled $reason (TTYtter will use REST API only)\n";
+	"-- Streaming API disabled $reason (oysttyer will use REST API only)\n";
 		$dostream = 0;
 	} else {
 		print $stdout "-- Streaming API enabled\n";
@@ -883,7 +885,7 @@ if ($lynx) {
 } else {
 	$simple_agent = "$baseagent -s -m 20";
 
-	@wend = ('-s', '-m', '20', '-A', "TTYtter/$TTYtter_VERSION",
+	@wend = ('-s', '-m', '20', '-A', "oysttyer/$oysttyer_VERSION",
 			'-H', 'Expect:');
 	@wind = @wend;
 	$stringify_args = sub {
@@ -987,7 +989,7 @@ elsif ($authtype eq 'oauth' && (!length($keyf) || $oauthwizard)) {
 			print $streamout <<"EOF";
 AUTHENTICATION FAILURE
 YOU NEED TO GET AN OAuth KEY, or use -authtype=basic
-(run TTYtter without -script or -runcommand for help)
+(run oysttyer without -script or -runcommand for help)
 EOF
 			exit;
 		}
@@ -995,18 +997,18 @@ EOF
 		$keyf ||= $attempted_keyf;
 		print $stdout <<"EOF";
 
-+----------------------------------------------------------------------------+
-|| WELCOME TO TTYtter: Authorize TTYtter by signing into Twitter with OAuth ||
-+----------------------------------------------------------------------------+
-Looks like you're starting TTYtter for the first time, and/or creating a
++------------------------------------------------------------------------------+
+|| WELCOME TO oysttyer: Authorize oysttyer by signing into Twitter with OAuth ||
++------------------------------------------------------------------------------+
+Looks like you're starting oysttyer for the first time, and/or creating a
 keyfile. Welcome to the most user-hostile, highly obfuscated, spaghetti code
 infested and obscenely obscure Twitter client that's out there. You'll love it.
 
-TTYtter generates a keyfile that contains credentials for you, including your
+oysttyer generates a keyfile that contains credentials for you, including your
 access tokens. This needs to be done JUST ONCE. You can take this keyfile with
-you to other systems. If you revoke TTYtter's access, you must remove the
+you to other systems. If you revoke oysttyer's access, you must remove the
 keyfile and start again with a new token. You need to do this once per account
-you use with TTYtter; only one account token can be stored per keyfile. If you
+you use with oysttyer; only one account token can be stored per keyfile. If you
 have multiple accounts, use -keyf=... to specify different keyfiles. KEEP THESE
 FILES SECRET.
 
@@ -1031,7 +1033,7 @@ ${oauthauthurl}?oauth_token=$mytoken
 
 2. If you are not already signed in, fill in your username and password.
 
-3. Verify that TTYtter is the requesting application, and that its permissions
+3. Verify that oysttyer is the requesting application, and that its permissions
 are as you expect (read your timeline, see who you follow and follow new
 people, update your profile, post tweets on your behalf and access your
 direct messages). IF THIS IS NOT CORRECT, PRESS CTRL-C NOW!
@@ -1063,9 +1065,9 @@ EOF
 		print $stdout <<"EOF";
 Written keyfile $keyf
 
-Now, restart TTYtter to use this keyfile.
-(To choose between multiple keyfiles other than the default .ttytterkey,
- tell TTYtter where the key is using -keyf=... .)
+Now, restart oysttyer to use this keyfile.
+(To choose between multiple keyfiles other than the default .oysttyerkey,
+ tell oysttyer where the key is using -keyf=... .)
 
 EOF
 		exit;
@@ -1085,7 +1087,7 @@ EOF
 you are missing portions of the OAuth sequence. either create a keyfile
 and point to it with -keyf=... or add these missing pieces:
 $error
-then restart TTYtter, or use -authtype=basic.
+then restart oysttyer, or use -authtype=basic.
 EOF
 			exit;
 		}
@@ -1097,7 +1099,7 @@ EOF
 	print $stdout <<"EOF";
 
 +-------------------------------------------------------------------------+
-|| The Re-Toke Wizard: Generate a new TTYtter keyfile for your app/token ||
+|| The Re-Toke Wizard: Generate a new oysttyer keyfile for your app/token ||
 +-------------------------------------------------------------------------+
 Twitter is requiring tokens to now have specific permissions to READ
 direct messages. This will be enforced by 1 July 2011. If you find you are
@@ -1105,8 +1107,8 @@ unable to READ direct messages, you will need this wizard. DO NOT use this
 wizard if you are NOT using a cloned app key (1.2 and on) -- use -oauthwizard.
 
 This wizard will create a new keyfile for you from your app/user keys/tokens.
-You do NOT need this wizard if you are using TTYtter for a purpose that does
-not require direct message access. For example, if TTYtter is acting as
+You do NOT need this wizard if you are using oysttyer for a purpose that does
+not require direct message access. For example, if oysttyer is acting as
 your command line posting agent, or you are only using it to read your
 timeline, you do NOT need a new token. You also do not need a new token to
 SEND a direct message, only to READ ones this account has received.
@@ -1116,7 +1118,7 @@ However, you can still use it if you experience this specific issue with DMs,
 or need to rebuild your keyfile for any other reason.
 
 ** This wizard will overwrite the key at $keyf
-** To change this, restart TTYtter with -retoke -keyf=/path/to/keyfile
+** To change this, restart oysttyer with -retoke -keyf=/path/to/keyfile
 Press RETURN/ENTER to continue, or CTRL-C NOW! to abort.
 EOF
 
@@ -1130,7 +1132,7 @@ Start your browser.
 
 https://dev.twitter.com/apps
 
-3. Click the TTYtter cloned app key you need to regenerate or upgrade.
+3. Click the oysttyer cloned app key you need to regenerate or upgrade.
 4. Click Edit Application Settings.
 5. Make sure Read, Write & Private Message is selected, and click the
    "Save application" button.
@@ -1169,8 +1171,8 @@ EOF
 			print $stdout <<"EOF";
 Something's wrong: I could not find your consumer key or consumer
 secret in that text. If this was a misfired paste, please restart the wizard.
-Otherwise, bug me at \@ttytter or ckaiser\@floodgap.com. Please don't send
-keys or secrets to either address.
+Otherwise, bug us \@oysttyer or \#oysttyer or https://github.com/oysttyer/oysttyer
+Please don't send keys or secrets.
 
 EOF
 			exit;
@@ -1234,7 +1236,7 @@ EOF
 	chmod(0600, $keyf) || print $stdout
 "Warning: could not change permissions on $keyf : $!\n";
 	print $stdout "Keys written to regenerated keyfile $keyf\n";
-	print $stdout "Now restart TTYtter.\n";	
+	print $stdout "Now restart oysttyer.\n";	
 	exit;
 }
 
@@ -1492,33 +1494,38 @@ print $stdout "*** unrecoverable failure of buffer process, aborting\n";
 unless ($simplestart) {
 	print <<"EOF";
 
-######################################################        +oo=========oo+ 
-         ${EM}TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2015 cameron kaiser${OFF}                @             @
+######################################################               +oo=========oo+ 
+    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+                    (c)2007-2012 cameron kaiser${OFF}
 EOF
 	$e = <<'EOF';
-                 ${EM}all rights reserved.${OFF}                         +oo=   =====oo+
-       ${EM}http://www.floodgap.com/software/ttytter/${OFF}            ${GREEN}a==:${OFF}  ooo
-                                                            ${GREEN}.++o++.${OFF} ${GREEN}..o**O${OFF}
-  freeware under the floodgap free software license.        ${GREEN}+++${OFF}   :O${GREEN}:::::${OFF}
-        http://www.floodgap.com/software/ffsl/              ${GREEN}+**O++${OFF} #   ${GREEN}:ooa${OFF}
-                                                                   #+$$AB=.
-         ${EM}tweet me: http://twitter.com/ttytter${OFF}                      #;;${YELLOW}ooo${OFF};;
-            ${EM}tell me: ckaiser@floodgap.com${OFF}                          #+a;+++;O
-######################################################           ,$B.${RED}*o***${OFF} O$,
-#                                                                a=o${RED}$*O*O*$${OFF}o=a
-# when ready, hit RETURN/ENTER for a prompt.                        @${RED}$$$$$${OFF}@
-# type /help for commands or /quit to quit.                         @${RED}o${OFF}@o@${RED}o${OFF}@
-# starting background monitoring process.                           @=@ @=@
-#
+                 all rights reserved.                                 .                    
+       http://oysttyer.github.io/oysttyer/                          .#*^#=.                
+                                                                   %'., .#`                
+  freeware under the floodgap free software license.             ./',  /#`                 
+        http://www.floodgap.com/software/ffsl/                   ({.  #/                   
+                                                                 `\&./.-~=#######=.,       
+         tweet us http://twitter.com/oysttyer                      #%'*     - `'.  *\.     
+                                                                  (%.            '.  `&    
+######################################################            `&`    @    ` .  .  #    
+#                                                                  `\`...    .....' .%'    
+# when ready, hit RETURN/ENTER for a prompt.                         `^~#########=~*'      
+# type /help for commands or /quit to quit.                               `~=~'            
+# starting background monitoring process.                                                  
+#                                                               _      _             _     
+#                                                              /.\ | ||_  |_ |_ | | /_\|'` 
+#                                                              \_/ \_| _|'|_'|_ \_| \_ |   
+#                                                                    |            |        
 EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-TTYtter ${TTYtter_VERSION}.${padded_patch_version} (c)2015 cameron kaiser
+oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+               (c)2007-2012 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
 
-tweet me: http://twitter.com/ttytter * tell me: ckaiser\@floodgap.com
+tweet us http://twitter.com/oysttyer 
 type /help for commands or /quit to quit.
 starting background monitoring process.
 
@@ -1536,7 +1543,7 @@ sleep 3 unless ($silent);
 # the main loop can be redefined.
 
 sub defaultprompt {
-	my $rv = ($noprompt) ? "" : "TTYtter> ";
+	my $rv = ($noprompt) ? "" : "oysttyer> ";
 	my $rvl = ($noprompt) ? 0 : 9;
 	return ($rv, $rvl) if (shift);
 	$wrapseq = 0;
@@ -1730,11 +1737,11 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	if (!$slowpost && !$verify && # we assume you know what you're doing!
 		($_ eq 'h' || $_ eq 'help' || $_ eq 'quit' || $_ eq 'q' ||
-			/^TTYtter>/ || $_ eq 'ls' || $_ eq '?' ||
+			/^oysttyer>/ || $_ eq 'ls' || $_ eq '?' ||
 			m#^help /# || $_ eq 'exit')) {
 		
 		&add_history($_);
-		unless ($_ eq 'exit' || /^TTYtter>/ || $_ eq 'ls') {
+		unless ($_ eq 'exit' || /^oysttyer>/ || $_ eq 'ls') {
 			print $stdout "*** did you mean /$_ ?\n";
 			print $stdout
 				"*** to send this as a command, type /%%\n";
@@ -2402,20 +2409,20 @@ EOF
 		&linein("PRESS RETURN/ENTER>");
 		print <<"EOF";
 
-+- MORE COMMANDS -+  -=-=- USER STUFF -=-=-
-|                 |  /whois username            displays info about username
-| See the TTYtter |  /again username            views their most recent tweets
-|  home page for  |  /wagain username           combines them all
-|  complete list  |  /follow username           follow a username
-|                 |  /leave username            stop following a username
-+-----------------+  /dm username message       send a username a DM
-+--- TWEET AND DM SELECTION -------------------------------------------------+
++- MORE COMMANDS --+  -=-=- USER STUFF -=-=-
+|                  |  /whois username           displays info about username
+| See the oysttyer |  /again username           views their most recent tweets
+|  home page for   |  /wagain username          combines them all
+|  complete list   |  /follow username          follow a username
+|                  |  /leave username           stop following a username
++----------------- +  /dm username message      send a username a DM
++--- TWEET AND DM SELECTION ------------------------------------------------+
 | all DMs and tweets have menu codes (letters + number, d for DMs). example: |
-|      a5> <ttytter> Send me Dr Pepper http://www.floodgap.com/TTYtter       |
-|      [DM da0][ttytter/Sun Jan 32 1969] I think you are cute                |
+|      a5> <oysttyer> Send me Dr Pepper http://oysttyer.github.io/oysttyer/  |
+|      [DM da0][oysttyer/Sun Jan 32 1969] I think you are cute               |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
-|      becomes  \@ttytter I also like Dr Pepper     (and is threaded)         |
+|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)        |
 | /thread a5                        if a5 is part of a thread (the username  |
 |                                   has a \@ or \") then show all posts up     |
 |                                   to that                                  |
@@ -2425,7 +2432,7 @@ EOF
 | /delete a5                        deletes tweet a5, if it's your tweet     |
 | /rt a5 <optional message>         retweets (or quotes) tweet a5            |
 |      example: /rt a5                                                       |
-|      becomes: RT \@tytter: Send me...                                       |
+|      becomes: RT \@oysttyer: Send me...                                     |
 |      example: /rt a5 message                                               |
 |      becomes: Some smart comment about [tweet a5]                          |
 +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
@@ -2444,16 +2451,15 @@ Use /set to turn on options or set them at runtime. There is a BIG LIST!
                        or use the -verify command line option.
 For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
-** READ THE COMPLETE DOCUMENTATION: http://www.floodgap.com/software/ttytter/
+** READ THE COMPLETE DOCUMENTATION: http://oysttyer.github.io/oysttyer/
 
- TTYtter $TTYtter_VERSION is (c)2015 cameron kaiser + contributors.
+ oysttyer $oysttyer_VERSION is (c)2015 oysttyer organisation
+              (c)2007-20012 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
 
-           *** subscribe to updates at http://twitter.com/ttytter
-                                    or http://twitter.com/floodgap
-               send your suggestions to me at ckaiser\@floodgap.com
-                                           or http://twitter.com/doctorlinguist
+           *** subscribe to updates at http://twitter.com/oysttyer
+               submit your suggestions at https://github.com/oysttyer/oysttyer
 
 
 
@@ -4011,7 +4017,7 @@ RESTART_SELECT:
 
 *** fatal error ***
 something killed the streaming buffer process. I can't recover from this.
-please restart TTYtter.
+please restart oysttyer.
 EOF
 				goto DONESTREAM;
 			}
@@ -4102,7 +4108,7 @@ EOF
 			my $ds = $key->{'created_at'} || 'argh, no created_at';
 			$ds =~ s/\s/_/g;
 			my $src = $key->{'source'} || 'unknown';
-			# Figured out this is where the stream gets processed and TTYtter picks out the fields that get stored
+			# Figured out this is where the stream gets processed and oysttyer picks out the fields that get stored
 			# So quoted_status_id_str needed adding in here.
 			$src =~ s/\|//g; # shouldn't be any anyway.
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
@@ -4392,7 +4398,7 @@ sub start_streaming {
 	$verbose = 0;
 	$superverbose = 0;
 
-	$0 = "TTYtter (streaming buffer thread)";
+	$0 = "oysttyer (streaming buffer thread)";
 	$in_buffer = 1;
 	# set up signal handlers
 	$streampid = 0;
@@ -4480,7 +4486,7 @@ sub start_streaming {
 		}
 	} else {
 		# within the nurse process
-		$0 = "TTYtter (waiting $wait_time sec to connect to stream)";
+		$0 = "oysttyer (waiting $wait_time sec to connect to stream)";
 		sleep $wait_time;
 		$curlpid = 0;
 		$replarg = ($streamallreplies) ? '&replies=all' : '';
@@ -4497,14 +4503,14 @@ sub start_streaming {
 			[ $streamurl, "delimited=length${replarg}" ],
 			undef, undef,
 			'-s',
-			'-A', "TTYtter_Streaming/$TTYtter_VERSION",
+			'-A', "oysttyer_Streaming/$oysttyer_VERSION",
 			'-N',
 			'-H', 'Expect:');
 		($curlpid = open(K, "|$comm")) || die("failed curl: $!\n");
 		printf STDOUT ("%08x", $curlpid);
 
 		# "DIE QUICKLY"
-		$0 = "TTYtter (streaming socket nurse thread to ${curlpid})";
+		$0 = "oysttyer (streaming socket nurse thread to ${curlpid})";
 
 		select(K); $|++; select(STDOUT); $|++;
 		print K "$args\n";
@@ -4889,7 +4895,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			# Using smartmatch would be easier, but we are kind on older versions of Perl
 			if (($t) && !exists($ids{$t->{'id_str'}})) {
 				# Add reference to allow badging in standardtweet
-				$t->{'ttytter_quoted'} = 'true';
+				$t->{'oysttyer_quoted'} = 'true';
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
@@ -5171,7 +5177,7 @@ sub updatest {
 				print $stdout
 		"-- you're posting pretty fast. did you mean to do that?\n".
 		"-- waiting three seconds before taking the next set of tweets\n".
-		"-- hit CTRL-C NOW! to kill TTYtter if you accidentally pasted in this window\n";
+		"-- hit CTRL-C NOW! to kill oysttyer if you accidentally pasted in this window\n";
 				sleep 3;
 				$postbreak_count = 0;
 			}
@@ -5255,7 +5261,7 @@ sub updatest {
 		"&user=$user_name_dm" : '';
 
 	my $i = '';
-	$i .= "source=TTYtter&" if ($authtype eq 'basic');
+	$i .= "source=oysttyer&" if ($authtype eq 'basic');
 	$i .= "in_reply_to_status_id=${in_reply_to}&" if ($in_reply_to > 0);
 	if (!$rt_id && defined $lat && defined $long && $location) {
 		print $stdout "-- using lat/long: ($lat, $long)\n";
@@ -5358,7 +5364,7 @@ EOF
 }
 
 # the following functions may be user-exposed in a future version of
-# TTYtter, but are officially still "private interfaces."
+# oysttyer, but are officially still "private interfaces."
 # delete a status
 sub deletest {
 	my $id = shift;
@@ -5447,7 +5453,7 @@ sub rtsonoffuser {
 	return 0;
 }
 
-#### TTYtter internal API utility functions ####
+#### oysttyer internal API utility functions ####
 # ... which your API *can* call
 
 # gets and returns the contents of a URL (optionally pass a POST body)
@@ -5492,8 +5498,8 @@ sub standardtweet {
 	# badge the parent of the quoted tweet. Note: is_quote_status seems to be undocumented?
 	$sn = "\"$sn" if ($ref->{'is_quote_status'} eq 'true');
 	# badge quoted statuses themselves
-	$sn = ($quote_badge . $sn) if ($ref->{'ttytter_quoted'} eq 'true');
-	$sn = "*$sn" if ($ref->{'source'} =~ /TTYtter/ && $ttytteristas);
+	$sn = ($quote_badge . $sn) if ($ref->{'oysttyer_quoted'} eq 'true');
+	$sn = "*$sn" if ($ref->{'source'} =~ /oysttyer/ && $oysttyeristas);
 	# prepend list information, if this tweet originated from a list
 	$sn = "($ref->{'tag'}->{'payload'})$sn"	
 		if (length($ref->{'tag'}->{'payload'}) &&
@@ -5684,7 +5690,7 @@ sub ucommand {
 # see that function later on.
 
 
-#### DEFAULT TTYtter INTERNAL API METHODS ####
+#### DEFAULT oysttyer INTERNAL API METHODS ####
 # don't change these here. instead, use -exts=yourlibrary.pl and set there.
 # note that these are all anonymous subroutine references.
 # anything you don't define is overwritten by the defaults.
@@ -6143,7 +6149,7 @@ sub notifier_growl {
 			return 1 if ($script || $notifyquiet);
 			$class = 'Growl support activated';
 			$text = 
-'You can configure notifications for TTYtter in the Growl preference pane.';
+'You can configure notifications for oysttyer in the Growl preference pane.';
 		}
 	}
 	# handle this in the background for faster performance.
@@ -6170,7 +6176,7 @@ sub notifier_growl {
 		exit;
 	}
 	# this is the subchild, which is abandoned at a fire sta^W^W^Winit.
-	open(GROWL, "|$notify_tool_path -n 'TTYtter' 'TTYtter: $class'");
+	open(GROWL, "|$notify_tool_path -n 'oysttyer' 'oysttyer: $class'");
 	binmode(GROWL, ":utf8") unless ($seven);
 	print GROWL $text;
 	close(GROWL);
@@ -6199,13 +6205,13 @@ sub notifier_libnotify {
 			return 1 if ($script || $notifyquiet);
 			$class = 'libnotify support activated';
 			$text =
-'Congratulations, your notify-send is correctly configured for TTYtter.';
+'Congratulations, your notify-send is correctly configured for oysttyer.';
 		}
 	}
 	# figure out the time to display based on length of tweet
 	my $t = 1000+50*length($text); # about 150-180wpm read speed
 	open(NOTIFYSEND,
-		"|$notify_tool_path -t $t -f - 'TTYtter: $class'");
+		"|$notify_tool_path -t $t -f - 'oysttyer: $class'");
 	binmode(NOTIFYSEND, ":utf8") unless ($seven);
 	print NOTIFYSEND $text;
 	close(NOTIFYSEND);
@@ -6793,8 +6799,7 @@ EOF
 
 sub updatecheck {
 	my $vcheck_url =
-		"https://raw.githubusercontent.com/atomicules/TTYtter/master/unofficial_version_check.txt";
-		#Official version check url: "http://www.floodgap.com/software/ttytter/02current.txt";
+		"https://raw.githubusercontent.com/oysttyer/oysttyer/master/unofficial_version_check.txt";
 	my $vrlcheck_url =
 		"http://www.floodgap.com/software/ttytter/01readlin.txt";
 	my $update_url = shift;
@@ -6839,7 +6844,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	}
 	
 	
-	print $stdout "-- checking TTYtter unofficial version: $vcheck_url\n";
+	print $stdout "-- checking oysttyer unofficial version: $vcheck_url\n";
 	$vvs = `$simple_agent $vcheck_url`;
 	print $stdout "-- server response: $vvs\n" if ($verbose);
 	($vvs, $s1, $s2, $s3) = split(/--__--\n/s, $vvs);
@@ -6849,20 +6854,20 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	chomp($vvs);
 	($tverify, $inversion, $bversion, $rcnum, $download, $bdownload) =
 		split(/;/, $vvs, 6);
-	if ($tverify ne 'ttytter') {
-		$vs .= "-- warning: unable to verify TTYtter version\n";
+	if ($tverify ne 'oysttyer') {
+		$vs .= "-- warning: unable to verify oysttyer version\n";
 	} else {
 		if ($my_version_string eq $bversion) {
 			$vs .=
-"** REMINDER: you are using a beta version (${my_version_string}b${TTYtter_RC_NUMBER})\n";
+"** REMINDER: you are using a beta version (${my_version_string}b${oysttyer_RC_NUMBER})\n";
 			$vs .=
-"** NEW TTYtter RELEASE CANDIDATE AVAILABLE: build $rcnum **\n" .
+"** NEW oysttyer RELEASE CANDIDATE AVAILABLE: build $rcnum **\n" .
 "** get it: $bdownload\n$s2"
-			if ($TTYtter_RC_NUMBER < $rcnum);
+			if ($oysttyer_RC_NUMBER < $rcnum);
 			$vs .= "** (this is the most current beta)\n"
-				if ($TTYtter_RC_NUMBER == $rcnum);
+				if ($oysttyer_RC_NUMBER == $rcnum);
 			$vs .= "$s1$s3";
-			if ($TTYtter_RC_NUMBER < $rcnum) {
+			if ($oysttyer_RC_NUMBER < $rcnum) {
 				if ($update_url) {
 					$vs .=
 "-- %URL% is now $bdownload (/short shortens, /url opens)\n";
@@ -6874,9 +6879,9 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 			}
 			return $vs;
 		}
-		if ($my_version_string eq $inversion && $TTYtter_RC_NUMBER) {
+		if ($my_version_string eq $inversion && $oysttyer_RC_NUMBER) {
 			$vs .=
-"** FINAL TTYtter RELEASE NOW AVAILABLE for version $inversion **\n" .
+"** FINAL oysttyer RELEASE NOW AVAILABLE for version $inversion **\n" .
 "** get it: $download\n$s2$s1";
 			if ($update_url) {
 				$vs .=
@@ -6887,11 +6892,11 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 		}
 		($inversion =~/^(\d+\.\d+)\.(\d+)$/) && ($maj = 0+$1,
 			$min = 0+$2);
-		if (0+$TTYtter_VERSION < $maj ||
-				(0+$TTYtter_VERSION == $maj &&
-				 $TTYtter_PATCH_VERSION < $min)) {
+		if (0+$oysttyer_VERSION < $maj ||
+				(0+$oysttyer_VERSION == $maj &&
+				 $oysttyer_PATCH_VERSION < $min)) {
 			$vs .=
-	"** NEWER TTYtter VERSION NOW AVAILABLE: $inversion **\n" .
+	"** NEWER oysttyer VERSION NOW AVAILABLE: $inversion **\n" .
 	"** get it: $download\n$s2$s1";
 			if ($update_url) {
 				$vs .=
@@ -6899,18 +6904,18 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 				$urlshort = $download;
 			}
 			return $vs;
-		} elsif (0+$TTYtter_VERSION > $maj ||
-				(0+$TTYtter_VERSION == $maj &&
-				 $TTYtter_PATCH_VERSION > $min)) {
+		} elsif (0+$oysttyer_VERSION > $maj ||
+				(0+$oysttyer_VERSION == $maj &&
+				 $oysttyer_PATCH_VERSION > $min)) {
 			$vs .= 
-	"** unable to identify your version of TTYtter\n$s1";
+	"** unable to identify your version of oysttyer\n$s1";
 		} else {
 			$vs .=
-	"-- your unofficial version of TTYtter is up to date ($inversion)\n$s1";
+	"-- your unofficial version of oysttyer is up to date ($inversion)\n$s1";
 		}
 	}
 
-	# if we got this far, then there is no TTYtter update, but maybe a
+	# if we got this far, then there is no oysttyer update, but maybe a
 	# T:RL:T update, so we offer that as the URL
 	if (length($update_trlt) && $update_url) {
 		$urlshort = $update_trlt;
@@ -6918,7 +6923,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	}
 	return $vs;
 
-	$vs .= "-- your unofficial version of TTYtter is ($my_version_string)\n";
+	$vs .= "-- your unofficial version of oysttyer is ($my_version_string)\n";
 	return $vs;
 }
 

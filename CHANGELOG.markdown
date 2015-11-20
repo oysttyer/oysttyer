@@ -1,5 +1,11 @@
 #CHANGELOG
 
+##Changes in version 2.5.0:
+
+- Rename to oysttyer
+- Change API key, etc
+- No new features or  function changes since 2.4.2, just renaming
+
 ##Changes in version 2.4.2:
 
 - Start implementing improved newline behaviour, towards 2.6.0 milestone.
