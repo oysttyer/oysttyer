@@ -6799,7 +6799,7 @@ EOF
 
 sub updatecheck {
 	my $vcheck_url =
-		"https://raw.githubusercontent.com/oysttyer/oysttyer/master/unofficial_version_check.txt";
+		"https://raw.githubusercontent.com/oysttyer/oysttyer/master/version_check.txt";
 	my $vrlcheck_url =
 		"http://www.floodgap.com/software/ttytter/01readlin.txt";
 	my $update_url = shift;
@@ -6844,7 +6844,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	}
 	
 	
-	print $stdout "-- checking oysttyer unofficial version: $vcheck_url\n";
+	print $stdout "-- checking oysttyer version: $vcheck_url\n";
 	$vvs = `$simple_agent $vcheck_url`;
 	print $stdout "-- server response: $vvs\n" if ($verbose);
 	($vvs, $s1, $s2, $s3) = split(/--__--\n/s, $vvs);
@@ -6911,7 +6911,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	"** unable to identify your version of oysttyer\n$s1";
 		} else {
 			$vs .=
-	"-- your unofficial version of oysttyer is up to date ($inversion)\n$s1";
+	"-- your version of oysttyer is up to date ($inversion)\n$s1";
 		}
 	}
 
@@ -6923,7 +6923,7 @@ $vs .= "-- your version of Term::ReadLine::TTYtter is up to date ($trlv)\n";
 	}
 	return $vs;
 
-	$vs .= "-- your unofficial version of oysttyer is ($my_version_string)\n";
+	$vs .= "-- your version of oysttyer is ($my_version_string)\n";
 	return $vs;
 }
 
