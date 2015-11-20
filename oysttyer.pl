@@ -966,9 +966,9 @@ $whoami = (split(/\:/, $user, 2))[0] unless ($anonymous || !length($user));
 # credentials is mean and inconvenient to users. this is blessed by
 # arrangement with Twitter. don't be a d*ck. thanks for your cooperation.
 $oauthkey = (!length($oauthkey) || $oauthkey eq 'X') ?
-	"XtbRXaQpPdfssFwdUmeYw" : $oauthkey;
+	"wmS2Z01t6uHq3sVV1JL4DmZLp" : $oauthkey;
 $oauthsecret = (!length($oauthsecret) || $oauthsecret eq 'X') ?
-	"csmjfTQPE8ZZ5wWuzgPJPOBR9dyvOBEtHT5cJeVVmAA" : $oauthsecret;
+	"838jD95T6hPUm6MoBwq6SHAvL9oNoPV6acPXi8Ee8Vj3Mcj0GR" : $oauthsecret;
 
 unless ($anonymous) {
 # if we are using Basic Auth, ignore any user token we may have in
