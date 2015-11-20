@@ -1499,23 +1499,22 @@ unless ($simplestart) {
                     (c)2007-2012 cameron kaiser${OFF}
 EOF
 	$e = <<'EOF';
-                 all rights reserved.                                 .                    
-       http://oysttyer.github.io/oysttyer/                          .#*^#=.                
-                                                                   %'., .#`                
-  freeware under the floodgap free software license.             ./',  /#`                 
-        http://www.floodgap.com/software/ffsl/                   ({.  #/                   
-                                                                 `\&./.-~=#######=.,       
-         tweet us http://twitter.com/oysttyer                      #%'*     - `'.  *\.     
-                                                                  (%.            '.  `&    
-######################################################            `&`    @    ` .  .  #    
-#                                                                  `\`...    .....' .%'    
-# when ready, hit RETURN/ENTER for a prompt.                         `^~#########=~*'      
-# type /help for commands or /quit to quit.                               `~=~'            
-# starting background monitoring process.                                                  
-#                                                               _      _             _     
-#                                                              /.\ | ||_  |_ |_ | | /_\|'` 
-#                                                              \_/ \_| _|'|_'|_ \_| \_ |   
-#                                                                    |            |        
+                 all rights reserved.                                .#*^#=.                
+       http://oysttyer.github.io/oysttyer/                           %'.,`.#`               
+                                                                   ;',. ./#`                
+  freeware under the floodgap free software license.              ({.`,` #/                 
+        http://www.floodgap.com/software/ffsl/                    `& ,` %,~=*'"*=~=-.,      
+                                                                   \`=_/'.``  -  `'.  *\.   
+         tweet us http://twitter.com/oysttyer                       (%.  -  -      ˋ-. `&   
+                                                                    `&`  ~     @      . #   
+######################################################               `\`. `    .....ˊ  %'   
+#                                                                      `^~._.,,,.-+=~*'     
+# when ready, hit RETURN/ENTER for a prompt.                                ````'''         
+# type /help for commands or /quit to quit.                                                 
+# starting background monitoring process.                         _      _             _    
+#                                                                /.\ | ||_  |_ |_ | | /_\|'`
+#                                                                \_/ \_| _|'|_'|_ \_| \_ |  
+#                                                                      |            |       
 EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
