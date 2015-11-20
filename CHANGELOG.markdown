@@ -1,5 +1,12 @@
 #CHANGELOG
 
+##Changes in version 2.4.2:
+
+- Start implementing improved newline behaviour, towards 2.6.0 milestone.
+- Can now send newlines with literal "\"  followed by literal "n".
+- Allow sending longer DMs (2.7.0 milestone)
+- Remove own username when replying to self.
+
 ##Changes in version 2.4.1:
 
 - Fix "display" of multiple images in tweets so extensions can pick them up. Specifically so deshortify can underline them.

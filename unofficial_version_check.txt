@@ -1,4 +1,4 @@
-ttytter;2.4.1;;;https://raw.githubusercontent.com/atomicules/TTYtter/master/ttytter.pl;
+ttytter;2.4.2;;;https://raw.githubusercontent.com/oysttyer/oysttyer/2.4.2/ttytter.pl;
 --__--
 --__--
 --__--
