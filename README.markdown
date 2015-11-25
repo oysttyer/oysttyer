@@ -15,6 +15,11 @@ The master branch will be pretty much what I'm running, but that doesn't mean I'
 
 I think that's it?
 
+#### Notes to extension developers
+
+1. The `TTYtter_VERSION`, `TTYtter_PATCH_VERSION` and `TTYtter_RC_NUMBER` variables are now `oysttyer_VERSION`, `oysttyer_PATCH_VERSION` and `oysttyer_RC_NUMBER`.
+2. User-agent string has changed to `oysttyer/$oysttyer_VERSION`.
+
 ## Recommendations
 
 I strongly suggest, although it is by no means compulsory, tracking @oysttyer and #oysttyer as that way you become connected to a global support network.
