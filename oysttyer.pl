@@ -3246,10 +3246,9 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		}
 		my $target = &descape($tweet->{'user'}->{'screen_name'});
 		unless (lc($target) eq lc($whoami)) { $_ = '@' . $target . " $_"; }
-		unless ($mode eq 'v') {
-			$in_reply_to = $tweet->{'id_str'};
-			$expected_tweet_ref = $tweet;
-		} else {
+		$in_reply_to = $tweet->{'id_str'};
+		$expected_tweet_ref = $tweet;
+		if ($mode eq 'v') {
 			$_ = ".$_";
 		}
 		$readline_completion{'@'.lc($target)}++ if ($termrl);
@@ -3296,10 +3295,9 @@ m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		} else {
 			$_ = '@' . $target;
 		}
-		unless ($mode eq 'v') {
-			$in_reply_to = $tweet->{'id_str'};
-			$expected_tweet_ref = $tweet;
-		} else {
+		$in_reply_to = $tweet->{'id_str'};
+		$expected_tweet_ref = $tweet;
+		if ($mode eq 'v') {
 			$_ = ".$_";
 		}
 
