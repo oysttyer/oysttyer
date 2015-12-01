@@ -23,3 +23,10 @@ I think that's it?
 ## Recommendations
 
 I strongly suggest, although it is by no means compulsory, tracking @oysttyer and #oysttyer as that way you become connected to a global support network.
+
+Also, check out some available extensions:
+
+* [oysttyer-profile](https://github.com/oysttyer/oysttyer-profile) shows more profile information about users
+* [oysttyer-deshortify](https://github.com/oysttyer/oysttyer-deshortify) gets rid of shortlinks and displays final URLs
+* [oysttyer-multigeo](https://github.com/oysttyer/oysttyer-multigeo) for all your geographical location needs
+
