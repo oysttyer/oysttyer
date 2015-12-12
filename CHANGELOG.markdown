@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.6.0 (IN DEVELOPMENT):
+
+- favorites changed to likes
+
 ##Changes in version 2.5.0:
 
 - Rename to oysttyer
