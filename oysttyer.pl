@@ -2999,7 +2999,7 @@ EOF
 	}
 
 #TODO
-	if (s/^\/(favourites|favorites|faves|favs|fl)(\s+\+\d+)?\s*//) {
+	if (s/^\/(likes)(\s+\+\d+)?\s*//) {
 		my $my_json_ref;
 		my $countmaybe = $2;
 		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
@@ -3011,10 +3011,10 @@ EOF
 		} else {
 			if ($anonymous) {
 				print $stdout
-		"-- sorry, you can't haz favourites if you're anonymous.\n";
+		"-- sorry, you can't haz likes if you're anonymous.\n";
 			} else {
 				print $stdout
-				"-- synchronous /favourites user command\n"
+				"-- synchronous /likes user command\n"
 					if ($verbose);
 				$my_json_ref = &grabjson($favsurl, 0, 0,
 					$countmaybe, undef, 1);
@@ -3023,21 +3023,21 @@ EOF
 		if (defined($my_json_ref)
 				&& ref($my_json_ref) eq 'ARRAY') {
 			if (scalar(@{ $my_json_ref })) {
-				my $w = "-==- favourites " x 10;
+				my $w = "-==- likes " x 10;
 				$w = $EM . substr($w, 0, $wrap || 79) . $OFF;
 				print $stdout "$w\n";
-				&tdisplay($my_json_ref, "favourites");
+				&tdisplay($my_json_ref, "likes");
 				print $stdout "$w\n";
 			} else {
 				print $stdout
-		"-- no favourites found, boring impartiality concluded.\n";
+		"-- no likes found, boring impartiality concluded.\n";
 			}
 		}
 		&$conclude;
 		return 0;
 	}
 	if (
-m#^/(un)?f(rt|retweet|a|av|ave|avorite|avourite)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
+m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $mode = $1;
 		my $secondmode = $2;
 		my $code = lc($3);
@@ -5401,9 +5401,9 @@ sub cordfav {
 	my $verb = shift;
 
 	my ($en, $em) = &central_cd_dispatch("id=$id", $interactive, $basefav);
-	print $stdout "-- favourite $verb for tweet id #${id}: \"$text\"\n"
+	print $stdout "-- like $verb for tweet id #${id}: \"$text\"\n"
 		if ($interactive && !$en);
-	print $stdout "*** (was the favourite already ${verb}?)\n"
+	print $stdout "*** (was the like already ${verb}?)\n"
 		if ($interactive && $en);
 	return 0;
 }
@@ -5592,10 +5592,11 @@ sub standardevent {
 			$tar_list_name = &descape($ref->{'target_object'}->{'full_name'});
 			$tar_list_desc = &descape($ref->{'target_object'}->{'description'});
 		}
-		
-		if ($verb eq 'favorite' || $verb eq 'unfavorite') {
+		# Twitter still uses (un)?favorite, but we add (un)?like as a bit of future-proofing.
+		if ($verb eq 'like' || $verb eq 'unlike' || $verb eq 'favorite' || $verb eq 'unfavorite') {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
 			my $txt = &descape($rto->{'text'});
+			$verb =~ s/favorite/like/;
 			$g .=
 		"$sou_sn just ${verb}d ${tar_sn}'s tweet: \"$txt\"";
 		} elsif ($verb eq 'follow') {
@@ -6095,7 +6096,7 @@ sub defaultautocompletion {
 			'/doesfollow', '/search', '/tron', '/troff',
 			'/delete', '/deletelast', '/dump',
 			'/track', '/trends', '/block', '/unblock',
-			'/fave', '/faves', '/unfave', '/eval');
+			'/like', '/likes', '/unlike', '/eval');
 	}
 	@rlkeys = keys(%readline_completion);
 
@@ -7182,7 +7183,7 @@ sub grabjson {
 	# single tweets such as from statuses/show aren't arrays, so
 	# we special-case for them.
 	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
-		$my_json_ref->{'favorited'} &&
+		$my_json_ref->{'liked'} &&
 		$my_json_ref->{'source'} &&
 		((0+$my_json_ref->{'id'}) ||
 			length($my_json_ref->{'id_str'}))) {
@@ -7290,7 +7291,7 @@ sub normalizejson {
 	# favorited, then it is probably a tweet and we will
 	# add a stub geo hash if one doesn't exist yet.
 	if ($kludge_search_api_adjust || 
-			($i->{'favorited'} && $i->{'source'})){
+			($i->{'liked'} && $i->{'source'})){
 		$i = &fix_geo_api_data($i);
 	}
 
