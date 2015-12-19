@@ -157,6 +157,8 @@ BEGIN {
 	$supreturnto = $verbose + 0;
 	$postbreak_time = 0;
 	$postbreak_count = 0;
+	# Want to keep original behaviour as well though
+	$newline ||= 1;
 	$replacement_newline ||= $seven ? ' [NL] ' : " \x{2424} ";
 	$replacement_carriagereturn ||= $seven ? ' [CR] ' : " \x{240D} ";
 
@@ -7641,9 +7643,13 @@ s/\\u([dD][890abAB][0-9a-fA-F]{2})\\u([dD][cdefCDEF][0-9a-fA-F]{2})/&deutf16($1,
 		$x =~ s/\&gt;/\>/g;
 		$x =~ s/\&amp;/\&/g;
 	}
-	if ($newline) {
+	if ($newline eq "replace") {
 		$x =~ s/\\n/$replacement_newline/sg;
 		$x =~ s/\\r/$replacement_carriagereturn/sg;
+	}
+	elsif ($newline) {
+		$x =~ s/\\n/\n/sg;
+		$x =~ s/\\r//sg;
 	}
 	return $x;
 }
