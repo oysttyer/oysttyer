@@ -195,8 +195,8 @@ EOF
 	$keyf = "$ENV{'HOME'}/.oysttyerkey${keyf}" if ($keyf !~ m#/#);
 	$attempted_keyf = $keyf;
 	if (!$oauthwizard && (
-			!length($oauthkey) ||
-			!length($oauthsecret) ||
+			#!length($oauthkey) ||
+			#!length($oauthsecret) ||
 			!length($tokenkey) ||
 			!length($tokensecret) )
 			) {
@@ -212,9 +212,9 @@ EOF
 			foreach(@pairs) {
 				my (@pair) = split(/\=/, $_, 2);
 				$oauthkey = $pair[1]
-					if ($pair[0] eq 'ck' && $pair[1] ne 'X');
+					if ($pair[0] eq 'ck') && !length($oauthkey);# && $pair[1] ne 'X');
 				$oauthsecret = $pair[1]
-					if ($pair[0] eq 'cs' && $pair[1] ne 'X');
+					if ($pair[0] eq 'cs') && !length($oauthsecret);# && $pair[1] ne 'X');
 				$tokenkey = $pair[1]
 					if ($pair[0] eq 'at');
 				$tokensecret = $pair[1]
