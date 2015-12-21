@@ -1,14 +1,18 @@
 #CHANGELOG
 
-##Changes in version 2.6.0 (IN DEVELOPMENT):
+##Changes in version 2.5.1:
 
-- favorites changed to likes
+- favorites changed to likes (Twitter made everyone do it!)
+- Quick, perhaps temporary, fix to allow users to specify their own oauthkey and oauthsecret in their .oysttyerrc to work around the current muzzling issues
+- fix /vre to not break threading
+- Allow custom newline replacement characters
+
 
 ##Changes in version 2.5.0:
 
 - Rename to oysttyer
 - Change API key, etc
-- No new features or  function changes since 2.4.2, just renaming
+- No new features or function changes since 2.4.2, just renaming
 
 ##Changes in version 2.4.2:
 

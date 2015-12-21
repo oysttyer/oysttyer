@@ -1,7 +1,7 @@
 #!/usr/bin/env perl -s
 #########################################################################
 #
-# oysttyer v2.4 (c)2015-     oysttyer orginistion
+# oysttyer v2.5 (c)2015-     oysttyer orginistion
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
@@ -33,7 +33,7 @@ BEGIN {
 	
 	$command_line = $0; $0 = "oysttyer";
 	$oysttyer_VERSION = "2.5";
-	$oysttyer_PATCH_VERSION = 0;
+	$oysttyer_PATCH_VERSION = 1;
 	$oysttyer_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||

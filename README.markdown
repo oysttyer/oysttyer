@@ -15,7 +15,15 @@ The master branch will be pretty much what I'm running, but that doesn't mean I'
 
 I think that's it?
 
-#### Notes to extension developers
+### Using your own ouathkey and oauthsecret
+
+Since the transition from TTYtter, Twitter seem to be in the habit of muzzling us (their word for blocking write access). This is done at the oysttyer oauthkey/secret level so affects all users. As a (hopefully) temporary work-around until we can resolve this issue permanently with Twitter you can register our own app (You can call it whatever, but if you are stuck for a name call it "oysttyer-<your twitter handle>") and specify the `oauthkey` and `oauthsecret` in the `.oysttyerrc` file. Be sure to avoid trailing whitespace in you key/secret. You will, of course, have to re-authorise and get a new token. I suggest taking advantage of the existing keyfile functionality in oysttyer to do this.
+
+### New functionality since TTYtter 2.1
+
+Until we catch up with the documentation, check out the changelog and commitlog, etc.
+
+### Notes to extension developers
 
 1. The `TTYtter_VERSION`, `TTYtter_PATCH_VERSION` and `TTYtter_RC_NUMBER` variables are now `oysttyer_VERSION`, `oysttyer_PATCH_VERSION` and `oysttyer_RC_NUMBER`.
 2. User-agent string has changed to `oysttyer/$oysttyer_VERSION`.
@@ -26,7 +34,7 @@ I strongly suggest, although it is by no means compulsory, tracking @oysttyer an
 
 Also, check out some available extensions:
 
-* [oysttyer-profile](https://github.com/oysttyer/oysttyer-profile) shows more profile information about users
+* [oysttyer-profile](https://github.com/oysttyer/oysttyer-profile) update your profile information from within oysttyer
 * [oysttyer-deshortify](https://github.com/oysttyer/oysttyer-deshortify) gets rid of shortlinks and displays final URLs
 * [oysttyer-multigeo](https://github.com/oysttyer/oysttyer-multigeo) for all your geographical location needs
 
