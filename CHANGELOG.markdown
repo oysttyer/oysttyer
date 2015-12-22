@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.5.2:
+
+- Add /mute /unmute functionality
+
 ##Changes in version 2.5.1:
 
 - favorites changed to likes (Twitter made everyone do it!)
