@@ -5473,7 +5473,7 @@ sub muteuser {
 
 	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
 		$interactive, $basef);
-	print $stdout "-- ok, you have $verb muted user $uname.\n"
+	print $stdout "-- ok, you have $verb muting user $uname.\n"
 		if ($interactive && !$en);
 	return 0;
 }
@@ -5663,7 +5663,7 @@ sub standardevent {
 			$g .= "$sou_sn ${verb}ed $tar_sn ($tar_sn is not ".
 				"notified)";
 		} elsif ($verb eq 'mute' || $verb eq 'unmute') {
-			$g .= "$sou_sn ${verb}ed $tar_sn ($tar_sn is not ".
+			$g .= "$sou_sn ${verb}d $tar_sn ($tar_sn is not ".
 				"notified)";
 		} elsif ($verb eq 'access_revoked') {
 			$g .= "$sou_sn revoked oAuth access to $tar_sn";
