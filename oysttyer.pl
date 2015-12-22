@@ -73,6 +73,7 @@ BEGIN {
 		url dmurl uurl rurl wurl frurl rlurl update shorturl
 		apibase queryurl idurl delurl dmdelurl favsurl
 		favurl favdelurl followurl leaveurl
+		muteurl unmuteurl
 		dmupdate credurl blockurl blockdelurl friendsurl
 		modifyliurl adduliurl delliurl getliurl getlisurl getfliurl
 		creliurl delliurl deluliurl crefliurl delfliurl
@@ -694,6 +695,9 @@ $friendsurl ||= "${apibase}/friends/ids.json";
 $followersurl ||= "${apibase}/followers/ids.json";
 $frupdurl ||= "${apibase}/friendships/update.json";
 $lookupidurl ||= "${apibase}/users/lookup.json";
+
+$muteurl ||= "${apibase}/mutes/users/create.json";
+$unmuteurl ||= "${apibase}/mutes/users/destroy.json";
 
 $rlurl ||= "${apibase}/application/rate_limit_status.json";
 
@@ -3450,6 +3454,24 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		return 0;
 	}
 
+	# mute and unmute users
+	if (m#^/(mute|unmute) \@?([^\s/]+)$#) {
+		my $m = $1;
+		my $u = lc($2);
+		if ($m eq 'mute') {	
+			$answer = lc(&linein(
+	"-- sure you want to mute $u? (only y or Y is affirmative):"));
+			if ($answer ne 'y') {
+				print $stdout "-- ok, $u is NOT muted.\n";
+				return 0;
+			}
+		}
+		&muteuser($u, 1,
+			(($m eq 'mute') ? $muteurl : $unmuteurl),
+			(($m eq 'mute') ? 'started' : 'stopped'));
+		return 0;
+	}
+
 	# list support
 	# /withlist (/withlis, /with, /wl)
 	if (s#^/(withlist|withlis|withl|with|wl)\s+([^/\s]+)\s+## &&
@@ -5442,6 +5464,20 @@ sub boruuser {
 	return 0;
 }
 
+# mute or unmute a user
+sub muteuser {
+	my $uname = shift;
+	my $interactive = shift;
+	my $basef = shift;
+	my $verb = shift;
+
+	my ($en, $em) = &central_cd_dispatch("screen_name=$uname",
+		$interactive, $basef);
+	print $stdout "-- ok, you have $verb muted user $uname.\n"
+		if ($interactive && !$en);
+	return 0;
+}
+
 # enable or disable retweets for a user
 sub rtsonoffuser {
 	my $uname = shift;
@@ -5624,6 +5660,9 @@ sub standardevent {
 		} elsif ($verb eq 'list_updated') {
 			$g .= "$sou_sn updated the list \"$tar_list_desc\" ($tar_list_name)";
 		} elsif ($verb eq 'block' || $verb eq 'unblock') {
+			$g .= "$sou_sn ${verb}ed $tar_sn ($tar_sn is not ".
+				"notified)";
+		} elsif ($verb eq 'mute' || $verb eq 'unmute') {
 			$g .= "$sou_sn ${verb}ed $tar_sn ($tar_sn is not ".
 				"notified)";
 		} elsif ($verb eq 'access_revoked') {
@@ -6102,6 +6141,7 @@ sub defaultautocompletion {
 			'/doesfollow', '/search', '/tron', '/troff',
 			'/delete', '/deletelast', '/dump',
 			'/track', '/trends', '/block', '/unblock',
+			'/mute', '/unmute',
 			'/like', '/likes', '/unlike', '/eval');
 	}
 	@rlkeys = keys(%readline_completion);
