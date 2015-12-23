@@ -7686,6 +7686,7 @@ s/\\u([dD][890abAB][0-9a-fA-F]{2})\\u([dD][cdefCDEF][0-9a-fA-F]{2})/&deutf16($1,
 		$x =~ s/\&gt;/\>/g;
 		$x =~ s/\&amp;/\&/g;
 	}
+	# TODO: Here it doesn't seem possible for us to distinguish between real newlines and the literal "\"s followed by "n"s that may have been sent and both will get replaced. But it would be nice to investigate this further.
 	if ($newline eq "replace") {
 		$x =~ s/\\n/$replacement_newline/sg;
 		$x =~ s/\\r/$replacement_carriagereturn/sg;
@@ -7862,6 +7863,9 @@ sub cosplit {
 	my @m;
 	my $q;
 	my $r;
+	# For adjusting maxchars when sending newlines
+	my @count_of_newlines;	
+	my @count_of_liternal_newlines;	
 
 	unless ($maxchars) {
 		$maxchars = $linelength;
@@ -7869,6 +7873,16 @@ sub cosplit {
 
 	$mode += 0;
 	$k = $orig_k;
+
+	# Count number of \n and \\n
+	@count_of_newlines = ($k =~ /\\n/g);
+	@count_of_literal_newlines = ($k =~ /\\\\n/g);
+	# Increase maxchars as required. 
+	# Note: Need to do this inside this recursive routine as otherwise doing inside common_split_post means it permanently sets the maxchars based upon the original string, but if the string is split then maxchars is a different value for each sub-string.
+	# \n only count as one character so add one for each count
+	# \\n only counts as two characters so add one for each count
+	$maxchars += scalar(@count_of_newlines);
+	$maxchars += scalar(@count_of_literal_newlines);
 
 	# optimize whitespace
 	$k =~ s/^\s+//;
