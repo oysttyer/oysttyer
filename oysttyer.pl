@@ -159,7 +159,7 @@ BEGIN {
 	$postbreak_time = 0;
 	$postbreak_count = 0;
 	# Want to keep original behaviour as well though
-	$newline ||= 1;
+	$newline ||= 0;
 	$replacement_newline ||= $seven ? ' [NL] ' : " \x{2424} ";
 	$replacement_carriagereturn ||= $seven ? ' [CR] ' : " \x{240D} ";
 
