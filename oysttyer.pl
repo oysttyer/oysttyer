@@ -3759,7 +3759,7 @@ sub common_split_post {
 		if (!$autosplit) {
 			print $stdout &wwrap(
 "*** sorry, too long to send; ".
-"truncated to \"$l\" (@{[ length($m) ]} chars)\n");
+"truncated to \"$l\" (@{[ length_newline($m) ]} chars)\n");
 	print $stdout "*** use %% for truncated version, or append to %%.\n";
 			return 0;
 		}
@@ -3782,7 +3782,7 @@ sub common_split_post {
 		&add_history($l);
 		print $stdout &wwrap("*** next part is ready: \"$l\"\n");
 		print $stdout "*** (this will also be automatically split)\n"
-			if (length($k) > $linelength);
+			if (length_newline($k) > $linelength);
 		print $stdout
 		"*** to send this next portion, use %%.\n";
 	}
@@ -7838,7 +7838,20 @@ sub ulength_tco {
 }
 sub length_tco {
 	my $w = shift;
-	return length(($notco) ? $w : &turntotco($w));
+	return length_newline(($notco) ? $w : &turntotco($w));
+}
+sub length_newline {
+	# Count length of a string, adjusting for sending newlines
+	my $s = shift;
+	my @count_of_newlines;
+	my @count_of_liternal_newlines;
+
+	# Count number of \n and \\n
+	@count_of_newlines = ($s =~ /\\n/g);
+	@count_of_literal_newlines = ($s =~ /\\\\n/g);
+	# \n only count as one character so subtract one for each count
+	# \\n only counts as two characters so subtract one for each count
+	return length($s)-scalar(@count_of_newlines)-scalar(@count_of_literal_newlines);
 }
 # take a string and return up to $maxchars CHARS plus the rest.
 sub csplit { 
@@ -7863,9 +7876,6 @@ sub cosplit {
 	my @m;
 	my $q;
 	my $r;
-	# For adjusting maxchars when sending newlines
-	my @count_of_newlines;	
-	my @count_of_liternal_newlines;	
 
 	unless ($maxchars) {
 		$maxchars = $linelength;
@@ -7873,16 +7883,6 @@ sub cosplit {
 
 	$mode += 0;
 	$k = $orig_k;
-
-	# Count number of \n and \\n
-	@count_of_newlines = ($k =~ /\\n/g);
-	@count_of_literal_newlines = ($k =~ /\\\\n/g);
-	# Increase maxchars as required. 
-	# Note: Need to do this inside this recursive routine as otherwise doing inside common_split_post means it permanently sets the maxchars based upon the original string, but if the string is split then maxchars is a different value for each sub-string.
-	# \n only count as one character so add one for each count
-	# \\n only counts as two characters so add one for each count
-	$maxchars += scalar(@count_of_newlines);
-	$maxchars += scalar(@count_of_literal_newlines);
 
 	# optimize whitespace
 	$k =~ s/^\s+//;
@@ -7915,6 +7915,7 @@ sub cosplit {
 		# optimize again in case we split on whitespace
 		$q =~ s/\s+$//;
 		return (&cosplit($orig_k, 1, $lengthsub))
+			#Don't need to use length_newline here becausen only checking for whether zero length is true
 			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
 		if (&$lengthsub($q) < $maxchars) {
@@ -7923,6 +7924,7 @@ sub cosplit {
 		}
 	}
 	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
+	#Don't need to use length_newline here because only checking for whether zero length is true
 	return (&cosplit($orig_k, 1, $lengthsub)) if (!length($q) && !$mode);
 		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
