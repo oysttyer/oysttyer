@@ -6,6 +6,8 @@ In order to get Cameron Kaiser's blessing, we've had to change the name, take ou
 
 The master branch will be pretty much what I'm running, but that doesn't mean I've not managed to break it in someway. The mirror branch reflects all the historical official TTYtter updates.
 
+See the [oysttyer User Guide](http://oysttyer.github.io/docs/userGuide.html) for usage information.
+
 ## Switching from TTYtter
 
 1. You have to re-authorise (you can't use your `.ttytterkey`) as we have a new API key
