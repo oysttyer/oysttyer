@@ -1,5 +1,16 @@
 #CHANGELOG
 
+##Changes in version 2.6.0:
+
+- Finishes up newline support
+- Correctly counts characters for strings with newlines that are being sent. I.e. `\n` counts as one character.
+- Summary of newline behaviour already implemented:
+	- Any `\n` in a tweet will be sent as a newline
+	- To send a literal `\` followed by a `n` you have to escape and type `\\n`.
+	- The `-newline` command line argument/option can now be optionally set to `-newline=replace` as well as on/off (`1` or `0`)
+	- If newline is set to replace then you can specify what oysttyer uses for display of newlines using `-replacement_newline` and `-replacement_carriagereturn` or use the default replacement characters
+	- Note: If using `-newline=replace` there is currently no way for oysttyer to differentiate between actual newlines and literal `\`s followed by literal `n`s and both will get replaced.
+
 ##Changes in version 2.5.2:
 
 - Add /mute /unmute functionality
@@ -10,7 +21,6 @@
 - Quick, perhaps temporary, fix to allow users to specify their own oauthkey and oauthsecret in their .oysttyerrc to work around the current muzzling issues
 - fix /vre to not break threading
 - Allow custom newline replacement characters
-
 
 ##Changes in version 2.5.0:
 
