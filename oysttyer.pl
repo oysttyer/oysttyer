@@ -2803,11 +2803,13 @@ EOF
 				if ($verbose);
 			my $next = &grabjson("${idurl}?id=${id}", 0, 0, 0,
 				undef, 1);
+			my $t;
 			$id = 0;
 			$limit--;
 			if (defined($next) && ref($next) eq 'HASH') {
-				push(@{ $thread_ref },
-					&fix_geo_api_data($next));
+				$t = &fix_geo_api_data($next);
+				$t = &destroy_all_tco($next);
+				push(@{ $thread_ref }, $t);
 				$id = $next->{'retweeted_status'}->{'id_str'}
 					|| $next->{'in_reply_to_status_id_str'}
 					|| $next->{'quoted_status_id_str'}
@@ -4923,6 +4925,9 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			if (($t) && !exists($ids{$t->{'id_str'}})) {
 				# Add reference to allow badging in standardtweet
 				$t->{'oysttyer_quoted'} = 'true';
+				# Destroy_tco and fix_geo since injecting here
+				$t = &destroy_all_tco($t);
+				$t = &fix_geo_api_data($t);
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
