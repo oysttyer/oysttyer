@@ -2803,13 +2803,10 @@ EOF
 				if ($verbose);
 			my $next = &grabjson("${idurl}?id=${id}", 0, 0, 0,
 				undef, 1);
-			my $t;
 			$id = 0;
 			$limit--;
 			if (defined($next) && ref($next) eq 'HASH') {
-				$t = &fix_geo_api_data($next);
-				$t = &destroy_all_tco($next);
-				push(@{ $thread_ref }, $t);
+				push(@{ $thread_ref }, &fix_geo_api_data($next));
 				$id = $next->{'retweeted_status'}->{'id_str'}
 					|| $next->{'in_reply_to_status_id_str'}
 					|| $next->{'quoted_status_id_str'}
@@ -4925,9 +4922,6 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 			if (($t) && !exists($ids{$t->{'id_str'}})) {
 				# Add reference to allow badging in standardtweet
 				$t->{'oysttyer_quoted'} = 'true';
-				# Destroy_tco and fix_geo since injecting here
-				$t = &destroy_all_tco($t);
-				$t = &fix_geo_api_data($t);
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
@@ -4960,13 +4954,16 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 				$t->{'text'} .= " " . &descape($url);
 			}
 		}
+		# Destroy all tco here since appending extended entities
+		# TODO: This means might now be unecessarily calling destroy elsewhere
+		$t = &destroy_all_tco($t);
 	}
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
 			if ($mini_id) {
-#TODO
-# generalize this at some point instead of hardcoded menu codes
-# maybe an ma0-mz9?
+				# TODO:
+				# generalize this at some point instead of hardcoded menu codes
+				# maybe an ma0-mz9?
 				$save_counter = $tweet_counter;
 				$tweet_counter = $mini_split;
 				for(0..9) {
@@ -7356,25 +7353,26 @@ sub normalizejson {
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
-		$rt = &destroy_all_tco($rt);
+		#$rt = &destroy_all_tco($rt);
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
-			$qt = &destroy_all_tco($qt);
+			#$qt = &destroy_all_tco($qt);
 			$qt = &fix_geo_api_data($qt);
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
-		$qt = &destroy_all_tco($qt);
+		#$qt = &destroy_all_tco($qt);
 		$qt = &fix_geo_api_data($qt);
 		$i->{'quoted_status'} = $qt;
 	}
 
-	return &destroy_all_tco($i);
+	#return;  &destroy_all_tco($i);
+	return $i;
 }
 
 # process the JSON data ... simplemindedly, because I just write utter crap,
