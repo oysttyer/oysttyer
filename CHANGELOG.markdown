@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in [NEXT RELEASE]:
+
+- Use the Twitter account in the prompt instead of `oysttyer` when `showusername` is true.
+
 ##Changes in version 2.6.0:
 
 - Finishes up newline support
