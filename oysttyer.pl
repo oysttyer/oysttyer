@@ -60,7 +60,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter
+		nofilter showusername
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -116,7 +116,7 @@ BEGIN {
 		simplestart exception_is_maskable oldperl notco
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
 		signals_use_posix dostream eventbuf replacement_newline
-		replacement_carriagereturn streamallreplies
+		replacement_carriagereturn streamallreplies showusername
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
@@ -762,6 +762,7 @@ $dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
+$showusername ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -1553,8 +1554,15 @@ sleep 3 unless ($silent);
 # they represent the main loop, which by default is the interactive console.
 # the main loop can be redefined.
 
+#configure promptprefix
+if ($showusername) {
+    $promptprefix = $whoami ;
+} else {
+   $promptprefix = "oysttyer";
+}
+
 sub defaultprompt {
-	my $rv = ($noprompt) ? "" : "oysttyer> ";
+	my $rv = ($noprompt) ? "" : "$promptprefix> ";
 	my $rvl = ($noprompt) ? 0 : 9;
 	return ($rv, $rvl) if (shift);
 	$wrapseq = 0;
@@ -6501,6 +6509,12 @@ sub setvariable {
 				}
 				$supreturnto = $verbose;
 			}
+            # parse showusername
+            if ($key eq 'showusername') {
+                if ($value eq '1') {
+                    $showusername = 1;
+                }
+            }
 		}
 	# virtual keys
 	} elsif ($key eq 'tquery') {
