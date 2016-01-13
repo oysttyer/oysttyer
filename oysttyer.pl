@@ -1554,7 +1554,7 @@ sleep 3 unless ($silent);
 # the main loop can be redefined.
 
 sub defaultprompt {
-	my $rv = ($noprompt) ? "" : "oysttyer> ";
+	my $rv = ($noprompt) ? "" : "$whoami> ";
 	my $rvl = ($noprompt) ? 0 : 9;
 	return ($rv, $rvl) if (shift);
 	$wrapseq = 0;
