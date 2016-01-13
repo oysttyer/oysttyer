@@ -762,7 +762,7 @@ $dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
-$showusername ||= 1;
+$showusername ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -6509,6 +6509,12 @@ sub setvariable {
 				}
 				$supreturnto = $verbose;
 			}
+            # parse showusername
+            if ($key eq 'showusername') {
+                if ($value eq '1') {
+                    $showusername = 1;
+                }
+            }
 		}
 	# virtual keys
 	} elsif ($key eq 'tquery') {
