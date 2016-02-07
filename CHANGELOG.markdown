@@ -5,6 +5,7 @@
 - Add the ability to share tweets via direct message with the `/qdm` command.
 - Use the Twitter account in the prompt instead of `oysttyer` when `showusername` is true.
 - Add ':large' to Twitter image URLs when `largeimages` is true.
+- Add a space between tweets when `doublespace` is true.
 - Fixed an issue where retweeted tweets displayed the wrong timestamp.
 
 ##Changes in version 2.6.0:

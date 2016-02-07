@@ -60,7 +60,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter showusername largeimages
+		nofilter showusername largeimages doublespace
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -117,6 +117,7 @@ BEGIN {
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
 		signals_use_posix dostream eventbuf replacement_newline
 		replacement_carriagereturn streamallreplies showusername
+		doublespace
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
@@ -764,6 +765,7 @@ $ansi = ($noansi) ? 0 :
 		? 1 : 0);
 $showusername ||= 0;
 $largeimages ||= 0;
+$doublespace ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -6018,7 +6020,7 @@ sub defaulthandle {
 			"${EM}${menu_select}>${OFF} " :
 			"${menu_select}> ")
 		: '';
-
+        print $streamout "\n" if ($doublespace);
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
 	return 1;
