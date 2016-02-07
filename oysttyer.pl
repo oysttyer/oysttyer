@@ -5611,7 +5611,7 @@ s/(^|[^a-zA-Z0-9_])\@([a-zA-Z0-9_\/]+)/\1\@${UNDER}\2${colour}/g;
 	}
 
 	if ($largeimages) {
-            $tweet =~ s#(https://pbs.twimg.com/media/\w+)\.(png|jpg)#\1.\2\:large#;
+            $tweet =~ s#(https://pbs.twimg.com/media/\w+)\.(png|jpg)#\1.\2\:large#g;
         }
 	return $tweet;
 }
