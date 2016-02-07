@@ -1,7 +1,7 @@
 #!/usr/bin/env perl -s
 #########################################################################
 #
-# oysttyer v2.6 (c)2015-     oysttyer orginistion
+# oysttyer v2.6 (c)2016-     oysttyer orginistion
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
@@ -1508,7 +1508,7 @@ unless ($simplestart) {
 	print <<"EOF";
 
 ######################################################               +oo=========oo+ 
-    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
                     (c)2007-2012 cameron kaiser${OFF}
 EOF
 	$e = <<'EOF';
@@ -1532,7 +1532,7 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
                (c)2007-2012 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
@@ -2476,7 +2476,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: http://oysttyer.github.io/oysttyer/
 
- oysttyer $oysttyer_VERSION is (c)2015 oysttyer organisation
+ oysttyer $oysttyer_VERSION is (c)2016 oysttyer organisation
               (c)2007-20012 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
