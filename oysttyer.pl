@@ -2435,15 +2435,16 @@ EOF
 |  complete list   |  /follow username          follow a username
 |                  |  /leave username           stop following a username
 +----------------- +  /dm username message      send a username a DM
-+--- TWEET AND DM SELECTION ------------------------------------------------+
+		
++--- TWEET AND DM SELECTION -------------------------------------------------+
 | all DMs and tweets have menu codes (letters + number, d for DMs). example: |
 |      a5> <oysttyer> Send me Dr Pepper http://oysttyer.github.io/oysttyer/  |
 |      [DM da0][oysttyer/Sun Jan 32 1969] I think you are cute               |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
-|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)        |
+|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)       |
 | /thread a5                        if a5 is part of a thread (the username  |
-|                                   has a \@ or \") then show all posts up     |
+|                                   has a \@ or \") then show all posts up   |
 |                                   to that                                  |
 | /url a5                           opens all URLs in tweet a5               |
 |      Mac OS X users, do first: /set urlopen open %U                        |
@@ -2451,10 +2452,13 @@ EOF
 | /delete a5                        deletes tweet a5, if it's your tweet     |
 | /rt a5 <optional message>         retweets (or quotes) tweet a5            |
 |      example: /rt a5                                                       |
-|      becomes: RT \@oysttyer: Send me...                                     |
+|      becomes: RT \@oysttyer: Send me...                                    |
 |      example: /rt a5 message                                               |
 |      becomes: Some smart comment about [tweet a5]                          |
-+-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
+| /qdm a5 <username> <optional message>                                      |
+|      example: /qdm a5 \@oysttyer A secret comment about this tweet         |
+|      becomes: d oysttyer A secret comment about this tweet https://...     |
+ +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end --+
 =====> /reply, /delete and /url work for direct message menu codes too! <=====
 EOF
 		&linein("PRESS RETURN/ENTER>");
@@ -5605,6 +5609,8 @@ s/(^|[^a-zA-Z0-9_])\@([a-zA-Z0-9_\/]+)/\1\@${UNDER}\2${colour}/g;
 		$tweet = $topsub . $botsub;
 	}
 
+	# TODO turn this into an option
+	$tweet =~ s#(https://pbs.twimg.com/media/\s+)\.(png|jpg)#\1.\2\:large#
 	return $tweet;
 }
 
@@ -6148,7 +6154,7 @@ sub defaultautocompletion {
 	if ($start == 0 && $text =~ m#^/#) {
 		return sort grep(/^$qmtext/i, '/history',
 			'/print', '/quit', '/bye', '/again',
-			'/wagain', '/whois', '/thump', '/dm',
+			'/wagain', '/whois', '/thump', '/dm', '/qdm',
 			'/refresh', '/dmagain', '/set', '/help',
 			'/reply', '/url', '/thread', '/retweet', '/replyall',
 			'/replies', '/ruler', '/exit', '/me', '/vcheck',
