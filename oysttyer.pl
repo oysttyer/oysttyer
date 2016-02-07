@@ -5578,7 +5578,13 @@ sub standardtweet {
 	$tweet = "(x${h}) $tweet" if ($h > 1 && !$nonewrts);
 	# br3nda's modified timestamp patch
 	if ($timestamp) {
-		my ($time, $ts) = &$wraptime($ref->{'created_at'});
+                my ($time, $ts);
+		# Print the timestamp of the original tweet, not when it was RTed.
+		if (length($ref->{'retweeted_status'}->{'id_str'})) {
+			($time, $ts) = &wraptime($ref->{'retweeted_status'}->{'created_at'});
+                } else {
+			($time, $ts) = &wraptime($ref->{'created_at'});
+        	}
 		$tweet = "[$ts] $tweet";
 	}
 	
