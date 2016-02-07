@@ -3297,6 +3297,18 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		print $stdout "\n";
 		# and fall through to /dm
 	}
+        # Share a tweet through DM
+	if (s#^/qdm ([zZ]?[a-zA-Z]?[0-9]+) \@?([^\s]+)\s+##) {
+                my $code = lc($1);
+                my $tweet = &get_tweet($code);
+                if (!defined($tweet)) {
+                    print $stdout "-- no such tweet (yet?): $code\n";
+                    return 0;
+                }
+                $sn = &descape($tweet->{'user'}->{'screen_name'});
+		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
+		return &common_split_post($_ . " " . $quoted_status_url, undef, undef, $2);
+        }
 	# replyall (based on @FunnelFiasco's extension)
 	if (s#^/(v)?r(eply)?(to)?a(ll)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
 		my $mode = $1;

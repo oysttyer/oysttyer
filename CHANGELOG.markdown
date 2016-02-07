@@ -2,6 +2,7 @@
 
 ##Changes in [NEXT RELEASE]:
 
+- Add the ability to share tweets via direct message with the `/qdm` command.
 - Use the Twitter account in the prompt instead of `oysttyer` when `showusername` is true.
 
 ##Changes in version 2.6.0:
