@@ -6153,7 +6153,7 @@ sub defaultautocompletion {
 			'/refresh', '/dmagain', '/set', '/help',
 			'/reply', '/url', '/thread', '/retweet', '/replyall',
 			'/replies', '/ruler', '/exit', '/me', '/vcheck',
-			'/oretweet', '/eretweet', '/fretweet', '/liston',
+			'/oretweet', '/eretweet', '/lretweet', '/liston',
 			'/listoff', '/dmsent', '/rtsof', '/rtson', '/rtsoff',
 			'/lists', '/withlist', '/add', '/padd', '/push',
 			'/pop', '/followers', '/friends', '/lfollow',
