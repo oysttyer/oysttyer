@@ -1,7 +1,7 @@
 #!/usr/bin/env perl -s
 #########################################################################
 #
-# oysttyer v2.6 (c)2015-     oysttyer orginistion
+# oysttyer v2.6 (c)2016-     oysttyer orginistion
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
@@ -60,7 +60,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter
+		nofilter showusername largeimages doublespace
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -106,7 +106,7 @@ BEGIN {
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
-		filteratonly nofilter rtsofmeurl
+		filteratonly nofilter rtsofmeurl largeimages
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -116,7 +116,8 @@ BEGIN {
 		simplestart exception_is_maskable oldperl notco
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
 		signals_use_posix dostream eventbuf replacement_newline
-		replacement_carriagereturn streamallreplies
+		replacement_carriagereturn streamallreplies showusername
+		doublespace
 	); %valid = (%opts_can_set, %opts_others);
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
@@ -762,6 +763,9 @@ $dmpause = 0 if ($pause eq '0');
 $ansi = ($noansi) ? 0 :
 	(($ansi || $ENV{'TERM'} eq 'ansi' || $ENV{'TERM'} eq 'xterm-color')
 		? 1 : 0);
+$showusername ||= 0;
+$largeimages ||= 0;
+$doublespace ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -1507,7 +1511,7 @@ unless ($simplestart) {
 	print <<"EOF";
 
 ######################################################               +oo=========oo+ 
-    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
                     (c)2007-2012 cameron kaiser${OFF}
 EOF
 	$e = <<'EOF';
@@ -1531,7 +1535,7 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2015 oysttyer organisation
+oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
                (c)2007-2012 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
@@ -1553,8 +1557,15 @@ sleep 3 unless ($silent);
 # they represent the main loop, which by default is the interactive console.
 # the main loop can be redefined.
 
+#configure promptprefix
+if ($showusername) {
+    $promptprefix = $whoami ;
+} else {
+   $promptprefix = "oysttyer";
+}
+
 sub defaultprompt {
-	my $rv = ($noprompt) ? "" : "oysttyer> ";
+	my $rv = ($noprompt) ? "" : "$promptprefix> ";
 	my $rvl = ($noprompt) ? 0 : 9;
 	return ($rv, $rvl) if (shift);
 	$wrapseq = 0;
@@ -2427,15 +2438,16 @@ EOF
 |  complete list   |  /follow username          follow a username
 |                  |  /leave username           stop following a username
 +----------------- +  /dm username message      send a username a DM
-+--- TWEET AND DM SELECTION ------------------------------------------------+
+		
++--- TWEET AND DM SELECTION -------------------------------------------------+
 | all DMs and tweets have menu codes (letters + number, d for DMs). example: |
 |      a5> <oysttyer> Send me Dr Pepper http://oysttyer.github.io/oysttyer/  |
 |      [DM da0][oysttyer/Sun Jan 32 1969] I think you are cute               |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
-|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)        |
+|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)       |
 | /thread a5                        if a5 is part of a thread (the username  |
-|                                   has a \@ or \") then show all posts up     |
+|                                   has a \@ or \") then show all posts up   |
 |                                   to that                                  |
 | /url a5                           opens all URLs in tweet a5               |
 |      Mac OS X users, do first: /set urlopen open %U                        |
@@ -2443,10 +2455,13 @@ EOF
 | /delete a5                        deletes tweet a5, if it's your tweet     |
 | /rt a5 <optional message>         retweets (or quotes) tweet a5            |
 |      example: /rt a5                                                       |
-|      becomes: RT \@oysttyer: Send me...                                     |
+|      becomes: RT \@oysttyer: Send me...                                    |
 |      example: /rt a5 message                                               |
 |      becomes: Some smart comment about [tweet a5]                          |
-+-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end ---+
+| /qdm a5 <username> <optional message>                                      |
+|      example: /qdm a5 \@oysttyer A secret comment about this tweet         |
+|      becomes: d oysttyer A secret comment about this tweet https://...     |
+ +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end --+
 =====> /reply, /delete and /url work for direct message menu codes too! <=====
 EOF
 		&linein("PRESS RETURN/ENTER>");
@@ -2464,7 +2479,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: http://oysttyer.github.io/oysttyer/
 
- oysttyer $oysttyer_VERSION is (c)2015 oysttyer organisation
+ oysttyer $oysttyer_VERSION is (c)2016 oysttyer organisation
               (c)2007-20012 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
@@ -2860,32 +2875,40 @@ EOF
 				ref($hash->{'retweeted_status'}) eq 'HASH');
 		
 		my $didprint = 0;
-		my $fieldprint = 0;
+		my $entitiesprint = 0;
 		# Twitter puts entities in multiple fields.
-		# Target extended_entities, thanks to @myshkin (github) / @justarobert (twitter)
+		# Target extended_entities, originally based on following from @myshkin (github) / @justarobert (twitter)
 		# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-		# But do both entities and extended
-		foreach my $field (qw(entities extended_entities)) {
-			$fieldprint = 1;
-			foreach $w (qw(media urls)) {
-				my $p = $hash->{$field}->{$w};
-				next if (!defined($p) || ref($p) ne 'ARRAY');
-				foreach $v (@{ $p }) {
-					next if (!defined($v) || ref($v) ne 'HASH');
-					next if (!length($v->{'url'}) ||
-						(!length($v->{'expanded_url'}) &&
-						 !length($v->{'media_url'})));
-					my $u1 = &descape($v->{'url'});
-					my $u2 = &descape($v->{'expanded_url'});
-					my $u3 = &descape($v->{'media_url'});
-					my $u4 = &descape($v->{'media_url_https'});
-					$u2 = $u4 || $u3 || $u2;
-					if ($fieldprint) {
-						print $stdout "$field:\n";
-						$fieldprint = 0;
+		foreach my $entities (qw(entities extended_entities)) {
+			$entitiesprint = 1;
+			foreach $type (qw(media urls)) {
+				my $array = $hash->{$entities}->{$type};
+				next if (!defined($array) || ref($array) ne 'ARRAY');
+				foreach $entry (@{ $array }) {
+					next if (!defined($entry) || ref($entry) ne 'HASH');
+					next if (!length($entry->{'url'}) ||
+						(!length($entry->{'expanded_url'}) &&
+						 !length($entry->{'media_url'})));
+					if ($entitiesprint) {
+						print $stdout "$entities:\n";
+						$entitiesprint = 0;
 					}
-					print $stdout "$u1 => $u2\n";
-					$urlshort = $u4 || $u3 || $u1;
+					my $u1 = &descape($entry->{'url'});
+					if (defined($entry->{'video_info'})) {
+						foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
+							my $videourl = &descape($variant->{'url'});
+							print $stdout "$u1 => $videourl\n";
+						}
+					}
+					else {
+						my $u2 = &descape($entry->{'expanded_url'});
+						my $u3 = &descape($entry->{'media_url'});
+						my $u4 = &descape($entry->{'media_url_https'});
+						$u2 = $u4 || $u3 || $u2;
+						print $stdout "$u1 => $u2\n";
+					}
+					#To stay compliant with TOS we can only open the tco.
+					$urlshort = $u1;
 					$didprint++;
 				}
 			}
@@ -2955,23 +2978,22 @@ EOF
 				my $v;
 				my $didprint = 0;
 
-				# Twitter puts entities in multiple fields.
-				# Also target extended_entities
-				# Unfortunately if TOS-compliance means opening t.co links then Twitter uses one link for all photos
+				# Twitter puts entities in multiple fields. Now also target extended_entities
+				# Unfortunately if TOS-compliance means opening t.co links then Twitter uses one link for all photos, videos, etc
 				# so... no point opening multiple links if the same. Use hash to avoid duplicates
 				my $links = {};
-				foreach my $field (qw(entities extended_entities)) {
-					foreach $w (qw(media urls)) {
-						my $p = $hash->{$field}->{$w};
-						next if (!defined($p) ||
-							ref($p) ne 'ARRAY');
-						foreach $v (@{ $p }) {
-							next if (!defined($v) ||
-								ref($v) ne 'HASH');
-							next if (!length($v->{'url'}) ||
-								(!length($v->{'expanded_url'}) &&
-								!length($v->{'media_url'})));
-							my $u1 = &descape($v->{'url'});
+				foreach my $entities (qw(entities extended_entities)) {
+					foreach $type (qw(media urls)) {
+						my $array = $hash->{$entities}->{$type};
+						next if (!defined($array) ||
+							ref($array) ne 'ARRAY');
+						foreach $entry (@{ $array }) {
+							next if (!defined($entry) ||
+								ref($entry) ne 'HASH');
+							next if (!length($entry->{'url'}) ||
+								(!length($entry->{'expanded_url'}) &&
+								!length($entry->{'media_url'})));
+							my $u1 = &descape($entry->{'url'});
 							$links->{$u1} = 1;
 						}
 					}
@@ -3288,6 +3310,18 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		print $stdout "\n";
 		# and fall through to /dm
 	}
+        # Share a tweet through DM
+	if (s#^/qdm ([zZ]?[a-zA-Z]?[0-9]+) \@?([^\s]+)\s+##) {
+                my $code = lc($1);
+                my $tweet = &get_tweet($code);
+                if (!defined($tweet)) {
+                    print $stdout "-- no such tweet (yet?): $code\n";
+                    return 0;
+                }
+                $sn = &descape($tweet->{'user'}->{'screen_name'});
+		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
+		return &common_split_post($_ . " " . $quoted_status_url, undef, undef, $2);
+        }
 	# replyall (based on @FunnelFiasco's extension)
 	if (s#^/(v)?r(eply)?(to)?a(ll)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
 		my $mode = $1;
@@ -4930,34 +4964,12 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 		push(@{ $injected_json_ref }, $parent_t);
 	}
 	$my_json_ref = $injected_json_ref;
+	foreach $t  (@{ $my_json_ref }) {
+		$t = &destroy_all_tco($t);
+	}
 	# Set display max to suit injected json
 	$disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 
-	# Handle multiple entities, thanks to @myshkin (github) / @justarobert (twitter)
-	# But moved here instead of standardtweet
-	# This means we are actually modifying the text of the tweet, but that is only going to affect old style retweets which is ok I think
-	# TODO: For old-style retweets should manipulate and replace image urls with the t.co one
-	# Note: The search api does not include extended_entities
-	foreach $t (@{ $my_json_ref }) {
-		# Loop again until I can work this down to one loop
-		# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-		my $mediacount = scalar @{$t->{'extended_entities'}->{'media'}};
-		#print $stdout "Tweet: $t->{'id_str'} Media count: $mediacount\n";
-		if ($mediacount > 1) {
-			#Append everything from the second item in the extended_entities onwards since first is included in the tweet text
-			foreach my $v (@{$t->{'extended_entities'}->{'media'}}[1..$mediacount-1]) {
-				next if (!defined($v) || ref($v) ne 'HASH');
-				my $url = $v->{'media_url_https'} ||
-					$v->{'media_url'} ||
-					$v->{'expanded_url'};
-				next if (!length($url));
-				$t->{'text'} .= " " . &descape($url);
-			}
-		}
-		# Destroy all tco here since appending extended entities
-		# TODO: This means might now be unecessarily calling destroy elsewhere
-		$t = &destroy_all_tco($t);
-	}
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
 			if ($mini_id) {
@@ -5555,7 +5567,13 @@ sub standardtweet {
 	$tweet = "(x${h}) $tweet" if ($h > 1 && !$nonewrts);
 	# br3nda's modified timestamp patch
 	if ($timestamp) {
-		my ($time, $ts) = &$wraptime($ref->{'created_at'});
+                my ($time, $ts);
+		# Print the timestamp of the original tweet, not when it was RTed.
+		if (length($ref->{'retweeted_status'}->{'id_str'})) {
+			($time, $ts) = &wraptime($ref->{'retweeted_status'}->{'created_at'});
+                } else {
+			($time, $ts) = &wraptime($ref->{'created_at'});
+        	}
 		$tweet = "[$ts] $tweet";
 	}
 	
@@ -5587,6 +5605,9 @@ s/(^|[^a-zA-Z0-9_])\@([a-zA-Z0-9_\/]+)/\1\@${UNDER}\2${colour}/g;
 		$tweet = $topsub . $botsub;
 	}
 
+	if ($largeimages) {
+            $tweet =~ s#(https://pbs.twimg.com/media/\S+)\.(png|jpg)#\1.\2\:large#g;
+        }
 	return $tweet;
 }
 
@@ -5986,7 +6007,7 @@ sub defaulthandle {
 			"${EM}${menu_select}>${OFF} " :
 			"${menu_select}> ")
 		: '';
-
+        print $streamout "\n" if ($doublespace);
 	print $streamout $menu_select . $dclass . $stweet;
 	&sendnotifies($tweet_ref, $class);
 	return 1;
@@ -6130,11 +6151,11 @@ sub defaultautocompletion {
 	if ($start == 0 && $text =~ m#^/#) {
 		return sort grep(/^$qmtext/i, '/history',
 			'/print', '/quit', '/bye', '/again',
-			'/wagain', '/whois', '/thump', '/dm',
+			'/wagain', '/whois', '/thump', '/dm', '/qdm',
 			'/refresh', '/dmagain', '/set', '/help',
 			'/reply', '/url', '/thread', '/retweet', '/replyall',
 			'/replies', '/ruler', '/exit', '/me', '/vcheck',
-			'/oretweet', '/eretweet', '/fretweet', '/liston',
+			'/oretweet', '/eretweet', '/lretweet', '/liston',
 			'/listoff', '/dmsent', '/rtsof', '/rtson', '/rtsoff',
 			'/lists', '/withlist', '/add', '/padd', '/push',
 			'/pop', '/followers', '/friends', '/lfollow',
@@ -6503,6 +6524,12 @@ sub setvariable {
 				}
 				$supreturnto = $verbose;
 			}
+            # parse showusername
+            if ($key eq 'showusername') {
+                if ($value eq '1') {
+                    $showusername = 1;
+                }
+            }
 		}
 	# virtual keys
 	} elsif ($key eq 'tquery') {
@@ -7253,26 +7280,63 @@ sub destroy_all_tco {
 	my $hash = shift;
 	return $hash if ($notco);
 	my $v;
-	my $w;
+	my $type;
 
 	# Twitter puts entities in multiple fields.
-	# Target extended_entities as well, thanks to @myshkin (github) / @justarobert (twitter)
-	# from: https://gist.github.com/myshkin/5bfb2f5e795bc2cf2146#file-gistfile1-pl
-	foreach my $field (qw(entities extended_entities)) {
-		foreach $w (qw(media urls)) {
-			my $p = $hash->{$field}->{$w};
-			next if (!defined($p) || ref($p) ne 'ARRAY');
-			foreach $v (@{ $p }) {
-				next if (!defined($v) || ref($v) ne 'HASH');
-				next if (!length($v->{'url'}) ||
-					(!length($v->{'expanded_url'}) &&
-					 !length($v->{'media_url'})));
-				my $u1 = quotemeta($v->{'url'});
-				my $u2 = $v->{'expanded_url'};
-				my $u3 = $v->{'media_url'};
-				my $u4 = $v->{'media_url_https'};
-				$u2 = $u4 || $u3 || $u2;
-				$hash->{'text'} =~ s/$u1/$u2/;
+	# TODO: For old-style retweets should manipulate and revert back to t.co links
+	# Note: The search api does not include extended_entities
+	# Do extended first to get video urls, otherwise we'll just get a thumbnail
+	foreach my $entities (qw(extended_entities entities)) {
+		foreach $type (qw(media urls)) {
+			my $urls;
+			my $u1;
+			my $array = $hash->{$entities}->{$type};
+			next if (!defined($array) || ref($array) ne 'ARRAY');
+			foreach $entry (@{ $array }) {
+				next if (!defined($entry) || ref($entry) ne 'HASH');
+				next if (!length($entry->{'url'}) ||
+					(!length($entry->{'expanded_url'}) &&
+					 !length($entry->{'media_url'})));
+				# There is one canonical url even for multiple media (picture) entries
+				$u1 = $u1 || quotemeta($entry->{'url'});
+				if (defined($entry->{'video_info'})) {
+					# Need to look for content_type, pick mp4 and then the smallest bitrate (because got to decide something)
+					# Set bitrate to something ridiculously high so we will go lower than it
+					my $smallestbitrate = 10**100;
+					my $videourl;
+					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
+						if ($variant->{'content_type'} =~ /mp4/) {
+							my $bitrate = $variant->{'bitrate'};
+							if ($bitrate < $smallestbitrate) {
+								$smallestbitrate = $bitrate;
+								$videourl = $variant->{'url'} 
+							}
+						}
+					}
+					$urls = $urls . " " . $videourl;
+					$urls = strim($urls);
+				}
+				else {
+					my $tempurls = $entry->{'media_url_https'} || $entry->{'media_url'} || $entry->{'expanded_url'};
+					$urls = $urls . " " . $tempurls;
+					$urls = strim($urls);
+				}
+				if ($type eq 'urls') {
+					# Need to replace now and reset urls
+					if ($urls ne "") {
+						# Let's play safe and only replace the tco if we have something to replace it with
+						$hash->{'text'} =~ s/$u1/$urls/;
+					}
+					$urls = "";
+					$u1 = "";
+				}
+			}
+			if ($type eq 'media') {
+				# Then we need to replace outside of the above loop since one tco for all media entries
+				if ($urls ne "") {
+					# Let's play safe and only replace the tco if we have something to replace it with
+					$hash->{'text'} =~ s/$u1/$urls/;
+				}
 			}
 		}
 	}
