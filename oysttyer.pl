@@ -2985,7 +2985,7 @@ EOF
 				my $links = {};
 				foreach my $entities (qw(entities extended_entities)) {
 					foreach $type (qw(media urls)) {
-						my $array = $hash->{$field}->{$type};
+						my $array = $hash->{$entities}->{$type};
 						next if (!defined($array) ||
 							ref($array) ne 'ARRAY');
 						foreach $entry (@{ $array }) {
