@@ -60,7 +60,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter showusername largeimages doublespace
+		nofilter showusername largeimages origimages doublespace
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -106,7 +106,7 @@ BEGIN {
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
-		filteratonly nofilter rtsofmeurl largeimages
+		filteratonly nofilter rtsofmeurl largeimages origimages
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -765,6 +765,7 @@ $ansi = ($noansi) ? 0 :
 		? 1 : 0);
 $showusername ||= 0;
 $largeimages ||= 0;
+$origimages ||= 0;
 $doublespace ||= 0;
 
 # synch overrides these options.
@@ -5605,6 +5606,8 @@ s/(^|[^a-zA-Z0-9_])\@([a-zA-Z0-9_\/]+)/\1\@${UNDER}\2${colour}/g;
 
 	if ($largeimages) {
             $tweet =~ s#(https://pbs.twimg.com/media/\S+)\.(png|jpg)#\1.\2\:large#g;
+        } elsif ($origimages) {
+            $tweet =~ s#(https://pbs.twimg.com/media/\S+)\.(png|jpg)#\1.\2\:orig#g;
         }
 	return $tweet;
 }
