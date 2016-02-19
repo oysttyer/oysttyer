@@ -7414,27 +7414,22 @@ sub normalizejson {
 	# normalize newRTs
 	# if we get newRTs with -nonewrts, oh well
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
-		# reconstruct the RT in a "canonical" format
-		# without truncation, but detco it first
-		#$rt = &destroy_all_tco($rt);
+		# reconstruct the RT in a "canonical" format without truncation
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
-			#$qt = &destroy_all_tco($qt);
 			$qt = &fix_geo_api_data($qt);
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
-		#$qt = &destroy_all_tco($qt);
 		$qt = &fix_geo_api_data($qt);
 		$i->{'quoted_status'} = $qt;
 	}
 
-	#return;  &destroy_all_tco($i);
 	return $i;
 }
 
