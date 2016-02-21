@@ -4959,14 +4959,13 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
+		$t = &destroy_all_tco($t);
+		$parent_t = &destroy_all_tco($parent_t);
 		# Push the parent after the quote to get ordering correct
 		# Don't remove the url from the parent tweet though: https://twittercommunity.com/t/api-returns-url-to-twitters-status-update-at-the-end-of-the-text/50424/8
 		push(@{ $injected_json_ref }, $parent_t);
 	}
 	$my_json_ref = $injected_json_ref;
-	foreach $t  (@{ $my_json_ref }) {
-		$t = &destroy_all_tco($t);
-	}
 	# Set display max to suit injected json
 	$disp_max = &min($print_max, scalar(@{ $my_json_ref }));
 
