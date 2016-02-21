@@ -2821,7 +2821,8 @@ EOF
 			$id = 0;
 			$limit--;
 			if (defined($next) && ref($next) eq 'HASH') {
-				push(@{ $thread_ref }, &fix_geo_api_data($next));
+				push(@{ $thread_ref },
+					&fix_geo_api_data($next));
 				$id = $next->{'retweeted_status'}->{'id_str'}
 					|| $next->{'in_reply_to_status_id_str'}
 					|| $next->{'quoted_status_id_str'}
@@ -4959,8 +4960,6 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 				push(@{ $injected_json_ref }, $t);
 			}
 		}
-		$t = &destroy_all_tco($t);
-		$parent_t = &destroy_all_tco($parent_t);
 		# Push the parent after the quote to get ordering correct
 		# Don't remove the url from the parent tweet though: https://twittercommunity.com/t/api-returns-url-to-twitters-status-update-at-the-end-of-the-text/50424/8
 		push(@{ $injected_json_ref }, $parent_t);
@@ -7255,9 +7254,11 @@ sub grabjson {
 	# normalize the data into a standard form.
 	# single tweets such as from statuses/show aren't arrays, so
 	# we special-case for them.
+	# Issue48: /th doesn't go in the below. Why?
+	# Becuase it isn't liked or source... why have them in?
 	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
-		$my_json_ref->{'liked'} &&
-		$my_json_ref->{'source'} &&
+		#$my_json_ref->{'liked'} &&
+		#$my_json_ref->{'source'} &&
 		((0+$my_json_ref->{'id'}) ||
 			length($my_json_ref->{'id_str'}))) {
 		$my_json_ref = &normalizejson($my_json_ref);
@@ -7413,23 +7414,27 @@ sub normalizejson {
 	# normalize newRTs
 	# if we get newRTs with -nonewrts, oh well
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
-		# reconstruct the RT in a "canonical" format without truncation
+		# reconstruct the RT in a "canonical" format
+		# without truncation, but detco it first
+		$rt = &destroy_all_tco($rt);
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
+			$qt = &destroy_all_tco($qt);
 			$qt = &fix_geo_api_data($qt);
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
+		$qt = &destroy_all_tco($qt);
 		$qt = &fix_geo_api_data($qt);
 		$i->{'quoted_status'} = $qt;
 	}
 
-	return $i;
+	return &destroy_all_tco($i);
 }
 
 # process the JSON data ... simplemindedly, because I just write utter crap,
