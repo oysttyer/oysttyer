@@ -7254,11 +7254,7 @@ sub grabjson {
 	# normalize the data into a standard form.
 	# single tweets such as from statuses/show aren't arrays, so
 	# we special-case for them.
-	# Issue48: /th doesn't go in the below. Why?
-	# Becuase it isn't liked or source... why have them in?
 	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
-		#$my_json_ref->{'liked'} &&
-		#$my_json_ref->{'source'} &&
 		((0+$my_json_ref->{'id'}) ||
 			length($my_json_ref->{'id_str'}))) {
 		$my_json_ref = &normalizejson($my_json_ref);
