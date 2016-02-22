@@ -4971,9 +4971,9 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 	if ($disp_max) { # null list may be valid if we get code 304
 		unless ($is_background) { # reset store hash each console
 			if ($mini_id) {
-#TODO
-# generalize this at some point instead of hardcoded menu codes
-# maybe an ma0-mz9?
+				# TODO:
+				# generalize this at some point instead of hardcoded menu codes
+				# maybe an ma0-mz9?
 				$save_counter = $tweet_counter;
 				$tweet_counter = $mini_split;
 				for(0..9) {
@@ -7255,8 +7255,6 @@ sub grabjson {
 	# single tweets such as from statuses/show aren't arrays, so
 	# we special-case for them.
 	if (defined($my_json_ref) && ref($my_json_ref) eq 'HASH' &&
-		$my_json_ref->{'liked'} &&
-		$my_json_ref->{'source'} &&
 		((0+$my_json_ref->{'id'}) ||
 			length($my_json_ref->{'id_str'}))) {
 		$my_json_ref = &normalizejson($my_json_ref);
