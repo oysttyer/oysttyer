@@ -1,12 +1,17 @@
 #CHANGELOG
 
-##Changes in [NEXT RELEASE]:
+##Changes in version 2.6.1:
 
-- Add the ability to share tweets via direct message with the `/qdm` command.
+- Add the ability to share tweets via direct message with the `/qdm` command (Work towards of 2.7 milestone)
 - Use the Twitter account in the prompt instead of `oysttyer` when `showusername` is true.
 - Add ':large' to Twitter image URLs when `largeimages` is true.
 - Add a space between tweets when `doublespace` is true.
 - Fixed an issue where retweeted tweets displayed the wrong timestamp.
+- Fixed an issue where tco were not destroyed in threads
+- Display link to video file instead of link to video thumbnail in tweets
+- Display video files in `/entities`
+- Bring `/entities` back into Twitter TOS compliance and make it only open tco links (I.e. make it behave worse. Sorry)
+- Add tab expansion for like and retweet (missed from 2.5.1)
 
 ##Changes in version 2.6.0:
 
