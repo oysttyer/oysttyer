@@ -2480,7 +2480,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 ** READ THE COMPLETE DOCUMENTATION: http://oysttyer.github.io/oysttyer/
 
  oysttyer $oysttyer_VERSION is (c)2016 oysttyer organisation
-              (c)2007-20012 cameron kaiser + contributors.
+               (c)2007-2012 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
 
