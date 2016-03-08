@@ -5118,7 +5118,7 @@ sub dmrefresh {
 	# (unless user specifically requested it, or our timeline is off)
 	return if (!$interactive && !$last_id && !$notimeline); # NOT last_dm
 
-	$my_json_ref = &grabjson((($sent_dm) ? $dmsenturl : $dmurl),
+	$my_json_ref = &grabjson((($sent_dm) ? "$dmsenturl?full_text=true" : "$dmurl?full_text=true"),
 		(($sent_dm) ? 0 : $last_dm), 0, $dmfetchwanted, undef, 1)
 			if (!defined($my_json_ref) ||
 				ref($my_json_ref) ne 'ARRAY');
