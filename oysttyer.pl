@@ -1,4 +1,5 @@
-#!/usr/bin/env perl -s
+#!/usr/bin/perl -s
+# TODO: Eventually we should use Getopt::Long and go back to #!/usr/bin/env perl
 #########################################################################
 #
 # oysttyer v2.6 (c)2016-     oysttyer orginistion
