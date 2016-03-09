@@ -1,4 +1,4 @@
-#!/usr/bin/env perl -s
+#!/usr/bin/perl -s
 #########################################################################
 #
 # oysttyer v2.6 (c)2016-     oysttyer orginistion
