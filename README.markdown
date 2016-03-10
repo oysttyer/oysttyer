@@ -17,9 +17,14 @@ See the [oysttyer User Guide](http://oysttyer.github.io/docs/userGuide.html) for
 
 I think that's it?
 
-### Using your own ouathkey and oauthsecret
+### Using your own oauthkey and oauthsecret
 
-Since the transition from TTYtter, Twitter seem to be in the habit of muzzling us (their word for blocking write access). This is done at the oysttyer oauthkey/secret level so affects all users. As a (hopefully) temporary work-around until we can resolve this issue permanently with Twitter you can register our own app (You can call it whatever, but if you are stuck for a name call it "oysttyer-<your twitter handle>") and specify the `oauthkey` and `oauthsecret` in the `.oysttyerrc` file. Be sure to avoid trailing whitespace in you key/secret. You will, of course, have to re-authorise and get a new token. I suggest taking advantage of the existing keyfile functionality in oysttyer to do this.
+Since the transition from TTYtter, Twitter seem to be in the habit of muzzling us (their word for blocking write access). This is done at the oysttyer oauthkey/secret level so affects all users. As a (hopefully) temporary work-around until we can resolve this issue permanently with Twitter you can register our own app (You can call it whatever, but if you are stuck for a name call it "oysttyer-<your twitter handle>") and specify the `oauthkey` and `oauthsecret` in the `.oysttyerrc` file:
+
+	oauthkey=xxXxxXxxXXXXXxXxxxXXXxxXX
+	oauthsecret=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+Be sure to avoid trailing whitespace in your key/secret. You will, of course, have to re-authorise and get a new token. I suggest taking advantage of the existing keyfile functionality in oysttyer to do this. **Important**: If you are using you own oauthkey and oauthsecret to get a new token then that token will only work with your own oauthkey and oauthsecret. Tokens are not interchangeable between oauthkeys and oauthsecrets.
 
 ### New functionality since TTYtter 2.1
 
