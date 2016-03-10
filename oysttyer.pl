@@ -5617,7 +5617,7 @@ sub standarddm {
 
 	my ($time, $ts) = &$wraptime($ref->{'created_at'});
 	my $text = &descape($ref->{'text'});
-	my $sns = &descape($ref->{'sender'}->{'screen_name'});
+	my $sns = lc(&descape($ref->{'sender'}->{'screen_name'}));
 	if ($sns eq $whoami) {
 		$sns = "->" . &descape($ref->{'recipient'}->{'screen_name'});
 	}
