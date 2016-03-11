@@ -17,6 +17,12 @@ See the [oysttyer User Guide](http://oysttyer.github.io/docs/userGuide.html) for
 
 I think that's it?
 
+### Launching Oysttyer
+
+Depending on how you obtain oysttyer the file could already be executable so you can launch it directly (`./oysttyer.pl`) as long as the shebang matches your path to Perl or you alter the shebang so it does. However, it's probably a lot easier just to do:
+
+	perl oysttyer.pl
+
 ### Using your own oauthkey and oauthsecret
 
 Since the transition from TTYtter, Twitter seem to be in the habit of muzzling us (their word for blocking write access). This is done at the oysttyer oauthkey/secret level so affects all users. As a (hopefully) temporary work-around until we can resolve this issue permanently with Twitter you can register our own app (You can call it whatever, but if you are stuck for a name call it "oysttyer-<your twitter handle>") and specify the `oauthkey` and `oauthsecret` in the `.oysttyerrc` file:
