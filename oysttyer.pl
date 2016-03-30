@@ -1290,8 +1290,7 @@ for(;;) {
 "sorry, status too long: reduce by @{[ &length_tco($status)-$linelength ]} chars, ".
 "or use -autosplit={word,char,cut}.\n")
 		if (&length_tco($status) > $linelength && !$autosplit);
-	($status, $next) = &csplit($status, ($autosplit eq 'char' ||
-			$autosplit eq 'cut') ? 1 : 0)
+	($status, $next) = &csplit($status, $autosplit)
 		if (!length($next));
 	if ($autosplit eq 'cut' && length($next)) {
 		print "-- warning: input autotrimmed to $linelength bytes\n";
@@ -3785,8 +3784,7 @@ sub common_split_post {
 	if ( $dm_lead ne '' || $k =~ m/^[dD] / ) {
 		$maxchars = 2**53
 	}
-	my (@tweetstack) = &csplit($k, ($autosplit eq 'char' ||
-		$autosplit eq 'cut') ? 1 : 0, $maxchars);
+	my (@tweetstack) = &csplit($k, $autosplit, $maxchars);
 	my $m = shift(@tweetstack);
 	if (scalar(@tweetstack)) {
 		$l = "$dm_lead$m";
@@ -6361,6 +6359,8 @@ sub get_dm {
 	my $k = '';
 	my $l = '';
 	my $w = {'sender' => {}};
+	my $t1 = '';
+	my $t2 = '';
 	return undef if (length($code) < 3 || $code !~ s/^d//);
 
 	# this is the aforementioned "similar code" (see get_tweet).
@@ -6382,7 +6382,12 @@ sub get_dm {
 	($w->{'menu_select'}, $w->{'id_str'},
 		$w->{'sender'}->{'screen_name'}, $w->{'created_at'},
 			$l) = split(/\s/, $k, 5);
-	$w->{'text'} = pack("H*", $l);
+	#Truncate text if a little bit too long
+	($t1, $t2) = &csplit(pack("H*", $l), "word");
+	if (length($t2)) {
+		$t1 .= "...";
+	}
+	$w->{'text'} = $t1;
 	return undef if (!length($w->{'text'})); # not possible
 	$w->{'created_at'} =~ s/_/ /g;
 	return $w;
@@ -7917,21 +7922,21 @@ sub length_newline {
 }
 # take a string and return up to $maxchars CHARS plus the rest.
 sub csplit {
-	my ($orig_k, $mode, $maxchars) = @_;
-	return &cosplit($orig_k, $mode, $maxchars, sub { return  &length_tco(shift); });
+	my ($orig_k, $autosplit, $maxchars) = @_;
+	return &cosplit($orig_k, $autosplit, $maxchars, sub { return  &length_tco(shift); });
 }
 # take a string and return up to $linelength BYTES plus the rest.
 # usplit isn't used, but best change it as well
 sub usplit {
-	my ($orig_k, $mode, $maxchars) = @_;
-	return &cosplit(@_, sub { return &ulength_tco(shift); });
+	my ($orig_k, $autosplit, $maxchars) = @_;
+	return &cosplit($orig_k, $autosplit, $maxchars, sub { return &ulength_tco(shift); });
 }
 sub cosplit {
 	# this is the common code for &csplit and &usplit.
 	# this is tricky because we don't want to split up UTF-8 sequences, so
 	# we let Perl do the work since it internally knows where they end.
 	my $orig_k = shift;
-	my $mode = shift;
+	my $autosplit = shift;
 	my $maxchars = shift;
 	my $lengthsub = shift;
 	my $z;
@@ -7943,7 +7948,7 @@ sub cosplit {
 		$maxchars = $linelength;
 	}
 
-	$mode += 0;
+	my $mode = ($autosplit eq 'char' || $autosplit eq 'cut') ? 1 : 0;
 	$k = $orig_k;
 
 	# optimize whitespace
@@ -7976,7 +7981,7 @@ sub cosplit {
 		($q =~ s/([^a-zA-Z0-9]+)$//) && ($m = "$1$m");
 		# optimize again in case we split on whitespace
 		$q =~ s/\s+$//;
-		return (&cosplit($orig_k, 1, $lengthsub))
+		return (&cosplit($orig_k, "cut", $lengthsub))
 			#Don't need to use length_newline here becausen only checking for whether zero length is true
 			if (!length($q) && !$mode);
 			# it totally failed. fall back on charsplit.
@@ -7987,7 +7992,7 @@ sub cosplit {
 	}
 	($q =~ s/\s+([^\s]+)$//) && ($m = "$1$m");
 	#Don't need to use length_newline here because only checking for whether zero length is true
-	return (&cosplit($orig_k, 1, $lengthsub)) if (!length($q) && !$mode);
+	return (&cosplit($orig_k, "cut", $lengthsub)) if (!length($q) && !$mode);
 		# it totally failed. fall back on charsplit.
 	return ($q, "$r$m");
 }
