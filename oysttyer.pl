@@ -659,6 +659,7 @@ $long ||= undef;
 $location ||= 0;
 $linelength ||= 140;
 $quotelinelength ||= 116;
+$dm_text_character_limit ||= 10000;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
 $apibase ||= "${http_proto}://api.twitter.com/1.1";
@@ -1317,7 +1318,10 @@ for(;;) {
 		}
 	}
 	if ($rv || &is_fail_whale($data) || &is_json_error($data)) {
-		if (&is_fail_whale($data)) {
+		if ($rv == 96 || $rv == 97 || $rv == 99) {
+			print "post CANCELLED!\n";
+			exit(1);
+		} elsif (&is_fail_whale($data)) {
 			print "FAILED -- Fail Whale detected\n";
 		} elsif ($x = &is_json_error($data)) {
 			print "FAILED!\n*** server reports: \"$x\"\n";
@@ -1686,6 +1690,16 @@ sub send_removereadline {
 	$termrl->removereadline;
 	$removereadlinecache = sub { $termrl->removereadline; };
 }
+sub s {
+	if ($is_background) {
+		push(@stream_buf, [ @_ ]);
+	} else {
+		my $aa = $_[0];
+		print $aa "$_[1]";
+	}
+}
+sub std { &s($stdout, @_); }
+sub sto { &s($streamout, @_); }
 
 # start the background process
 # this has to be last or the background process can't see the full API
@@ -3782,7 +3796,7 @@ sub common_split_post {
 	}
 	# Direct messages allegedly have no length restrictions now
 	if ( $dm_lead ne '' || $k =~ m/^[dD] / ) {
-		$maxchars = 2**53
+		$maxchars = $dm_text_character_limit;
 	}
 	my (@tweetstack) = &csplit($k, $autosplit, $maxchars);
 	my $m = shift(@tweetstack);
@@ -5200,11 +5214,83 @@ sub updatest {
 			($rt_id) ? 'RE-tweet' :
 			'tweet';
 
+	my $needs_editor = 0;
+
 	if ($anonymous) {
 		print $stdout
 		"-- sorry, you can't $verb if you're anonymous.\n"
 			if ($interactive);
 		return 99;
+	}
+
+	# Stolen from Floodgap's texapp
+	# trigger the editor if $string ends in %ED%
+	# TODO: Think about enabling $EDITOR for normal posts as well for easier newline insertion
+	#if ($string =~ s/%ED(R?P?)%$//) {
+	if (($string =~ s/%ED%$//) && length($user_name_dm)) {
+		my $fn = "/tmp/oysttyer-".$$.time().".txt";
+		my $editor = $ENV{'EDITOR'} || "/usr/bin/vi";
+		my $can_fail = 1;
+		$needs_editor = 1;
+
+		# try to validate, if it's not too complicated
+		if (! -x $editor) {
+			my $binname = $editor;
+			if ($binname !~ /\\/) {
+				($binname, $crap) = split(/\s+/, $binname, 2)
+					if ($binname =~ /\s/);
+				if (! -x $binname) {
+					&std("-- editor $binname seems invalid; set full path to EDITOR\n");
+					return 96;
+				}
+			}
+		}
+		# Seems rude, but is probably true:
+		&std(
+		"-- warning: user likes emacs and probably has poor hygiene\n")
+			if ($editor =~ /emacs/);
+		if(!open(K, ">$fn")) {
+			&std("-- unable to create $fn: $!\n");
+			return 96;
+		}
+		while ($can_fail) {
+			# hold the background during editing
+			&ensure_held;
+			system("$editor $fn");
+			&ensure_not_held;
+
+			if(!open(K, "$fn")) {
+				&std("-- unable to read back $fn: $!\n");
+				return 96;
+			}
+			$string = '';
+			while(<K>) {
+				$string .= $_;
+			}
+			close(K);
+			$can_fail = 0;
+
+			# the editor has to enforce line length
+			if (length($string) > $dm_text_character_limit) {
+				&std(
+	"-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n");
+				$string = '';
+				$can_fail = 1;
+			}
+			if ($can_fail) {
+				my $answer = lc(&linein(
+			"-- edit again? (only y or Y is affirmative):"));
+				$can_fail = 0 unless ($answer eq 'y');
+			}
+		}
+		unlink($fn) || &std("-- warning: couldn't remove $fn: $!\n");
+		$string =~ s/\s+$//;
+		chomp($string);
+		$string =~ s/\s+$//;
+		if (!length($string)) {
+			&std("-- editor returned nothing, not posting\n");
+			return 97;
+		}
 	}
 
 	# "the pastebrake"
@@ -6441,8 +6527,25 @@ sub sendbackgroundkey {
 	print C substr(unpack("${pack_magic}H*", $value).$space_pad, 0, 1024);
 }
 
+# hold stolen from Floodgap's Texapp
+sub hold {
+	$holdhold ^= 1;
+	print C "hold---------------\n" unless ($synch);
+	&sync_semaphore;
+}
+
 sub thump { print C "update-------------\n"; &sync_semaphore; }
 sub dmthump { print C "dmthump------------\n"; &sync_semaphore; }
+
+# ensure_held and ensure_not_held stolen from Floodgap's Texapp
+sub ensure_held {
+	return if ($holdhold || $synch);
+	&hold;
+}
+sub ensure_not_held {
+	return if (!$holdhold || $synch);
+	&hold;
+}
 
 sub sync_n_quit {
 	if ($child) {
