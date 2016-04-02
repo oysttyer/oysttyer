@@ -3985,6 +3985,7 @@ if ($dostream) {
 }
 
 $interactive = $previous_last_id = $we_got_signal = 0;
+$hold = 0;
 $suspend_output = -1;
 $stream_failure = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
@@ -4173,7 +4174,10 @@ EOF
 		# we received a command from the console, so let's look at it.
 		print $stdout "-- command received ", scalar
 				localtime, " $rout" if ($verbose);
-		if ($rout =~ /^rsga/) {
+		if ($rout =~ /^hold/) {
+			$holdhold ^= 1; # toggle hold flag
+			goto RESTART_SELECT;
+		} elsif ($rout =~ /^rsga/) {
 			$suspend_output = 0; # reset our status
 			goto RESTART_SELECT;
 		} elsif ($rout =~ /^pipet (..)/) {
@@ -4339,7 +4343,7 @@ EOF
 			}
 		}
 	} else {
-		if ($we_got_signal || $nfound == -1) {
+		if ($we_got_signal || $nfound == -1 || $holdhold) {
 			# we need to restart the call. we might be waiting
 			# longer, but this is unavoidable.
 			goto RESTART_SELECT;
