@@ -750,6 +750,7 @@ $superverbose ||= 0;
 $avatar ||= "";
 $urlopen ||= 'echo %U';
 $hold ||= 0;
+$holdhold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
 undef $shadow_history;
