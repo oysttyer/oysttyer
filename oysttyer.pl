@@ -1691,17 +1691,6 @@ sub send_removereadline {
 	$termrl->removereadline;
 	$removereadlinecache = sub { $termrl->removereadline; };
 }
-sub s {
-	if ($is_background) {
-		push(@stream_buf, [ @_ ]);
-	} else {
-		my $aa = $_[0];
-		print $aa "$_[1]";
-	}
-}
-sub std { &s($stdout, @_); }
-# sto not (yet?) used, but copied over for reference. See: d827d6d064c97b9af58837cbe3f0fc196589e8d7
-sub sto { &s($streamout, @_); }
 
 # start the background process
 # this has to be last or the background process can't see the full API
@@ -5232,7 +5221,7 @@ sub updatest {
 	# Stolen from Floodgap's texapp
 	# trigger the editor if $string ends in %ED%
 	# TODO: Think about enabling $EDITOR for normal posts as well for easier newline insertion
-	#if ($string =~ s/%ED(R?P?)%$//) {
+	# TODO: OR think about triggering this via a /dme or /edm command
 	if (($string =~ s/%ED%$//) && length($user_name_dm)) {
 		my $fn = "/tmp/oysttyer-".$$.time().".txt";
 		my $editor = $ENV{'EDITOR'} || "/usr/bin/vi";
@@ -5246,17 +5235,15 @@ sub updatest {
 				($binname, $crap) = split(/\s+/, $binname, 2)
 					if ($binname =~ /\s/);
 				if (! -x $binname) {
-					&std("-- editor $binname seems invalid; set full path to EDITOR\n");
+					print $stdout "-- editor $binname seems invalid; set full path to EDITOR\n";
 					return 96;
 				}
 			}
 		}
 		# Seems rude, but is probably true:
-		&std(
-		"-- warning: user likes emacs and probably has poor hygiene\n")
-			if ($editor =~ /emacs/);
+		print $stdout "-- warning: user likes emacs and probably has poor hygiene\n" if ($editor =~ /emacs/);
 		if(!open(K, ">$fn")) {
-			&std("-- unable to create $fn: $!\n");
+			print $stdout "-- unable to create $fn: $!\n";
 			return 96;
 		}
 		print K $string if (length($string));
@@ -5268,7 +5255,7 @@ sub updatest {
 			&ensure_not_held;
 
 			if(!open(K, "$fn")) {
-				&std("-- unable to read back $fn: $!\n");
+				print $stdout "-- unable to read back $fn: $!\n";
 				return 96;
 			}
 			$string = '';
@@ -5280,8 +5267,7 @@ sub updatest {
 
 			# the editor has to enforce line length
 			if (length($string) > $dm_text_character_limit) {
-				&std(
-	"-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n");
+				print $stdout "-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n";
 				$string = '';
 				$can_fail = 1;
 			}
@@ -5291,12 +5277,12 @@ sub updatest {
 				$can_fail = 0 unless ($answer eq 'y');
 			}
 		}
-		unlink($fn) || &std("-- warning: couldn't remove $fn: $!\n");
+		unlink($fn) || print $stdout "-- warning: couldn't remove $fn: $!\n";
 		$string =~ s/\s+$//;
 		chomp($string);
 		$string =~ s/\s+$//;
 		if (!length($string)) {
-			&std("-- editor returned nothing, not posting\n");
+			print $stdout "-- editor returned nothing, not posting\n";
 			return 97;
 		}
 	}
