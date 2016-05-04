@@ -1700,6 +1700,7 @@ sub s {
 	}
 }
 sub std { &s($stdout, @_); }
+# sto not (yet?) used, but copied over for reference. See: d827d6d064c97b9af58837cbe3f0fc196589e8d7
 sub sto { &s($streamout, @_); }
 
 # start the background process
