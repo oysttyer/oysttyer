@@ -5259,6 +5259,8 @@ sub updatest {
 			&std("-- unable to create $fn: $!\n");
 			return 96;
 		}
+		print K $string if (length($string));
+		close(K);
 		while ($can_fail) {
 			# hold the background during editing
 			&ensure_held;
