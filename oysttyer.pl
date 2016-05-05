@@ -3328,6 +3328,92 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
 		return &common_split_post($_ . " " . $quoted_status_url, undef, undef, $2);
 	}
+	if (s#^/e(dm)?re(ply)? ([dD][a-zA-Z]?[0-9]+) ## && length) {
+		my $code = lc($3);
+		my $dm = &get_dm($code);
+		if (!defined($dm)) {
+			print $stdout "-- no such DM (yet?): $code\n";
+			return 0;
+		}
+		# in the future, add DM in_reply_to here
+		my $target = &descape($dm->{'sender'}->{'screen_name'});
+		$readline_completion{'@'.lc($target)}++ if ($termrl);
+		$_ = "/edm $target $_";
+		# and fall through to edm
+	}
+	if (s#^/edm \@?([^\s]+)\s+## && length)  {
+		
+		#So this mostly works, but newlines are stripped. Gah!
+
+		# Stolen from Floodgap's texapp
+		my $string = $_;
+		my $target = $1;
+		print $stdout $target;
+		my $fn = "/tmp/oysttyer-".$$.time().".txt";
+		my $editor = $ENV{'EDITOR'} || "/usr/bin/vi";
+		my $can_fail = 1;
+
+		# try to validate, if it's not too complicated
+		if (! -x $editor) {
+			my $binname = $editor;
+			if ($binname !~ /\\/) {
+				($binname, $crap) = split(/\s+/, $binname, 2)
+					if ($binname =~ /\s/);
+				if (! -x $binname) {
+					print $stdout "-- editor $binname seems invalid; set full path to EDITOR\n";
+					return 96;
+				}
+			}
+		}
+		# Seems rude, but is probably true:
+		print $stdout "-- warning: user likes emacs and probably has poor hygiene\n" if ($editor =~ /emacs/);
+		if(!open(K, ">$fn")) {
+			print $stdout "-- unable to create $fn: $!\n";
+			return 96;
+		}
+		print K $string if (length($string));
+		close(K);
+		while ($can_fail) {
+			# hold the background during editing
+			&ensure_held;
+			system("$editor $fn");
+			&ensure_not_held;
+
+			if(!open(K, "$fn")) {
+				print $stdout "-- unable to read back $fn: $!\n";
+				return 96;
+			}
+			$string = '';
+			while(<K>) {
+				$string .= $_;
+			}
+			close(K);
+			$can_fail = 0;
+
+			# the editor has to enforce line length
+			if (length($string) > $dm_text_character_limit) {
+				print $stdout "-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n";
+				$string = '';
+				$can_fail = 1;
+			}
+			if ($can_fail) {
+				my $answer = lc(&linein(
+			"-- edit again? (only y or Y is affirmative):"));
+				$can_fail = 0 unless ($answer eq 'y');
+			}
+		}
+		unlink($fn) || print $stdout "-- warning: couldn't remove $fn: $!\n";
+		$string =~ s/\s+$//;
+		chomp($string);
+		$string =~ s/\s+$//;
+		if (!length($string)) {
+			print $stdout "-- editor returned nothing, not posting\n";
+			return 97;
+		}
+		# and fall through to dm
+		$_ = "/dm $target $string";
+
+	}
 	# replyall (based on @FunnelFiasco's extension)
 	if (s#^/(v)?r(eply)?(to)?a(ll)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
 		my $mode = $1;
@@ -5209,82 +5295,11 @@ sub updatest {
 			($rt_id) ? 'RE-tweet' :
 			'tweet';
 
-	my $needs_editor = 0;
-
 	if ($anonymous) {
 		print $stdout
 		"-- sorry, you can't $verb if you're anonymous.\n"
 			if ($interactive);
 		return 99;
-	}
-
-	# Stolen from Floodgap's texapp
-	# trigger the editor if $string ends in %ED%
-	# TODO: Think about enabling $EDITOR for normal posts as well for easier newline insertion
-	# TODO: OR think about triggering this via a /dme or /edm command
-	if (($string =~ s/%ED%$//) && length($user_name_dm)) {
-		my $fn = "/tmp/oysttyer-".$$.time().".txt";
-		my $editor = $ENV{'EDITOR'} || "/usr/bin/vi";
-		my $can_fail = 1;
-		$needs_editor = 1;
-
-		# try to validate, if it's not too complicated
-		if (! -x $editor) {
-			my $binname = $editor;
-			if ($binname !~ /\\/) {
-				($binname, $crap) = split(/\s+/, $binname, 2)
-					if ($binname =~ /\s/);
-				if (! -x $binname) {
-					print $stdout "-- editor $binname seems invalid; set full path to EDITOR\n";
-					return 96;
-				}
-			}
-		}
-		# Seems rude, but is probably true:
-		print $stdout "-- warning: user likes emacs and probably has poor hygiene\n" if ($editor =~ /emacs/);
-		if(!open(K, ">$fn")) {
-			print $stdout "-- unable to create $fn: $!\n";
-			return 96;
-		}
-		print K $string if (length($string));
-		close(K);
-		while ($can_fail) {
-			# hold the background during editing
-			&ensure_held;
-			system("$editor $fn");
-			&ensure_not_held;
-
-			if(!open(K, "$fn")) {
-				print $stdout "-- unable to read back $fn: $!\n";
-				return 96;
-			}
-			$string = '';
-			while(<K>) {
-				$string .= $_;
-			}
-			close(K);
-			$can_fail = 0;
-
-			# the editor has to enforce line length
-			if (length($string) > $dm_text_character_limit) {
-				print $stdout "-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n";
-				$string = '';
-				$can_fail = 1;
-			}
-			if ($can_fail) {
-				my $answer = lc(&linein(
-			"-- edit again? (only y or Y is affirmative):"));
-				$can_fail = 0 unless ($answer eq 'y');
-			}
-		}
-		unlink($fn) || print $stdout "-- warning: couldn't remove $fn: $!\n";
-		$string =~ s/\s+$//;
-		chomp($string);
-		$string =~ s/\s+$//;
-		if (!length($string)) {
-			print $stdout "-- editor returned nothing, not posting\n";
-			return 97;
-		}
 	}
 
 	# "the pastebrake"
