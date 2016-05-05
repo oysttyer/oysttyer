@@ -3343,8 +3343,6 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 	}
 	if (s#^/edm \@?([^\s]+)\s+## && length)  {
 		
-		#So this mostly works, but newlines are stripped. Gah!
-
 		# Stolen from Floodgap's texapp
 		my $string = $_;
 		my $target = $1;
@@ -3410,6 +3408,8 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 			print $stdout "-- editor returned nothing, not posting\n";
 			return 97;
 		}
+		#Handle newlines because otherwise they get flattened
+		$string =~ s/\n/\\n/sg;
 		# and fall through to dm
 		$_ = "/dm $target $string";
 
