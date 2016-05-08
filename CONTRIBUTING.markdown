@@ -20,7 +20,7 @@ If you are a member of Oysttyer you already have commit access. It is expected y
 
 ### You have ideas/bugs:
 
-- Just open an issue with ideas for features or bugs you have found
+- Just open an issue with ideas for features or bugs you have found. For bugs please provide the version (commit or tag) you are using.
 
 ## Useful tools for developers
 
