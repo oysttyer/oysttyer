@@ -727,7 +727,7 @@ $getfliurl ||= "${apibase}/lists/subscribers.json";
 $getliurl ||= "${apibase}/lists/members.json";
 $statusliurl ||= "${apibase}/lists/statuses.json";
 
-$streamurl ||= "https://userstream.twitter.com/2/user.json";
+$streamurl ||= "https://userstream.twitter.com/1.1/user.json";
 $dostream ||= 0;
 $eventbuf ||= 0;
 
