@@ -659,7 +659,6 @@ $long ||= undef;
 $location ||= 0;
 $linelength ||= 140;
 $quotelinelength ||= 116;
-$dm_text_character_limit ||= 10000;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
 $apibase ||= "${http_proto}://api.twitter.com/1.1";
@@ -750,7 +749,6 @@ $superverbose ||= 0;
 $avatar ||= "";
 $urlopen ||= 'echo %U';
 $hold ||= 0;
-$holdhold ||= 0;
 $daemon ||= 0;
 $maxhist ||= 19;
 undef $shadow_history;
@@ -1319,10 +1317,7 @@ for(;;) {
 		}
 	}
 	if ($rv || &is_fail_whale($data) || &is_json_error($data)) {
-		if ($rv == 96 || $rv == 97 || $rv == 99) {
-			print "post CANCELLED!\n";
-			exit(1);
-		} elsif (&is_fail_whale($data)) {
+		if (&is_fail_whale($data)) {
 			print "FAILED -- Fail Whale detected\n";
 		} elsif ($x = &is_json_error($data)) {
 			print "FAILED!\n*** server reports: \"$x\"\n";
@@ -3328,92 +3323,6 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		$quoted_status_url = "${http_proto}://twitter.com/$sn/statuses/$tweet->{'id_str'}";
 		return &common_split_post($_ . " " . $quoted_status_url, undef, undef, $2);
 	}
-	if (s#^/e(dm)?re(ply)? ([dD][a-zA-Z]?[0-9]+) ## && length) {
-		my $code = lc($3);
-		my $dm = &get_dm($code);
-		if (!defined($dm)) {
-			print $stdout "-- no such DM (yet?): $code\n";
-			return 0;
-		}
-		# in the future, add DM in_reply_to here
-		my $target = &descape($dm->{'sender'}->{'screen_name'});
-		$readline_completion{'@'.lc($target)}++ if ($termrl);
-		$_ = "/edm $target $_";
-		# and fall through to edm
-	}
-	if (s#^/edm \@?([^\s]+)\s+## && length)  {
-		
-		# Stolen from Floodgap's texapp
-		my $string = $_;
-		my $target = $1;
-		print $stdout $target;
-		my $fn = "/tmp/oysttyer-".$$.time().".txt";
-		my $editor = $ENV{'EDITOR'} || "/usr/bin/vi";
-		my $can_fail = 1;
-
-		# try to validate, if it's not too complicated
-		if (! -x $editor) {
-			my $binname = $editor;
-			if ($binname !~ /\\/) {
-				($binname, $crap) = split(/\s+/, $binname, 2)
-					if ($binname =~ /\s/);
-				if (! -x $binname) {
-					print $stdout "-- editor $binname seems invalid; set full path to EDITOR\n";
-					return 96;
-				}
-			}
-		}
-		# Seems rude, but is probably true:
-		print $stdout "-- warning: user likes emacs and probably has poor hygiene\n" if ($editor =~ /emacs/);
-		if(!open(K, ">$fn")) {
-			print $stdout "-- unable to create $fn: $!\n";
-			return 96;
-		}
-		print K $string if (length($string));
-		close(K);
-		while ($can_fail) {
-			# hold the background during editing
-			&ensure_held;
-			system("$editor $fn");
-			&ensure_not_held;
-
-			if(!open(K, "$fn")) {
-				print $stdout "-- unable to read back $fn: $!\n";
-				return 96;
-			}
-			$string = '';
-			while(<K>) {
-				$string .= $_;
-			}
-			close(K);
-			$can_fail = 0;
-
-			# the editor has to enforce line length
-			if (length($string) > $dm_text_character_limit) {
-				print $stdout "-- too long: @{[ length($string) ]} characters, max $dm_text_character_limit\n";
-				$string = '';
-				$can_fail = 1;
-			}
-			if ($can_fail) {
-				my $answer = lc(&linein(
-			"-- edit again? (only y or Y is affirmative):"));
-				$can_fail = 0 unless ($answer eq 'y');
-			}
-		}
-		unlink($fn) || print $stdout "-- warning: couldn't remove $fn: $!\n";
-		$string =~ s/\s+$//;
-		chomp($string);
-		$string =~ s/\s+$//;
-		if (!length($string)) {
-			print $stdout "-- editor returned nothing, not posting\n";
-			return 97;
-		}
-		#Handle newlines because otherwise they get flattened
-		$string =~ s/\n/\\n/sg;
-		# and fall through to dm
-		$_ = "/dm $target $string";
-
-	}
 	# replyall (based on @FunnelFiasco's extension)
 	if (s#^/(v)?r(eply)?(to)?a(ll)? ([zZ]?[a-zA-Z]?[0-9]+) ## && length) {
 		my $mode = $1;
@@ -3873,7 +3782,7 @@ sub common_split_post {
 	}
 	# Direct messages allegedly have no length restrictions now
 	if ( $dm_lead ne '' || $k =~ m/^[dD] / ) {
-		$maxchars = $dm_text_character_limit;
+		$maxchars = 2**53
 	}
 	my (@tweetstack) = &csplit($k, $autosplit, $maxchars);
 	my $m = shift(@tweetstack);
@@ -4062,7 +3971,6 @@ if ($dostream) {
 }
 
 $interactive = $previous_last_id = $we_got_signal = 0;
-$hold = 0;
 $suspend_output = -1;
 $stream_failure = 0;
 $dm_first_time = ($dmpause) ? 1 : 0;
@@ -4251,10 +4159,7 @@ EOF
 		# we received a command from the console, so let's look at it.
 		print $stdout "-- command received ", scalar
 				localtime, " $rout" if ($verbose);
-		if ($rout =~ /^hold/) {
-			$holdhold ^= 1; # toggle hold flag
-			goto RESTART_SELECT;
-		} elsif ($rout =~ /^rsga/) {
+		if ($rout =~ /^rsga/) {
 			$suspend_output = 0; # reset our status
 			goto RESTART_SELECT;
 		} elsif ($rout =~ /^pipet (..)/) {
@@ -4420,7 +4325,7 @@ EOF
 			}
 		}
 	} else {
-		if ($we_got_signal || $nfound == -1 || $holdhold) {
+		if ($we_got_signal || $nfound == -1) {
 			# we need to restart the call. we might be waiting
 			# longer, but this is unavoidable.
 			goto RESTART_SELECT;
@@ -6536,25 +6441,8 @@ sub sendbackgroundkey {
 	print C substr(unpack("${pack_magic}H*", $value).$space_pad, 0, 1024);
 }
 
-# hold stolen from Floodgap's Texapp
-sub hold {
-	$holdhold ^= 1;
-	print C "hold---------------\n" unless ($synch);
-	&sync_semaphore;
-}
-
 sub thump { print C "update-------------\n"; &sync_semaphore; }
 sub dmthump { print C "dmthump------------\n"; &sync_semaphore; }
-
-# ensure_held and ensure_not_held stolen from Floodgap's Texapp
-sub ensure_held {
-	return if ($holdhold || $synch);
-	&hold;
-}
-sub ensure_not_held {
-	return if (!$holdhold || $synch);
-	&hold;
-}
 
 sub sync_n_quit {
 	if ($child) {
