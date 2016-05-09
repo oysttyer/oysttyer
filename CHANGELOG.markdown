@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in version 2.6.3:
+
+- Nothing over 2.6.2. I just can't tag things properly
+
 ##Changes in version 2.6.2:
 
 - Correct year on startup screen
