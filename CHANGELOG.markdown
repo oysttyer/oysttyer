@@ -1,5 +1,15 @@
 #CHANGELOG
 
+##Changes in version 2.6.2:
+
+- Correct year on startup screen
+- Adds very rudimentary CI syntax checks
+- Expand long DMs suring start-up
+- Nicely truncate long DMs when using /dump
+- Revert shebang to original
+- Fix a bug where whoami comparison was not lowercased for sent dms
+- Update userstream endpoint
+
 ##Changes in version 2.6.1:
 
 - Add the ability to share tweets via direct message with the `/qdm` command (Work towards of 2.7 milestone)
