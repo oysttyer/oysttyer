@@ -903,7 +903,7 @@ if ($lynx) {
 	$simple_agent = "$baseagent -s -m 20";
 
 	@wend = ('-s', '-m', '20', '-A', "oysttyer/$oysttyer_VERSION",
-			'-H', 'Expect:');
+			'--http1.1', '-H', 'Expect:');
 	@wind = @wend;
 	$stringify_args = sub {
 		my $basecom = shift;
