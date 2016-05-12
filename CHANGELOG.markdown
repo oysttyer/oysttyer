@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in Version 2.6.4:
+
+- Add --http1.1 flag to curl to suit versions after  7.47.0. Earliest supported curl is now 7.33.0
+
 ##Changes in version 2.6.3:
 
 - Nothing over 2.6.2. I just can't tag things properly
