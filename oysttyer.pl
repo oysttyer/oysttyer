@@ -2408,7 +2408,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 
 	if ($_ eq '/help' || $_ eq '/?') {
 		print <<'EOF';
-
+[1 of 5]
       *** BASIC COMMANDS:  :a$AAOOOOOOOOOOOOOOOOOAA$a,     ==================
                          +@A:.                     .:B@+    ANYTHING WITHOUT
    /refresh              =@B     HELP!!!  HELP!!!    B@=     A LEADING / IS
@@ -2432,27 +2432,31 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
       shows replies and mentions.    o@BOB@B$B@BO#@+     USE + FOR A COUNT:
                                      o@*.a@o a@o.$@+ /re +30 => last 30 replies
    /quit resumes your boring life.   o@B$B@o a@A$#@+ ==========================
+
 EOF
 		&linein("PRESS RETURN/ENTER>");
 		print <<"EOF";
-
+[2 of 5]
 +- MORE COMMANDS --+  -=-=- USER STUFF -=-=-
 |                  |  /whois username           displays info about username
 | See the oysttyer |  /again username           views their most recent tweets
 |  home page for   |  /wagain username          combines them all
 |  complete list   |  /follow username          follow a username
 |                  |  /leave username           stop following a username
-+----------------- +  /dm username message      send a username a DM
++----------------- +
 
-+--- TWEET AND DM SELECTION -------------------------------------------------+
-| all DMs and tweets have menu codes (letters + number, d for DMs). example: |
+EOF
+		&linein("PRESS RETURN/ENTER>");
+		print <<"EOF";
+[3 of 5]
++--- TWEET SELECTION --------------------------------------------------------+
+| all tweets have menu codes (letters + number). example:                    |
 |      a5> <oysttyer> Send me Dr Pepper http://oysttyer.github.io/oysttyer/  |
-|      [DM da0][oysttyer/Sun Jan 32 1969] I think you are cute               |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
-|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)       |
+|      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)        |
 | /thread a5                        if a5 is part of a thread (the username  |
-|                                   has a \@ or \") then show all posts up   |
+|                                   has a \@ or \") then show all posts up     |
 |                                   to that                                  |
 | /url a5                           opens all URLs in tweet a5               |
 |      Mac OS X users, do first: /set urlopen open %U                        |
@@ -2460,20 +2464,31 @@ EOF
 | /delete a5                        deletes tweet a5, if it's your tweet     |
 | /rt a5 <optional message>         retweets (or quotes) tweet a5            |
 |      example: /rt a5                                                       |
-|      becomes: RT \@oysttyer: Send me...                                    |
+|      becomes: RT \@oysttyer: Send me...                                     |
 |      example: /rt a5 message                                               |
 |      becomes: Some smart comment about [tweet a5]                          |
-| /qdm a5 <username> <optional message>                                      |
-|      example: /qdm a5 \@oysttyer A secret comment about this tweet         |
-|      becomes: d oysttyer A secret comment about this tweet https://...     |
- +-- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end --+
-=====> /reply, /delete and /url work for direct message menu codes too! <=====
++--- Abbreviations: /re, /th, /url, /del --- menu codes wrap around at end --+
+
 EOF
 		&linein("PRESS RETURN/ENTER>");
 		print <<"EOF";
+[4 of 5]
++--- DM SPECIFIC ------------------------------------------------------------+
+| all DMs have menu codes (letters + number, prefixed with d). example:      |
+|      [DM da0][oysttyer/Sun Jan 32 1969] I think you are cute               |
+| /dm username message              send a username a DM                     |
+| /qdm a5 username <optional text>  Share a tweet via a DM                   |
+|      example: /qdm a5 \@oysttyer A secret comment about this tweet          |
+|      becomes: d oysttyer A secret comment about this tweet https://...     |
+| /edm username message             Opens message in \$EDITOR before sending  |
+| /edmreply da0 message             Also opens message in \$EDITOR            |
+ +---------------------------------------------------------------------------+
+=====> /reply, /delete and /url work for direct message menu codes too! <=====
 
-
-
+EOF
+		&linein("PRESS RETURN/ENTER>");
+		print <<"EOF";
+[5 of 5]
 Use /set to turn on options or set them at runtime. There is a BIG LIST!
 
 >> EXAMPLE: WANT ANSI? /set ansi 1
@@ -2491,8 +2506,6 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
            *** subscribe to updates at http://twitter.com/oysttyer
                submit your suggestions at https://github.com/oysttyer/oysttyer
-
-
 
 EOF
 		return 0;
