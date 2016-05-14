@@ -1,5 +1,14 @@
 #CHANGELOG
 
+##Changes in version 2.7.0:
+
+- Adds /edm and /edmreply commands to use $EDITOR for replying to DMs
+- Summary of other DM enhancements already added in point releases:
+	- Add the ability to share tweets via direct message with the `/qdm` command (Work towards of 2.7 milestone)
+	- Expand long DMs suring start-up
+	- Nicely truncate long DMs when using /dump
+	- Fix a bug where whoami comparison was not lowercased for sent dms
+
 ##Changes in Version 2.6.4:
 
 - Add --http1.1 flag to curl to suit versions after  7.47.0. Earliest supported curl is now 7.33.0
