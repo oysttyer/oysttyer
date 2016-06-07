@@ -6764,7 +6764,6 @@ sub urlshorten {
 	$cl = "$simple_agent \"${shorturl}$url\"";
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
-	print $stdout "$rc\n";
 	return ($urlshort = (($rc =~ m#^https?://#) ? $rc : undef));
 }
 
