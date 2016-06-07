@@ -739,7 +739,7 @@ $atrendurl ||= "${apibase}/trends/closest.json";
 
 # pick ONE!
 #$shorturl ||= "http://api.tr.im/v1/trim_simple?url=";
-$shorturl ||= "http://is.gd/api.php?longurl=";
+$shorturl ||= "https://is.gd/create.php?format=simple&url=";
 
 # figure out the domain to stop shortener loops
 &generate_shortdomain;
@@ -6764,7 +6764,8 @@ sub urlshorten {
 	$cl = "$simple_agent \"${shorturl}$url\"";
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
-	return ($urlshort = (($rc =~ m#^http://#) ? $rc : undef));
+	print $stdout "$rc\n";
+	return ($urlshort = (($rc =~ m#^https?://#) ? $rc : undef));
 }
 
 ##### optimizers -- these compile into an internal format #####
