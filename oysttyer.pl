@@ -6764,7 +6764,12 @@ sub urlshorten {
 	$cl = "$simple_agent \"${shorturl}$url\"";
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
-	return ($urlshort = (($rc =~ m#^https?://#) ? $rc : undef));
+	if ($rc =~ m#^https?://#) {
+		return $rc	
+	} else {
+		print $stdout "ERROR: " . "$rc\n";
+		return undef
+	}
 }
 
 ##### optimizers -- these compile into an internal format #####
