@@ -1,6 +1,10 @@
 #CHANGELOG
 
-##Changes in version 2.7.0:
+##Changes in Version 2.7.2:
+
+- Nothing, just constant goddamn interruptions mean I make silly mistakes with versioning.
+
+##Changes in version 2.7.1:
 
 - Fixes /short. Needed updating to reflect latest is.gd API.
 
