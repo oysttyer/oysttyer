@@ -2,6 +2,10 @@
 
 ##Changes in version 2.7.0:
 
+- Fixes /short. Needed updating to reflect latest is.gd API.
+
+##Changes in version 2.7.0:
+
 - Adds /edm and /edmreply commands to use $EDITOR for replying to DMs
 - Summary of other DM enhancements already added in point releases:
 	- Add the ability to share tweets via direct message with the `/qdm` command (Work towards of 2.7 milestone)
