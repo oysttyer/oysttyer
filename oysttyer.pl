@@ -5797,6 +5797,10 @@ sub standardevent {
 			$g .= "$sou_sn revoked oAuth access to $tar_sn";
 		} elsif ($verb eq 'access_unrevoked') {
 			$g .= "$sou_sn restored oAuth access to $tar_sn";
+		} elsif ($verb eq 'quoted_tweet') {
+			my $rto = &destroy_all_tco($ref->{'target_object'});
+			my $txt = &descape($rto->{'text'});
+			$g .= "$sou_sn just quoted ${tar_sn}'s tweet: \"$txt\"";
 		} else {
 			# try to handle new types of events we don't
 			# recognize yet.
