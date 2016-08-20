@@ -7435,17 +7435,11 @@ sub destroy_all_tco {
 				# There is one canonical url even for multiple media (picture) entries
 				$u1 = $u1 || quotemeta($entry->{'url'});
 				if (defined($entry->{'video_info'})) {
-					# Need to look for content_type, pick mp4 and then the smallest bitrate (because got to decide something)
-					# Set bitrate to something ridiculously high so we will go lower than it
-					my $smallestbitrate = 10**100;
+					# Need to look for content_type, pick m3u8
 					my $videourl;
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
-						if ($variant->{'content_type'} =~ /mp4/) {
-							my $bitrate = $variant->{'bitrate'};
-							if ($bitrate < $smallestbitrate) {
-								$smallestbitrate = $bitrate;
-								$videourl = $variant->{'url'}
-							}
+						if ($variant->{'content_type'} =~ /x-mpegURL/) {
+							$videourl = $variant->{'url'}
 						}
 					}
 					$urls = $urls . " " . $videourl;
