@@ -770,6 +770,12 @@ $showusername ||= 0;
 $largeimages ||= 0;
 $doublespace ||= 0;
 $extended ||= 0;
+# Which field contains the status. Can't make it easy on us!
+if ($extended) {
+	$status_field = 'full_text';
+} else {
+	$status_field = 'text';
+}
 
 # synch overrides these options.
 if ($synch) {
