@@ -61,7 +61,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter showusername largeimages doublespace
+		nofilter showusername largeimages doublespace extended
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -107,7 +107,7 @@ BEGIN {
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
-		filteratonly nofilter rtsofmeurl largeimages
+		filteratonly nofilter rtsofmeurl largeimages extended
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -769,6 +769,7 @@ $ansi = ($noansi) ? 0 :
 $showusername ||= 0;
 $largeimages ||= 0;
 $doublespace ||= 0;
+$extended ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -7305,6 +7306,9 @@ sub grabjson {
 		push(@xargs, split(/\&/, substr($url, ($i+1))));
 		$url = substr($url, 0, $i);
 	}
+
+	# Use the extended mode that doesn't count URLs, etc in the character count
+	push(@xargs, "tweet_mode=extended") if ($extended);
 
 	# count needs to be removed for the default case due to show, etc.
 	push(@xargs, "count=$count") if ($count);
