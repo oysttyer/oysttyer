@@ -61,7 +61,7 @@ BEGIN {
 		synch exception_is_maskable mentions simplestart
 		location readlinerepaint nocounter notifyquiet
 		signals_use_posix dostream nostreamreplies streamallreplies
-		nofilter showusername largeimages origimages doublespace
+		nofilter showusername largeimages origimages doublespace extended
 	); %opts_sync = map { $_ => 1 } qw(
 		ansi pause dmpause oysttyeristas verbose superverbose
 		url rlurl dmurl newline wrap notimeline lists dmidurl
@@ -107,7 +107,7 @@ BEGIN {
 		getuliurl getufliurl dmsenturl rturl rtsbyurl wtrendurl
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
-		filteratonly nofilter rtsofmeurl largeimages origimages
+		filteratonly nofilter rtsofmeurl largeimages origimages extended
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -772,6 +772,14 @@ $showusername ||= 0;
 $largeimages ||= 0;
 $origimages ||= 0;
 $doublespace ||= 0;
+$extended ||= 0;
+if ($extended) {
+	$tweet_mode = "extended";
+	$display_mode = "full_text";
+} else {
+	$tweet_mode = "compatibility";
+	$display_mode = "text";
+}
 
 # synch overrides these options.
 if ($synch) {
@@ -5842,7 +5850,7 @@ sub standardevent {
 			"); will retry: ".$ref->{'disconnect'}->{'reason'};
 	} else {
 		# we have no idea what this is. just BS our way out.
-		$g .= "unknown server event received (non-fatal)";
+		$g .= "unknown server event received (non-fatal)\n";
 	}
 
 	if ($timestamp) {
@@ -6493,6 +6501,7 @@ sub get_dm {
 		sysread(W, $l, 1024);
 		$k .= $l;
 	}
+
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
@@ -7311,6 +7320,9 @@ sub grabjson {
 		$url = substr($url, 0, $i);
 	}
 
+	# Use the extended mode that doesn't count URLs, etc in the character count
+	push(@xargs, "tweet_mode=extended") if ($extended);
+
 	# count needs to be removed for the default case due to show, etc.
 	push(@xargs, "count=$count") if ($count);
 	# timeline control. this speeds up parsing since there's less data.
@@ -7491,6 +7503,8 @@ sub destroy_all_tco {
 # - if this appears to be a tweet, put in a stub geo hash if one does
 #   not yet exist.
 # - if coordinates are flat string 'null', turn into a real null.
+# - if $extended is on and the tweet has an extended_tweet field, promote
+#   full_text from extended_tweet to the top level
 # one day I would like this code to go the hell away.
 sub normalizejson {
 	my $i = shift;
@@ -7546,12 +7560,31 @@ sub normalizejson {
 		$i->{'class'} = "search";
 	}
 
+	# normalize extended tweets
+	# We probably ought to handle the other fields in extended_tweet,
+	# but this will also all go away once compatibility mode does
+	if ($extended) {
+		if (exists $i->{'extended_tweet'}) {
+			$i->{'text'} = $i->{'extended_tweet'}->{'full_text'};
+		} elsif (exists $i->{'full_text'}) {
+			$i->{'text'} = $i->{'full_text'};
+		}
+        }
+
 	# normalize newRTs
 	# if we get newRTs with -nonewrts, oh well
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
 		$rt = &destroy_all_tco($rt);
+		if ($extended) {
+			if (exists $rt->{'extended_tweet'}) {
+				$rt->{'text'} = $rt->{'extended_tweet'}->{'full_text'};
+			} elsif (exists $rt->{'full_text'}) {
+				$rt->{'text'} = $rt->{'full_text'};
+			}
+        	}
+
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
