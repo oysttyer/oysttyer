@@ -7438,7 +7438,7 @@ sub destroy_all_tco {
 					# Need to look for content_type, pick m3u8
 					my $videourl;
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
-						if ($variant->{'content_type'} =~ /x-mpegURL/) {
+						if (($variant->{'content_type'} =~ /x-mpegURL/) || ($variant->{'content_type'} =~ /video\/mp4/)) {
 							$videourl = $variant->{'url'}
 						}
 					}
