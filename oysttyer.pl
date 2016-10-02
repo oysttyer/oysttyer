@@ -395,6 +395,8 @@ print $stdout "** warning: prompts not wrapped for wrap < 70\n"
 	if ($wrap > 1 && $wrap < 70);
 
 # reject stupid combinations
+die("-largeimages and -origimages cannot be used together.\n")
+	if ($largeimages && $origimages);
 die("you can't use automatic ratelimits with -noratelimit.\nuse -pause=#sec\n")
 	if ($noratelimit && $pause eq 'auto');
 die("you can't use -synch with -script or -daemon.\n")
