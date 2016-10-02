@@ -3038,7 +3038,7 @@ EOF
 				"-- unable to use t.co URLs, using fallback\n";
 		}
 		# that failed, so fall back on the old method.
-		my $text = &descape($tweet->{$display_mode});
+		my $text = &descape($tweet->{'text'});
 		# findallurls
 		while ($text
 	=~ s#(h?ttp|h?ttps|ftp|gopher)://([a-zA-Z0-9_~/:%\-\+\.\=\&\?\#,]+)##){
@@ -3114,7 +3114,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		}
 		&cordfav($tweet->{'id_str'}, 1,
 			(($mode eq 'un') ? $favdelurl : $favurl),
-			  &descape($tweet->{$display_mode}),
+			  &descape($tweet->{'text'}),
 			(($mode eq 'un') ? 'removed' : 'created'));
 		if ($secondmode eq 'rt') {
 			$_ = "/rt $code";
@@ -3136,7 +3136,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		# use a native retweet unless we can't (or user used /ort /ert)
 		unless ($nonewrts || length || length($mode)) {
 			# we don't always get rs->text, so we simulate it.
-			my $text = &descape($tweet->{$display_mode});
+			my $text = &descape($tweet->{'text'});
 			$text =~ s/^RT \@[^\s]+:\s+//
 				if ($tweet->{'retweeted_status'}->{'id_str'});
 			print $stdout "-- status retweeted\n"
@@ -3149,7 +3149,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		if (($mode eq 'o') || ($mode eq 'e') || $nonewrts ) {
 			$retweet = "RT @" .
 				&descape($tweet->{'user'}->{'screen_name'}) .
-				": " . &descape($tweet->{$display_mode});
+				": " . &descape($tweet->{'text'});
 			if ($mode eq 'e') {
 				&add_history($retweet);
 				print $stdout &wwrap(
@@ -3236,7 +3236,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 			return 0;
 		}
 		print $stdout &wwrap(
-"-- verify you want to delete: \"@{[ &descape($tweet->{$display_mode}) ]}\"");
+"-- verify you want to delete: \"@{[ &descape($tweet->{'text'}) ]}\"");
 		print $stdout "\n";
 		$answer = lc(&linein(
 	"-- sure you want to delete? (only y or Y is affirmative):"));
@@ -3260,7 +3260,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		print $stdout &wwrap(
 			"-- verify you want to delete: " .
 		"(from @{[ &descape($dm->{'sender'}->{'screen_name'}) ]}) ".
-			"\"@{[ &descape($dm->{$display_mode}) ]}\"");
+			"\"@{[ &descape($dm->{'text'}) ]}\"");
 		print $stdout "\n";
 		$answer = lc(&linein(
 	"-- sure you want to delete? (only y or Y is affirmative):"));
@@ -3461,7 +3461,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 
 		# don't repeat the target or myself; track other mentions
 		my %did_mentions = map { $_ => 1 } (lc($target));
-		my $reply_tweet = &descape($tweet->{$display_mode});
+		my $reply_tweet = &descape($tweet->{'text'});
 
 		while($reply_tweet =~ s/\@(\w+)//) {
 			my $name = $1;
@@ -4302,7 +4302,7 @@ EOF
 		unpack("${pack_magic}H*", $key->{'tag'}->{'payload'}). " ".
 		($key->{'retweet_count'} || "0") . " " .
 		$key->{'user'}->{'screen_name'}." $ds $src|".
-			unpack("${pack_magic}H*", $key->{$display_mode}).
+			unpack("${pack_magic}H*", $key->{'text'}).
 			$space_pad), 0, 1024);
 			print P $key;
 			goto RESTART_SELECT;
@@ -4676,8 +4676,7 @@ sub start_streaming {
 			kill 9, $curlpid if ($curlpid);
 		}, qw(INT HUP TERM)); # which will cascade into SIGCHLD
 		($comm, $args, $data) = &$stringify_args($baseagent,
-			[ $streamurl, "delimited=length${replarg}", 
-                          "tweet_mode=${tweet_mode}" ],
+			[ $streamurl, "delimited=length${replarg}" ],
 			undef, undef,
 			'-s',
 			'-A', "oysttyer_Streaming/$oysttyer_VERSION",
@@ -4734,7 +4733,7 @@ sub streamevents {
 		sleep 5 while ($suspend_output > 0);
 
 		# dispatch tweets
-		if ($w->{'payload'}->{$display_mode} && !$notimeline) {
+		if ($w->{'payload'}->{'text'} && !$notimeline) {
 			# normalize the tweet first.
 			my $payload = &normalizejson($w->{'payload'});
 			my $sid = $payload->{'id_str'};
@@ -4748,7 +4747,7 @@ sub streamevents {
 			if ($nostreamreplies) {
 				my $sn = &descape(
 					$payload->{'user'}->{'screen_name'});
-				my $text = &descape($payload->{$display_mode});
+				my $text = &descape($payload->{'text'});
 				next if (&$tweettype($payload, $sn, $text) eq
 					'reply');
 			}
@@ -5139,7 +5138,7 @@ sub tdisplay { # used by both synchronous /again and asynchronous refreshes
 
 			# third, filteratonly. this has a fast case and a
 			# slow case.
-			my $tex = &descape($j->{$display_mode});
+			my $tex = &descape($j->{'text'});
 			(&killtw($j), next) if
 				($filteratonly_sub &&
 				&$filteratonly_sub($sn) && # fast test
@@ -5641,7 +5640,7 @@ sub standardtweet {
 	my $nocolour = shift;
 
 	my $sn = &descape($ref->{'user'}->{'screen_name'});
-	my $tweet = &descape($ref->{$display_mode});
+	my $tweet = &descape($ref->{'text'});
 	my $colour;
 	my $g;
 	my $h;
@@ -5774,7 +5773,7 @@ sub standardevent {
 		# Twitter still uses (un)?favorite, but we add (un)?like as a bit of future-proofing.
 		if ($verb eq 'like' || $verb eq 'unlike' || $verb eq 'favorite' || $verb eq 'unfavorite') {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
-			my $txt = &descape($rto->{$display_mode});
+			my $txt = &descape($rto->{'text'});
 			$verb =~ s/favorite/like/;
 			$g .=
 		"$sou_sn just ${verb}d ${tar_sn}'s tweet: \"$txt\"";
@@ -5808,7 +5807,7 @@ sub standardevent {
 			$g .= "$sou_sn restored oAuth access to $tar_sn";
 		} elsif ($verb eq 'quoted_tweet') {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
-			my $txt = &descape($rto->{$display_mode});
+			my $txt = &descape($rto->{'text'});
 			$g .= "$sou_sn just quoted ${tar_sn}'s tweet: \"$txt\"";
 		} else {
 			# try to handle new types of events we don't
@@ -6116,7 +6115,7 @@ sub defaulthandle {
 	my $class = shift;
 	my $dclass = ($verbose) ? "{$class,$tweet_ref->{'id_str'}} " :  '';
 	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
-	my $tweet = &descape($tweet_ref->{$display_mode});
+	my $tweet = &descape($tweet_ref->{'text'});
 	my $stweet = &standardtweet($tweet_ref);
 	my $menu_select = $tweet_ref->{'menu_select'};
 
@@ -6162,7 +6161,7 @@ sub sendnotifies { # this is a default subroutine of a sort, right?
 	my $class = shift;
 
 	my $sn = &descape($tweet_ref->{'user'}->{'screen_name'});
-	my $tweet = &descape($tweet_ref->{$display_mode});
+	my $tweet = &descape($tweet_ref->{'text'});
 
 	# interactive? first time?
 	unless (length($class) || !$last_id || !length($tweet)) {
@@ -6464,10 +6463,10 @@ sub get_tweet {
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
 			$l) = split(/\s/, $k, 18);
 	($w->{'source'}, $k) = split(/\|/, $l, 2);
-	$w->{$display_mode} = pack("H*", $k);
+	$w->{'text'} = pack("H*", $k);
 	$w->{'place'}->{'full_name'} = pack("H*",$w->{'place'}->{'full_name'});
 	$w->{'tag'}->{'payload'} = pack("H*", $w->{'tag'}->{'payload'});
-	return undef if (!length($w->{$display_mode})); # unpossible
+	return undef if (!length($w->{'text'})); # unpossible
 	$w->{'created_at'} =~ s/_/ /g;
 	return $w;
 }
@@ -7467,7 +7466,7 @@ sub destroy_all_tco {
 					# Need to replace now and reset urls
 					if ($urls ne "") {
 						# Let's play safe and only replace the tco if we have something to replace it with
-						$hash->{$display_mode} =~ s/$u1/$urls/;
+						$hash->{'text'} =~ s/$u1/$urls/;
 					}
 					$urls = "";
 					$u1 = "";
@@ -7477,7 +7476,7 @@ sub destroy_all_tco {
 				# Then we need to replace outside of the above loop since one tco for all media entries
 				if ($urls ne "") {
 					# Let's play safe and only replace the tco if we have something to replace it with
-					$hash->{$display_mode} =~ s/$u1/$urls/;
+					$hash->{'text'} =~ s/$u1/$urls/;
 				}
 			}
 		}
@@ -7499,6 +7498,8 @@ sub destroy_all_tco {
 # - if this appears to be a tweet, put in a stub geo hash if one does
 #   not yet exist.
 # - if coordinates are flat string 'null', turn into a real null.
+# - if $extended is on and the tweet has an extended_tweet field, promote
+#   full_text from extended_tweet to the top level
 # one day I would like this code to go the hell away.
 sub normalizejson {
 	my $i = shift;
@@ -7554,15 +7555,34 @@ sub normalizejson {
 		$i->{'class'} = "search";
 	}
 
+	# normalize extended tweets
+	# We probably ought to handle the other fields in extended_tweet,
+	# but this will also all go away once compatibility mode does
+	if ($extended) {
+		if (exists $i->{'extended_tweet'}) {
+			$i->{'text'} = $i->{'extended_tweet'}->{'full_text'};
+		} elsif (exists $i->{'full_text'}) {
+			$i->{'text'} = $i->{'full_text'};
+		}
+        }
+
 	# normalize newRTs
 	# if we get newRTs with -nonewrts, oh well
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
 		$rt = &destroy_all_tco($rt);
+		if ($extended) {
+			if (exists $rt->{'extended_tweet'}) {
+				$rt->{'text'} = $rt->{'extended_tweet'}->{'full_text'};
+			} elsif (exists $rt->{'full_text'}) {
+				$rt->{'text'} = $rt->{'full_text'};
+			}
+        	}
+
 		$i->{'retweeted_status'} = $rt;
-		$i->{$display_mode} =
-		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{$display_mode};
+		$i->{'text'} =
+		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
 			$qt = &destroy_all_tco($qt);
