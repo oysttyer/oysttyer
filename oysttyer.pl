@@ -4313,7 +4313,7 @@ EOF
 			$ds =~ s/\s/_/g;
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		$key->{'sender'}->{'screen_name'}." $ds ".
-			unpack("${pack_magic}H*", $key->{$display_mode}).
+			unpack("${pack_magic}H*", $key->{'text'}).
 			$space_pad), 0, 1024);
 			print P $key;
 			goto RESTART_SELECT;
@@ -6497,6 +6497,7 @@ sub get_dm {
 		sysread(W, $l, 1024);
 		$k .= $l;
 	}
+
 	return undef if ($k !~ /[^\s]/);
 	$k =~ s/\s+$//; # remove trailing spaces
 	print $stdout "-- background store fetch: $k\n" if ($verbose);
@@ -6508,8 +6509,8 @@ sub get_dm {
 	if (length($t2)) {
 		$t1 .= "...";
 	}
-	$w->{$display_mode} = $t1;
-	return undef if (!length($w->{$display_mode})); # not possible
+	$w->{'text'} = $t1;
+	return undef if (!length($w->{'text'})); # not possible
 	$w->{'created_at'} =~ s/_/ /g;
 	return $w;
 }
