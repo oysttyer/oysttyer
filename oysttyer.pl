@@ -1872,7 +1872,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		my $id;
 		my @superfields = (
 			[ "user", "screen_name" ], # must always be first
+			[ "extended_tweet", "full_text" ],
 			[ "retweeted_status", "id_str" ],
+			[ "retweeted_status", "full_text" ],
+			[ "retweeted_status", "text" ],
 			[ "user", "geo_enabled" ],
 			[ "place", "id" ],
 			[ "place", "country_code" ],
@@ -7438,11 +7441,16 @@ sub destroy_all_tco {
 	# TODO: For old-style retweets should manipulate and revert back to t.co links
 	# Note: The search api does not include extended_entities
 	# Do extended first to get video urls, otherwise we'll just get a thumbnail
-	foreach my $entities (qw(extended_entities entities)) {
+	my (@entities_fields) = ($hash->{extended_entities}, $hash->{entities});
+	if ($extended && exists $hash->{extended_tweet}) {
+		push @entities_fields, $hash->{extended_tweet}->{entities};
+		push @entities_fields, $hash->{extended_tweet}->{extended_entities};
+	}
+	foreach my $entities_field (@entities_fields) {
 		foreach $type (qw(media urls)) {
 			my $urls;
 			my $u1;
-			my $array = $hash->{$entities}->{$type};
+			my $array = $entities_field->{$type};
 			next if (!defined($array) || ref($array) ne 'ARRAY');
 			foreach $entry (@{ $array }) {
 				next if (!defined($entry) || ref($entry) ne 'HASH');
@@ -7472,6 +7480,7 @@ sub destroy_all_tco {
 					if ($urls ne "") {
 						# Let's play safe and only replace the tco if we have something to replace it with
 						$hash->{'text'} =~ s/$u1/$urls/;
+						$hash->{'full_text'} =~ s/$u1/$urls/;
 					}
 					$urls = "";
 					$u1 = "";
@@ -7482,6 +7491,7 @@ sub destroy_all_tco {
 				if ($urls ne "") {
 					# Let's play safe and only replace the tco if we have something to replace it with
 					$hash->{'text'} =~ s/$u1/$urls/;
+					$hash->{'full_text'} =~ s/$u1/$urls/;
 				}
 			}
 		}
@@ -7576,29 +7586,22 @@ sub normalizejson {
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
-		$rt = &destroy_all_tco($rt);
-		if ($extended) {
-			if (exists $rt->{'extended_tweet'}) {
-				$rt->{'text'} = $rt->{'extended_tweet'}->{'full_text'};
-			} elsif (exists $rt->{'full_text'}) {
-				$rt->{'text'} = $rt->{'full_text'};
-			}
-        	}
+		$rt = &grabjson("${idurl}?id=$i->{'retweeted_status'}->{'id_str'}", 0, 0, 0, undef, 1);
 
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
-			$qt = &destroy_all_tco($qt);
-			$qt = &fix_geo_api_data($qt);
+			$qt = &grabjson("${idurl}?id=$i->{'retweeted_status'}->{'quoted_status'}->{'id_str'}", 0, 0, 0, undef, 1);
+
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
-		$qt = &destroy_all_tco($qt);
-		$qt = &fix_geo_api_data($qt);
+		$qt = &grabjson("${idurl}?id=$i->{'quoted_status'}->{'id_str'}", 0, 0, 0, undef, 1);
+
 		$i->{'quoted_status'} = $qt;
 	}
 
