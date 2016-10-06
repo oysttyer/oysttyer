@@ -7604,8 +7604,6 @@ sub normalizejson {
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
-		$rt = &destroy_all_tco($rt);
-		$rt = &fix_geo_api_data($rt);
 		if ($extended) {
 			if (exists $rt->{'extended_tweet'}) {
 				$rt->{'text'} = $rt->{'extended_tweet'}->{'full_text'};
@@ -7613,14 +7611,14 @@ sub normalizejson {
 				$rt->{'text'} = $rt->{'full_text'};
 			}
 	        }
+		$rt = &destroy_all_tco($rt);
+		$rt = &fix_geo_api_data($rt);
 	
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
-			$qt = &destroy_all_tco($qt);
-			$qt = &fix_geo_api_data($qt);
 			if ($extended) {
 				if (exists $qt->{'extended_tweet'}) {
 					$qt->{'text'} = $qt->{'extended_tweet'}->{'full_text'};
@@ -7628,14 +7626,14 @@ sub normalizejson {
 					$qt->{'text'} = $qt->{'full_text'};
 				}
 		        }
+			$qt = &destroy_all_tco($qt);
+			$qt = &fix_geo_api_data($qt);
 
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
-		$qt = &destroy_all_tco($qt);
-		$qt = &fix_geo_api_data($qt);
 		if ($extended) {
 			if (exists $qt->{'extended_tweet'}) {
 				$qt->{'text'} = $qt->{'extended_tweet'}->{'full_text'};
@@ -7643,6 +7641,8 @@ sub normalizejson {
 				$qt->{'text'} = $qt->{'full_text'};
 			}
 	        }
+		$qt = &destroy_all_tco($qt);
+		$qt = &fix_geo_api_data($qt);
 
 		$i->{'quoted_status'} = $qt;
 	}
