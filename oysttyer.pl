@@ -5796,6 +5796,12 @@ sub standardevent {
 			$verb =~ s/favorite/like/;
 			$g .=
 		"$sou_sn just ${verb}d ${tar_sn}'s tweet: \"$txt\"";
+		} elsif ($verb eq 'liked_retweet' || $verb eq 'favorited_retweet') {
+		# Put these in a separate case since the English gets a little more complicated
+			my $rto = &destroy_all_tco($ref->{'target_object'});
+			my $txt = &descape($rto->{'text'});
+			$verb =~ s/favorite/like/;
+			$g .= "$sou_sn just liked a tweet you retweeted: \"$txt\"";
 		} elsif ($verb eq 'follow') {
 			$g .= "$sou_sn is now following $tar_sn";
 		} elsif ($verb eq 'user_update') {
@@ -5828,6 +5834,10 @@ sub standardevent {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
 			my $txt = &descape($rto->{'text'});
 			$g .= "$sou_sn just quoted ${tar_sn}'s tweet: \"$txt\"";
+		} elsif ($verb eq 'retweeted_retweet') {
+			my $rto = &destroy_all_tco($ref->{'target_object'});
+			my $txt = &descape($rto->{'text'});
+			$g .= "$sou_sn just retweeted a tweet from ${tar_sn} you retweeted: \"$txt\"";
 		} else {
 			# try to handle new types of events we don't
 			# recognize yet.
