@@ -42,7 +42,8 @@ BEGIN {
 	$my_version_string = "${oysttyer_VERSION}.${oysttyer_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
 
-	$space_pad = " " x 1024;
+	$packet_length = 2048;
+	$space_pad = " " x $packet_length;
 	$background_is_ready = 0;
 
 	# for multi-module extension handling
@@ -1872,7 +1873,10 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		my $id;
 		my @superfields = (
 			[ "user", "screen_name" ], # must always be first
+			[ "extended_tweet", "full_text" ],
 			[ "retweeted_status", "id_str" ],
+			[ "retweeted_status", "full_text" ],
+			[ "retweeted_status", "text" ],
 			[ "user", "geo_enabled" ],
 			[ "place", "id" ],
 			[ "place", "country_code" ],
@@ -4290,23 +4294,33 @@ EOF
 			# Figured out this is where the stream gets processed and oysttyer picks out the fields that get stored
 			# So quoted_status_id_str needed adding in here.
 			$src =~ s/\|//g; # shouldn't be any anyway.
-			$key = substr(( "$ms ".($key->{'id_str'})." ".
-		($key->{'in_reply_to_status_id_str'})." ".
-		($key->{'quoted_status_id_str'})." ".
-		($key->{'retweeted_status'}->{'id_str'})." ".
-		($key->{'user'}->{'geo_enabled'} || "false") . " ".
-		($key->{'geo'}->{'coordinates'}->[0]). " ".
-		($key->{'geo'}->{'coordinates'}->[1]). " ".
-		$key->{'place'}->{'id'} . " ".
-		$key->{'place'}->{'country_code'} ." ".
-		$key->{'place'}->{'place_type'} . " ".
-		unpack("${pack_magic}H*", $key->{'place'}->{'full_name'})." ".
-		$key->{'tag'}->{'type'}. " ". # NO SPACES!
-		unpack("${pack_magic}H*", $key->{'tag'}->{'payload'}). " ".
-		($key->{'retweet_count'} || "0") . " " .
-		$key->{'user'}->{'screen_name'}." $ds $src|".
-			unpack("${pack_magic}H*", $key->{'text'}).
-			$space_pad), 0, 1024);
+			$key = substr(( join "\0", $ms, $key->{'id_str'},
+				$key->{'in_reply_to_status_id_str'},
+				$key->{'quoted_status_id_str'},
+				$key->{'quoted_status'}->{'text'},
+				$key->{'quoted_status'}->{'full_text'},
+				$key->{'quoted_status'}->{'extended_tweet'}->{'full_text'},
+				$key->{'retweeted_status'}->{'id_str'},
+				$key->{'retweeted_status'}->{'text'},
+				$key->{'retweeted_status'}->{'full_text'},
+				$key->{'retweeted_status'}->{'extended_tweet'}->{'full_text'},
+				$key->{'retweeted_status'}->{'quoted_status'}->{'id_str'},
+				$key->{'retweeted_status'}->{'quoted_status'}->{'text'},
+				$key->{'retweeted_status'}->{'quoted_status'}->{'full_text'},
+				$key->{'retweeted_status'}->{'quoted_status'}->{'extended_tweet'}->{'full_text'},
+				$key->{'user'}->{'geo_enabled'} || "false",
+				$key->{'geo'}->{'coordinates'}->[0],
+				$key->{'geo'}->{'coordinates'}->[1],
+				$key->{'place'}->{'id'},
+				$key->{'place'}->{'country_code'},
+				$key->{'place'}->{'place_type'},
+				unpack("${pack_magic}H*", $key->{'place'}->{'full_name'}),
+				$key->{'tag'}->{'type'},
+				unpack("${pack_magic}H*", $key->{'tag'}->{'payload'}),
+				$key->{'retweet_count'} || "0",
+				$key->{'user'}->{'screen_name'}, $ds, $src,
+				unpack("${pack_magic}H*", $key->{'text'}).
+				$space_pad), 0, $packet_length);
 			print P $key;
 			goto RESTART_SELECT;
 		} elsif ($rout =~ /^piped (..)/) {
@@ -4317,25 +4331,25 @@ EOF
 			$key = substr(( "$ms ".($key->{'id_str'})." ".
 		$key->{'sender'}->{'screen_name'}." $ds ".
 			unpack("${pack_magic}H*", $key->{'text'}).
-			$space_pad), 0, 1024);
+			$space_pad), 0, $packet_length);
 			print P $key;
 			goto RESTART_SELECT;
 		} elsif ($rout =~ /^ki ([^\s]+) /) {
 			my $key = $1;
 			my $module;
-			sysread(STDIN, $module, 1024);
+			sysread(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
 			print $stdout "-- fetch for module $module key $key\n"
 				if ($verbose);
 			print P substr(unpack("${pack_magic}H*",
 				$master_store->{$module}->{$key}).$space_pad,
-					0, 1024);
+					0, $packet_length);
 			goto RESTART_SELECT;
 		} elsif ($rout =~ /^kn ([^\s]+) /) {
 			my $key = $1;
 			my $module;
-			sysread(STDIN, $module, 1024);
+			sysread(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
 			print $stdout "-- nulled module $module key $key\n"
@@ -4346,10 +4360,10 @@ EOF
 			my $key = $1;
 			my $value;
 			my $module;
-			sysread(STDIN, $module, 1024);
+			sysread(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
-			sysread(STDIN, $value, 1024);
+			sysread(STDIN, $value, $packet_length);
 			$value =~ s/\s+$//;
 			print $stdout
 				"-- set module $module key $key = $value\n"
@@ -4369,9 +4383,9 @@ EOF
 			$comm = $1;
 			$key =$2;
 			if ($comm eq '?') {
-				print P substr("${$key}$space_pad", 0, 1024);
+				print P substr("${$key}$space_pad", 0, $packet_length);
 			} else {
-				sysread(STDIN, $value, 1024);
+				sysread(STDIN, $value, $packet_length);
 				$value =~ s/\s+$//;
 				$interactive = ($comm eq '+') ? 0 : 1;
 				if ($key eq 'tquery') {
@@ -6442,8 +6456,8 @@ sub get_tweet {
 	print $stdout "-- querying background: $code\n" if ($verbose);
 	kill $SIGUSR2, $child if ($child);
 	print C "pipet $code ----------\n";
-	while(length($k) < 1024) {
-		sysread(W, $l, 1024);
+	while(length($k) < $packet_length) {
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 	return undef if ($k !~ /[^\s]/);
@@ -6454,7 +6468,17 @@ sub get_tweet {
 	# Need to increment the count in split at the end.
 	($w->{'menu_select'}, $w->{'id_str'}, $w->{'in_reply_to_status_id_str'},
 		$w->{'quoted_status_id_str'},
+		$w->{'quoted_status'}->{'text'},
+		$w->{'quoted_status'}->{'full_text'},
+		$w->{'quoted_status'}->{'extended_tweet'}->{'full_text'},
 		$w->{'retweeted_status'}->{'id_str'},
+		$w->{'retweeted_status'}->{'text'},
+		$w->{'retweeted_status'}->{'full_text'},
+		$w->{'retweeted_status'}->{'extended_tweet'}->{'full_text'},
+		$w->{'retweeted_status'}->{'quoted_status'}->{'id_str'},
+		$w->{'retweeted_status'}->{'quoted_status'}->{'text'},
+		$w->{'retweeted_status'}->{'quoted_status'}->{'full_text'},
+		$w->{'retweeted_status'}->{'quoted_status'}->{'extended_tweet'}->{'full_text'},
 		$w->{'user'}->{'geo_enabled'},
 		$w->{'geo'}->{'coordinates'}->[0],
 		$w->{'geo'}->{'coordinates'}->[1],
@@ -6466,8 +6490,7 @@ sub get_tweet {
 		$w->{'tag'}->{'payload'},
 		$w->{'retweet_count'},
 		$w->{'user'}->{'screen_name'}, $w->{'created_at'},
-			$l) = split(/\s/, $k, 18);
-	($w->{'source'}, $k) = split(/\|/, $l, 2);
+		$w->{'source'}, $k) = split(/\0/, $k, 29);
 	$w->{'text'} = pack("H*", $k);
 	$w->{'place'}->{'full_name'} = pack("H*",$w->{'place'}->{'full_name'});
 	$w->{'tag'}->{'payload'} = pack("H*", $w->{'tag'}->{'payload'});
@@ -6497,8 +6520,8 @@ sub get_dm {
 
 	kill $SIGUSR2, $child if ($child); # prime pipe
 	print C "piped $code ----------\n"; # internally two alphanum, recall
-	while(length($k) < 1024) {
-		sysread(W, $l, 1024);
+	while(length($k) < $packet_length) {
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 
@@ -6532,9 +6555,9 @@ sub getbackgroundkey {
 	print C substr("ki $key ---------------------", 0, 19)."\n";
 	my $ref = (length($dispatch_ref->[0])) ? ($dispatch_ref->[0]) :
 		"DEFAULT";
-	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, 1024);
-	while(length($k) < 1024) {
-		sysread(W, $l, 1024);
+	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, $packet_length);
+	while(length($k) < $packet_length) {
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 	$k =~ s/[^0-9a-fA-F]//g;
@@ -6562,9 +6585,9 @@ sub sendbackgroundkey {
 	}
 	my $ref = (length($dispatch_ref->[0])) ? ($dispatch_ref->[0]) :
 		"DEFAULT";
-	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, 1024);
+	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, $packet_length);
 	return if (!length($value));
-	print C substr(unpack("${pack_magic}H*", $value).$space_pad, 0, 1024);
+	print C substr(unpack("${pack_magic}H*", $value).$space_pad, 0, $packet_length);
 }
 
 # hold stolen from Floodgap's Texapp
@@ -6711,7 +6734,7 @@ sub synckey {
 	kill $SIGUSR2, $child if ($child);
 	print C
 	(substr("${commchar}$key                           ", 0, 19) . "\n");
-	print C (substr(($value . $space_pad), 0, 1024));
+	print C (substr(($value . $space_pad), 0, $packet_length));
 	sleep 1;
 }
 
@@ -6728,7 +6751,7 @@ sub getvariable {
 		my $value;
 		kill $SIGUSR2, $child if ($child);
 		print C (substr("?$key                    ", 0, 19) . "\n");
-		sysread(W, $value, 1024);
+		sysread(W, $value, $packet_length);
 		$value =~ s/\s+$//;
 		return $value;
 	}
@@ -7438,11 +7461,16 @@ sub destroy_all_tco {
 	# TODO: For old-style retweets should manipulate and revert back to t.co links
 	# Note: The search api does not include extended_entities
 	# Do extended first to get video urls, otherwise we'll just get a thumbnail
-	foreach my $entities (qw(extended_entities entities)) {
+	my (@entities_fields) = ($hash->{extended_entities}, $hash->{entities});
+	if ($extended && exists $hash->{extended_tweet}) {
+		push @entities_fields, $hash->{extended_tweet}->{entities};
+		push @entities_fields, $hash->{extended_tweet}->{extended_entities};
+	}
+	foreach my $entities_field (@entities_fields) {
 		foreach $type (qw(media urls)) {
 			my $urls;
 			my $u1;
-			my $array = $hash->{$entities}->{$type};
+			my $array = $entities_field->{$type};
 			next if (!defined($array) || ref($array) ne 'ARRAY');
 			foreach $entry (@{ $array }) {
 				next if (!defined($entry) || ref($entry) ne 'HASH');
@@ -7576,29 +7604,46 @@ sub normalizejson {
 	if (!$nonewrts && ($rt = $i->{'retweeted_status'})) {
 		# reconstruct the RT in a "canonical" format
 		# without truncation, but detco it first
-		$rt = &destroy_all_tco($rt);
 		if ($extended) {
 			if (exists $rt->{'extended_tweet'}) {
 				$rt->{'text'} = $rt->{'extended_tweet'}->{'full_text'};
 			} elsif (exists $rt->{'full_text'}) {
 				$rt->{'text'} = $rt->{'full_text'};
 			}
-        	}
-
+	        }
+		$rt = &destroy_all_tco($rt);
+		$rt = &fix_geo_api_data($rt);
+	
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
 		#Nested quote tweets, since displaying those
 		if ($qt = $i->{'retweeted_status'}->{'quoted_status'}) {
+			if ($extended) {
+				if (exists $qt->{'extended_tweet'}) {
+					$qt->{'text'} = $qt->{'extended_tweet'}->{'full_text'};
+				} elsif (exists $qt->{'full_text'}) {
+					$qt->{'text'} = $qt->{'full_text'};
+				}
+		        }
 			$qt = &destroy_all_tco($qt);
 			$qt = &fix_geo_api_data($qt);
+
 			$i->{'retweeted_status'}->{'quoted_status'} = $qt;
 		}
 	}
 	# normalize quote tweets
 	if ($qt = $i->{'quoted_status'}) {
+		if ($extended) {
+			if (exists $qt->{'extended_tweet'}) {
+				$qt->{'text'} = $qt->{'extended_tweet'}->{'full_text'};
+			} elsif (exists $qt->{'full_text'}) {
+				$qt->{'text'} = $qt->{'full_text'};
+			}
+	        }
 		$qt = &destroy_all_tco($qt);
 		$qt = &fix_geo_api_data($qt);
+
 		$i->{'quoted_status'} = $qt;
 	}
 
