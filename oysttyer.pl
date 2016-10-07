@@ -5837,7 +5837,7 @@ sub standardevent {
 		} elsif ($verb eq 'retweeted_retweet') {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
 			my $txt = &descape($rto->{'text'});
-			$g .= "$sou_sn just retweeted a tweet from ${tar_sn} you retweeted: \"$txt\"";
+			$g .= "$sou_sn just retweeted a tweet you retweeted: \"$txt\"";
 		} else {
 			# try to handle new types of events we don't
 			# recognize yet.
