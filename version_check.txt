@@ -1,4 +1,4 @@
-oysttyer;2.7.2;;;https://raw.githubusercontent.com/oysttyer/oysttyer/2.7.2/oysttyer.pl;
+oysttyer;2.8.0;;;https://raw.githubusercontent.com/oysttyer/oysttyer/2.8.0/oysttyer.pl;
 --__--
 --__--
 --__--

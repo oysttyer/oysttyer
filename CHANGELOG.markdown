@@ -1,5 +1,11 @@
 #CHANGELOG
 
+##Changes in Version 2.8.0:
+
+- Add -extended option to support extended tweets (thanks, myshkin!)
+- Add -origimages option to request original-sized images (thanks, Wyatts)
+- Re-add mp4 URL replacement since that is still used for GIFs.
+
 ##Changes in Version 2.7.2:
 
 - Nothing, just constant goddamn interruptions mean I make silly mistakes with versioning.
