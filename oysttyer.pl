@@ -7497,6 +7497,7 @@ sub destroy_all_tco {
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
 						if ($variant->{'content_type'} =~ /mp4/) {
 							$videourl = $variant->{'url'};
+							last;
 						} elsif (($variant->{'content_type'} =~ /x-mpegURL/) || (! $videourl)) {
 							$videourl = $variant->{'url'};
 						}
