@@ -7490,11 +7490,15 @@ sub destroy_all_tco {
 				# There is one canonical url even for multiple media (picture) entries
 				$u1 = $u1 || quotemeta($entry->{'url'});
 				if (defined($entry->{'video_info'})) {
-					# Need to look for content_type, pick m3u8
+					# Need to look for content_type, prefer mp4 since that's more
+					# broadly viewable, but accept m3u8 because that's where
+					# Twitter is going with videos.
 					my $videourl;
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
-						if (($variant->{'content_type'} =~ /x-mpegURL/) || ($variant->{'content_type'} =~ /mp4/)) {
-							$videourl = $variant->{'url'}
+						if ($variant->{'content_type'} =~ /mp4/) {
+							$videourl = $variant->{'url'};
+						} elsif (($variant->{'content_type'} =~ /x-mpegURL/) || (! $videourl)) {
+							$videourl = $variant->{'url'};
 						}
 					}
 					$urls = $urls . " " . $videourl;
