@@ -7505,7 +7505,7 @@ sub destroy_all_tco {
 					$urls = $urls . " " . $tempurls;
 					$urls = strim($urls);
 				}
-				if (($type eq 'urls') || ($type eq 'media')) {
+				if ($type eq 'urls') {
 					# Need to replace now and reset urls
 					if ($urls ne "") {
 						# Let's play safe and only replace the tco if we have something to replace it with
