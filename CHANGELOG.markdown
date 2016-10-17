@@ -1,5 +1,10 @@
 #CHANGELOG
 
+##Changes in Version 2.8.1:
+
+- Fixes a bug introduced in 2.8.0 that caused multi-image tweets to only display the first image. ([#95](https://github.com/oysttyer/oysttyer/issues/95))
+- Fixes a bug introduced in 2.8.0 that caused videos to display with an inconsistent type. Videos will now be displayed in mp4 if that format is available and fall back to m3u8. ([# 93](https://github.com/oysttyer/oysttyer/issues/93))
+
 ##Changes in Version 2.8.0:
 
 - Add -extended option to support extended tweets (thanks, myshkin!)
