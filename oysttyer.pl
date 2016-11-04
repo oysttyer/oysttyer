@@ -39,6 +39,7 @@ BEGIN {
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
 			$ENV{'ALL'};
+        $oysttyer_PROFILE = $ENV{'OYSTTYER_PROFILE'} || "default";
 	$my_version_string = "${oysttyer_VERSION}.${oysttyer_PATCH_VERSION}";
 	(warn ("$my_version_string\n"), exit) if ($version);
 
@@ -124,7 +125,8 @@ BEGIN {
 	$rc = (defined($rc) && length($rc)) ? $rc : "";
 	unless ($norc) {
 		my $rcf =
-			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyerrc${rc}";
+			#($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyerrc${rc}";
+			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyer/$oysttyer_PROFILE/oysttyerrc${rc}";
 		if (open(W, $rcf)) {
 			# 5.14 sets this lazily, so this gives us a way out
 			eval 'binmode(W, ":utf8")' unless ($seven);
@@ -195,8 +197,10 @@ EOF
 	# try to find an OAuth keyfile if we haven't specified key+secret
 	# no worries if this fails; we could be Basic Auth, after all
 	$whine = (length($keyf)) ? 1 : 0;
-	$keyf ||= "$ENV{'HOME'}/.oysttyerkey";
-	$keyf = "$ENV{'HOME'}/.oysttyerkey${keyf}" if ($keyf !~ m#/#);
+	#$keyf ||= "$ENV{'HOME'}/.oysttyerkey";
+	$keyf ||= "$ENV{'HOME'}/.oysttyer/$oysttyer_PROFILE/oysttyerkey";
+	#$keyf = "$ENV{'HOME'}/.oysttyerkey${keyf}" if ($keyf !~ m#/#);
+	$keyf = "$ENV{'HOME'}/.oysttyer/$oysttyer_PROFILE/oysttyerkey${keyf}" if ($keyf !~ m#/#);
 	$attempted_keyf = $keyf;
 	if (!$oauthwizard && (
 			#!length($oauthkey) ||
