@@ -5801,7 +5801,10 @@ sub standardevent {
 			my $rto = &destroy_all_tco($ref->{'target_object'});
 			my $txt = &descape($rto->{'text'});
 			$verb =~ s/favorite/like/;
-			$g .= "$sou_sn just liked a tweet you retweeted: \"$txt\"";
+			# This event gets sent for both likes of tweets you retweeted and when you
+			# like a tweet that was retweeted into your timeline. We only want to
+			# display this message in the former case.
+			$g .= "$sou_sn just liked a tweet you retweeted: \"$txt\"" unless (lc($sou_sn) eq '@' . lc($whoami)) ;
 		} elsif ($verb eq 'follow') {
 			$g .= "$sou_sn is now following $tar_sn";
 		} elsif ($verb eq 'user_update') {
