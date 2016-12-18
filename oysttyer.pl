@@ -114,7 +114,7 @@ BEGIN {
 		daemon timestamp twarg user anonymous script readline
 		leader ssl rc norc vcheck apibase notifytype exts
 		nonewrts synch runcommand authtype oauthkey oauthsecret
-		tokenkey tokensecret credurl keyf readlinerepaint
+		tokenkey tokensecret credurl keyf lockf readlinerepaint
 		simplestart exception_is_maskable oldperl notco
 		notify_tool_path oauthurl oauthauthurl oauthaccurl oauthbase
 		signals_use_posix dostream eventbuf replacement_newline
@@ -1405,7 +1405,44 @@ if ($daemon) {
 		print $stdout "*** kind of stupid to run daemon with pause=0\n";
 		exit 1;
 	}
+
+	$lockf ||= "$ENV{'HOME'}/.oysttyerlock";
+	$lockf = "$ENV{'HOME'}/.oysttyerlock${lockf}" if ($lockf !~ m#/#);
+
+	if ( -f $lockf)  {
+		unless (open(L, "<$lockf")) {
+			print $stdout "*** unable to open existing lock: $!\n";
+			exit 1;
+		}
+		while (<L>) {
+			chomp();
+			next unless (/^\d+$/);
+			if (kill 0, $_) {
+				print $stdout "*** instance already running: $_\n";
+				exit 1;
+			}
+		} 
+		unless (unlink($lockf)) {
+			print $stdout "*** unable to remove stale lock: $!\n";
+			exit 1;
+		}
+	}
+
+	unless (open(L, ">$lockf")) {
+		print $stdout "*** unable to create lock: $lockf: $!\n";
+		exit 1;
+	}
+
 	if ($child = fork()) {
+		unless (print L "$child\n") {
+			print $stdout "*** unable to write lock: $!\n";
+			kill 15, $child;
+			exit 1;
+		}
+		unless (close(L)) {
+			print $stdout "*** unable to close lock: $!\n";
+			kill 15, $child;
+		}	
 		print $stdout "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
 		exit 0;
@@ -1424,12 +1461,18 @@ if ($daemon) {
 				kill 9, $nursepid if ($nursepid);
 				kill 9, $bufferpid if ($bufferpid);
 				kill 9, $curlpid if ($curlpid);
+				&rmlock;
 				kill 9, $$;
 			}, qw(TERM HUP PIPE));
 			&sigify("IGNORE", qw(INT));
 			$bufferpid = &start_streaming;
 			$rin = '';
 			vec($rin, fileno(STBUF), 1) = 1;
+		} else {
+			 &sigify(sub {
+				&rmlock;
+				kill 9, $$;
+			}, qw(TERM HUP PIPE));
 		}
 		$parent = 0;
 		$dmcount = 1 if ($dmpause); # force fetch
@@ -7227,6 +7270,23 @@ sub killkid {
 		kill 9, $child;
 	}
 	&$shutdown unless (!$shutdown);
+}
+
+sub rmlock {
+
+	return unless (($lockf) && (-f $lockf));
+	return unless (open(L, "<$lockf"));
+
+	while (<L>) {
+		chomp();
+		next unless (/^\d+$/);
+		if ($_ == $$) {
+			unlink($lockf);
+			last;
+		}
+	}
+
+	close(L);
 }
 
 sub generate_ansi {
