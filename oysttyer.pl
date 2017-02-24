@@ -2966,7 +2966,7 @@ EOF
 		&openurl($_);
 		return 0;
 	}
-	if (m#^/(url|open) ([dDzZ]?[a-zA-Z]?[0-9]+)$#) {
+	if (m#^/(url|open|web) ([dDzZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $code = lc($2);
 		my $tweet;
 		my $genurl = undef;
@@ -2990,6 +2990,16 @@ EOF
 			$genurl = $idurl;
 		}
 
+		# Just open the link to the tweet itself
+		if (m#^/web#) {
+			# DMs don't have links
+			if ($code =~ /^d/) {
+				print "*** DMs don\'t have links\n";
+			} else {
+				&openurl("${http_proto}://twitter.com/$tweet->{'user'}->{'screen_name'}/statuses/$tweet->{'id_str'}");
+			}
+			return 0;
+		}
 		# to be TOS-compliant, we must try entities first to use
 		# t.co wrapped links. this is a tiny version of /entities.
 		unless ($notco) {
@@ -6313,7 +6323,7 @@ sub defaultautocompletion {
 			'/doesfollow', '/search', '/tron', '/troff',
 			'/delete', '/deletelast', '/dump',
 			'/track', '/trends', '/block', '/unblock',
-			'/mute', '/unmute',
+			'/mute', '/unmute', '/web',
 			'/like', '/likes', '/unlike', '/eval');
 	}
 	@rlkeys = keys(%readline_completion);
