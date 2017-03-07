@@ -6,7 +6,7 @@
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
-# http://oysttyer.github.io/oysttyer/
+# https://oysttyer.github.io/
 #
 # distributed under the floodgap free software license
 # http://www.floodgap.com/software/ffsl/
@@ -1576,7 +1576,7 @@ unless ($simplestart) {
 EOF
 	$e = <<'EOF';
                  all rights reserved.                                .#*^#=.
-       http://oysttyer.github.io/oysttyer/                           %'.,`.#`
+       https://oysttyer.github.io/                                   %'.,`.#`
                                                                    ;',. ./#`
   freeware under the floodgap free software license.              ({.`,` #/
         http://www.floodgap.com/software/ffsl/                    `& ,` %,~=*'"*=~=-.,
@@ -2509,7 +2509,7 @@ EOF
 [3 of 5]
 +--- TWEET SELECTION --------------------------------------------------------+
 | all tweets have menu codes (letters + number). example:                    |
-|      a5> <oysttyer> Send me Dr Pepper http://oysttyer.github.io/oysttyer/  |
+|      a5> <oysttyer> Send me Dr Pepper https://oysttyer.github.io/          |
 | /reply a5 message                 replies to tweet a5                      |
 |      example: /reply a5 I also like Dr Pepper                              |
 |      becomes  \@oysttyer I also like Dr Pepper     (and is threaded)        |
@@ -2555,7 +2555,7 @@ Use /set to turn on options or set them at runtime. There is a BIG LIST!
                        or use the -verify command line option.
 For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
-** READ THE COMPLETE DOCUMENTATION: http://oysttyer.github.io/oysttyer/
+** READ THE COMPLETE DOCUMENTATION: https://oysttyer.github.io/
 
  oysttyer $oysttyer_VERSION is (c)2016 oysttyer organisation
                (c)2007-2012 cameron kaiser + contributors.
