@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in Version 2.8.2(unreleased):
+
+- Correctly counts the length of t.co links ([#116](https://github.com/oysttyer/oysttyer/issues/116))
+
 ##Changes in Version 2.8.1:
 
 - Fixes a bug introduced in 2.8.0 that caused multi-image tweets to only display the first image. ([#95](https://github.com/oysttyer/oysttyer/issues/95))
