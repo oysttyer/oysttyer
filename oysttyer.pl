@@ -662,6 +662,7 @@ $long ||= undef;
 $location ||= 0;
 $linelength ||= 140;
 $quotelinelength ||= 116;
+$tco_length ||= 23;  # The number of characters that t.co links require
 $dm_text_character_limit ||= 10000;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
 # this needs to be AFTER oauthbase so that apibase can set oauthbase.
@@ -1421,7 +1422,7 @@ if ($daemon) {
 				print $stdout "*** instance already running: $_\n";
 				exit 1;
 			}
-		} 
+		}
 		unless (unlink($lockf)) {
 			print $stdout "*** unable to remove stale lock: $!\n";
 			exit 1;
@@ -1442,7 +1443,7 @@ if ($daemon) {
 		unless (close(L)) {
 			print $stdout "*** unable to close lock: $!\n";
 			kill 15, $child;
-		}	
+		}
 		print $stdout "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
 		exit 0;
@@ -3233,7 +3234,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $countmaybe = $2;
 		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
 		$countmaybe += 0;
-		
+
 		my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
 		&dt_tdisplay($my_json_ref, "rtsofme");
 		if ($mode eq 're') {
@@ -3423,7 +3424,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		# and fall through to edm
 	}
 	if (s#^/edm \@?([^\s]+)\s+## && length)  {
-		
+
 		# Stolen from Floodgap's texapp
 		my $string = $_;
 		my $target = $1;
@@ -6872,7 +6873,7 @@ sub urlshorten {
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
 	if ($rc =~ m#^https?://#) {
-		return $rc	
+		return $rc
 	} else {
 		print $stdout "ERROR: " . "$rc\n";
 		return undef
@@ -7701,7 +7702,7 @@ sub normalizejson {
 	        }
 		$rt = &destroy_all_tco($rt);
 		$rt = &fix_geo_api_data($rt);
-	
+
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
@@ -8190,7 +8191,8 @@ sub fastturntotco {
 	($s =~ s#\b(([a-zA-Z0-9-_]\.)+([a-zA-Z]){2,})\b#((length($w="$1")>45)?$w:"http://$w")#eg);
 
 	# now turn all http and https URLs into t.co strings
-	($s =~ s#\b(https?)://[a-zA-Z0-9-_]+[^\s]*?('|\\|\s|[\.;:,!\?]\s+|[\.;:,!\?]$|$)#\1://t.co/1234567\2#gi);
+	my $tco_string = 'X' x ( $tco_length - 13 );
+	($s =~ s#\b(https?)://[a-zA-Z0-9-_]+[^\s]*?('|\\|\s|[\.;:,!\?]\s+|[\.;:,!\?]$|$)#https://t.co/${tco_string}\2#gi);
 	return $s;
 }
 # slow t.co converter. this is for future expansion.
