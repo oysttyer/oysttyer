@@ -2,6 +2,7 @@
 
 ##Changes in Version 2.8.2(unreleased):
 
+- Set the value of %URL% to the result of `/short` ([#112](https://github.com/oysttyer/oysttyer/issues112))
 - Correctly counts the length of t.co links ([#116](https://github.com/oysttyer/oysttyer/issues/116))
 
 ##Changes in Version 2.8.1:
