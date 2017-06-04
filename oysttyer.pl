@@ -1421,7 +1421,7 @@ if ($daemon) {
 				print $stdout "*** instance already running: $_\n";
 				exit 1;
 			}
-		} 
+		}
 		unless (unlink($lockf)) {
 			print $stdout "*** unable to remove stale lock: $!\n";
 			exit 1;
@@ -1442,7 +1442,7 @@ if ($daemon) {
 		unless (close(L)) {
 			print $stdout "*** unable to close lock: $!\n";
 			kill 15, $child;
-		}	
+		}
 		print $stdout "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
 		exit 0;
@@ -3233,7 +3233,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $countmaybe = $2;
 		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
 		$countmaybe += 0;
-		
+
 		my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
 		&dt_tdisplay($my_json_ref, "rtsofme");
 		if ($mode eq 're') {
@@ -3423,7 +3423,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		# and fall through to edm
 	}
 	if (s#^/edm \@?([^\s]+)\s+## && length)  {
-		
+
 		# Stolen from Floodgap's texapp
 		my $string = $_;
 		my $target = $1;
@@ -3818,6 +3818,12 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $uname = lc($3);
 		my $lname = '';
 
+		# Handle a case like issue 114 where you want to get a specific number of
+		# your own lists.
+		if ($uname =~ m/^\+/) {
+			$countmaybe = $uname;
+			$uname = $whoami;
+		}
 		$mode = ($mode =~ /^t?fo/) ? 'fo' :
 			($mode =~ /^t?fr/) ? 'fr' :
 			'';
@@ -6872,7 +6878,7 @@ sub urlshorten {
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
 	if ($rc =~ m#^https?://#) {
-		return $rc	
+		return $rc
 	} else {
 		print $stdout "ERROR: " . "$rc\n";
 		return undef
@@ -7701,7 +7707,7 @@ sub normalizejson {
 	        }
 		$rt = &destroy_all_tco($rt);
 		$rt = &fix_geo_api_data($rt);
-	
+
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
