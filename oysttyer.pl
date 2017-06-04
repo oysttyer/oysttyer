@@ -2027,6 +2027,7 @@ print $stdout "*** invalid UTF-8: partial delete of a wide character?\n";
 		my $answer = (&urlshorten($url) || 'FAILED -- %% to retry');
 		print $stdout "*** shortened to: ";
 		print $streamout ($answer . "\n");
+		$urlshort = $answer;
 		return 0;
 	}
 
