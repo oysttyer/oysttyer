@@ -1421,7 +1421,7 @@ if ($daemon) {
 				print $stdout "*** instance already running: $_\n";
 				exit 1;
 			}
-		} 
+		}
 		unless (unlink($lockf)) {
 			print $stdout "*** unable to remove stale lock: $!\n";
 			exit 1;
@@ -1442,7 +1442,7 @@ if ($daemon) {
 		unless (close(L)) {
 			print $stdout "*** unable to close lock: $!\n";
 			kill 15, $child;
-		}	
+		}
 		print $stdout "*** detached daemon released. pid = $child\n";
 		kill 15, $$;
 		exit 0;
@@ -1509,7 +1509,7 @@ if ($daemon) {
 						my $rbuf = '';
 						my $len;
 
-						sysread(STBUF, $buf, 1);
+						read(STBUF, $buf, 1);
 						if (!length($buf)) {
 							$read_failure++;
 							# a stuck ready FH says
@@ -1531,7 +1531,7 @@ print $stdout "*** unrecoverable failure of buffer process, aborting\n";
 						while (length($buf) < 8) {
 				# don't read 8 -- read 1. that means we can
 				# skip trailing garbage without a window.
-							sysread(STBUF,$rbuf,1);
+							read(STBUF,$rbuf,1);
 						if ($rbuf =~ /[0-9a-fA-F]/) {
 								$buf .= $rbuf;
 							} else {
@@ -1547,7 +1547,7 @@ print $stdout "*** unrecoverable failure of buffer process, aborting\n";
 						$len = hex($buf);
 						$buf = '';
 						while (length($buf) < $len) {
-							sysread(STBUF, $rbuf,
+							read(STBUF, $rbuf,
 							($len-length($buf)));
 							$buf .= $rbuf;
 						}
@@ -3233,7 +3233,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $countmaybe = $2;
 		$countmaybe =~ s/[^\d]//g if (length($countmaybe));
 		$countmaybe += 0;
-		
+
 		my $my_json_ref = &grabjson($rtsofmeurl, 0, 0, $countmaybe);
 		&dt_tdisplay($my_json_ref, "rtsofme");
 		if ($mode eq 're') {
@@ -3423,7 +3423,7 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		# and fall through to edm
 	}
 	if (s#^/edm \@?([^\s]+)\s+## && length)  {
-		
+
 		# Stolen from Floodgap's texapp
 		my $string = $_;
 		my $target = $1;
@@ -4063,7 +4063,7 @@ sub sync_semaphore {
 		my $k = '';
 
 		while(!length($k)) {
-			sysread(W, $k, 1);
+			read(W, $k, 1);
 		} # wait for semaphore
 	}
 }
@@ -4236,7 +4236,7 @@ RESTART_SELECT:
 			# data stream to synchronize.
 			# first, however, make sure we actually have valid
 			# data, or we sit here and slow down the user.
-			sysread(STBUF, $buf, 1);
+			read(STBUF, $buf, 1);
 			if (!length($buf)) {
 				# if we get a "ready" but there's actually
 				# no data, that means either 1) a signal
@@ -4264,7 +4264,7 @@ EOF
 			while (length($buf) < 8) {
 				# don't read 8 -- read 1. that means we can
 				# skip trailing garbage without a window.
-				sysread(STBUF, $rbuf, 1);
+				read(STBUF, $rbuf, 1);
 				$reads++;
 				if ($rbuf =~ /[0-9a-fA-F]/) {
 					$buf .= $rbuf;
@@ -4285,7 +4285,7 @@ EOF
 			$len = hex($buf);
 			$buf = '';
 			while (length($buf) < $len) {
-				sysread(STBUF, $rbuf, ($len-length($buf)));
+				read(STBUF, $rbuf, ($len-length($buf)));
 				$buf .= $rbuf;
 			}
 
@@ -4317,7 +4317,7 @@ EOF
 		goto RESTART_SELECT if(vec($rout, fileno(STDIN), 1) != 1);
 		print $stdout "-- waiting for data ", scalar localtime, "\n"
 			if ($superverbose);
-		if(sysread(STDIN, $rout, 20) != 20) {
+		if(read(STDIN, $rout, 20) != 20) {
 			# if we get repeated "ready" but no data on STDIN,
 			# like the streaming buffer, we probably lost our
 			# IPC and we should die here.
@@ -4390,7 +4390,7 @@ EOF
 		} elsif ($rout =~ /^ki ([^\s]+) /) {
 			my $key = $1;
 			my $module;
-			sysread(STDIN, $module, $packet_length);
+			read(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
 			print $stdout "-- fetch for module $module key $key\n"
@@ -4402,7 +4402,7 @@ EOF
 		} elsif ($rout =~ /^kn ([^\s]+) /) {
 			my $key = $1;
 			my $module;
-			sysread(STDIN, $module, $packet_length);
+			read(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
 			print $stdout "-- nulled module $module key $key\n"
@@ -4413,10 +4413,10 @@ EOF
 			my $key = $1;
 			my $value;
 			my $module;
-			sysread(STDIN, $module, $packet_length);
+			read(STDIN, $module, $packet_length);
 			$module =~ s/\s+$//;
 			$module = pack("H*", $module);
-			sysread(STDIN, $value, $packet_length);
+			read(STDIN, $value, $packet_length);
 			$value =~ s/\s+$//;
 			print $stdout
 				"-- set module $module key $key = $value\n"
@@ -4438,7 +4438,7 @@ EOF
 			if ($comm eq '?') {
 				print P substr("${$key}$space_pad", 0, $packet_length);
 			} else {
-				sysread(STDIN, $value, $packet_length);
+				read(STDIN, $value, $packet_length);
 				$value =~ s/\s+$//;
 				$interactive = ($comm eq '+') ? 0 : 1;
 				if ($key eq 'tquery') {
@@ -4698,7 +4698,7 @@ sub start_streaming {
 			my $c;
 
 			for(;;) {
-				sysread(NURSE, $c, 1);
+				read(NURSE, $c, 1);
 				print STDOUT $c;
 			}
 		}
@@ -6523,7 +6523,7 @@ sub get_tweet {
 	kill $SIGUSR2, $child if ($child);
 	print C "pipet $code ----------\n";
 	while(length($k) < $packet_length) {
-		sysread(W, $l, $packet_length);
+		read(W, $l, $packet_length);
 		$k .= $l;
 	}
 	return undef if ($k !~ /[^\s]/);
@@ -6587,7 +6587,7 @@ sub get_dm {
 	kill $SIGUSR2, $child if ($child); # prime pipe
 	print C "piped $code ----------\n"; # internally two alphanum, recall
 	while(length($k) < $packet_length) {
-		sysread(W, $l, $packet_length);
+		read(W, $l, $packet_length);
 		$k .= $l;
 	}
 
@@ -6623,7 +6623,7 @@ sub getbackgroundkey {
 		"DEFAULT";
 	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, $packet_length);
 	while(length($k) < $packet_length) {
-		sysread(W, $l, $packet_length);
+		read(W, $l, $packet_length);
 		$k .= $l;
 	}
 	$k =~ s/[^0-9a-fA-F]//g;
@@ -6817,7 +6817,7 @@ sub getvariable {
 		my $value;
 		kill $SIGUSR2, $child if ($child);
 		print C (substr("?$key                    ", 0, 19) . "\n");
-		sysread(W, $value, $packet_length);
+		read(W, $value, $packet_length);
 		$value =~ s/\s+$//;
 		return $value;
 	}
@@ -6872,7 +6872,7 @@ sub urlshorten {
 	print $stdout "$cl\n" if ($superverbose);
 	chomp($rc = `$cl`);
 	if ($rc =~ m#^https?://#) {
-		return $rc	
+		return $rc
 	} else {
 		print $stdout "ERROR: " . "$rc\n";
 		return undef
@@ -7701,7 +7701,7 @@ sub normalizejson {
 	        }
 		$rt = &destroy_all_tco($rt);
 		$rt = &fix_geo_api_data($rt);
-	
+
 		$i->{'retweeted_status'} = $rt;
 		$i->{'text'} =
 		"RT \@$rt->{'user'}->{'screen_name'}" . ': ' . $rt->{'text'};
