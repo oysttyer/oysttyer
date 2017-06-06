@@ -3820,6 +3820,12 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 		my $uname = lc($3);
 		my $lname = '';
 
+		# Handle a case like issue 114 where you want to get a specific number of
+		# your own lists.
+		if ($uname =~ m/^\+/) {
+			$countmaybe = $uname;
+			$uname = $whoami;
+		}
 		$mode = ($mode =~ /^t?fo/) ? 'fo' :
 			($mode =~ /^t?fr/) ? 'fr' :
 			'';
