@@ -3,6 +3,9 @@
 ##Changes in Version 2.8.2(unreleased):
 
 - Set the value of %URL% to the result of `/short` ([#112](https://github.com/oysttyer/oysttyer/issues112))
+- Add support for Perl 5.30+ by replacing `sysread()` with `read()` ([#115](https://github.com/oysttyer/oysttyer/issues/115))
+- Prevent crashes with `/list +N` ([#114](https://github.com/oysttyer/oysttyer/issues/114))
+- Do not display notifcations when you like a tweet that was retweeted into your timeline ([#98](https://github.com/oysttyer/oysttyer/issues/98))
 - Correctly counts the length of t.co links ([#116](https://github.com/oysttyer/oysttyer/issues/116))
 
 ##Changes in Version 2.8.1:
