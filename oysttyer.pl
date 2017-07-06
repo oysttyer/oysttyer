@@ -109,6 +109,7 @@ BEGIN {
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
 		filteratonly nofilter rtsofmeurl largeimages origimages extended
+		video_bitrate
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -775,6 +776,7 @@ $largeimages ||= 0;
 $origimages ||= 0;
 $doublespace ||= 0;
 $extended ||= 0;
+$video_bitrate ||= 'highest';
 if ($extended) {
 	$tweet_mode = "extended";
 	$display_mode = "full_text";
@@ -7575,13 +7577,30 @@ sub destroy_all_tco {
 					# broadly viewable, but accept m3u8 because that's where
 					# Twitter is going with videos.
 					my $videourl;
+					#foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
+					#	if ($variant->{'content_type'} =~ /mp4/) {
+					#		$videourl = $variant->{'url'};
+					#		last;
+					#	} elsif (($variant->{'content_type'} =~ /x-mpegURL/) || (! $videourl)) {
+					#		$videourl = $variant->{'url'};
+					#	}
+					#}
+					my $mp4_variants = {};
+					my $m3u8_variants = {};
+					my @videos;
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
-						if ($variant->{'content_type'} =~ /mp4/) {
-							$videourl = $variant->{'url'};
-							last;
-						} elsif (($variant->{'content_type'} =~ /x-mpegURL/) || (! $videourl)) {
-							$videourl = $variant->{'url'};
-						}
+						$mp4_variants{$variant->{'url'}} = $variant if ($variant->{'content_type'} =~ /mp4/ );
+						$m3u8_variants{$variant->{'url'}} = $variant if ($variant->{'content_type'} =~ /x-mpegURL/ );
+					}
+					if ( %mp4_variants ) {
+						@videos = sort { $mp4_variants{$a}->{bitrate} <=> $mp4_variants{$b}->{bitrate} } keys %mp4_variants;
+					} else {
+						@videos = sort { $m3u8_variants{$a}->{bitrate} <=> $m3u8_variants{$b}->{bitrate} } keys %m3u8_variants;
+					}
+					if ( $video_bitrate eq 'highest' ) {
+						$videourl = $videos[-1];
+					} else {
+						$videourl = $videos[0];
 					}
 					$urls = $urls . " " . $videourl;
 					$urls = strim($urls);
