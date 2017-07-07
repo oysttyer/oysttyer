@@ -7576,7 +7576,7 @@ sub destroy_all_tco {
 					# Need to look for content_type, prefer mp4 since that's more
 					# broadly viewable, but accept m3u8 because that's where
 					# Twitter is going with videos.
-					my $videourl;
+					my $videourl = '';
 					#foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
 					#	if ($variant->{'content_type'} =~ /mp4/) {
 					#		$videourl = $variant->{'url'};
@@ -7587,7 +7587,7 @@ sub destroy_all_tco {
 					#}
 					my $mp4_variants = {};
 					my $m3u8_variants = {};
-					my @videos;
+					my @videos = ();
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
 						$mp4_variants{$variant->{'url'}} = $variant if ($variant->{'content_type'} =~ /mp4/ );
 						$m3u8_variants{$variant->{'url'}} = $variant if ($variant->{'content_type'} =~ /x-mpegURL/ );
