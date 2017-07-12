@@ -7585,8 +7585,8 @@ sub destroy_all_tco {
 					#		$videourl = $variant->{'url'};
 					#	}
 					#}
-					my $mp4_variants = {};
-					my $m3u8_variants = {};
+					my %mp4_variants = ();
+					my %m3u8_variants = ();
 					my @videos = ();
 					foreach $variant (@{ $entry->{'video_info'}->{'variants'} }) {
 						$mp4_variants{$variant->{'url'}} = $variant if ($variant->{'content_type'} =~ /mp4/ );
