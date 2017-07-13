@@ -3448,8 +3448,6 @@ m#^/(un)?l(rt|retweet|i|ike)? ([zZ]?[a-zA-Z]?[0-9]+)$#) {
 				}
 			}
 		}
-		# Seems rude, but is probably true:
-		print $stdout "-- warning: user likes emacs and probably has poor hygiene\n" if ($editor =~ /emacs/);
 		if(!open(K, ">$fn")) {
 			print $stdout "-- unable to create $fn: $!\n";
 			return 96;
