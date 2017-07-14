@@ -33,8 +33,8 @@ BEGIN {
 	}
 
 	$command_line = $0; $0 = "oysttyer";
-	$oysttyer_VERSION = "2.8";
-	$oysttyer_PATCH_VERSION = 1;
+	$oysttyer_VERSION = "2.9";
+	$oysttyer_PATCH_VERSION = 0;
 	$oysttyer_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||

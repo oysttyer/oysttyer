@@ -1,6 +1,6 @@
 #CHANGELOG
 
-##Changes in Version 2.9(unreleased):
+##Changes in Version 2.9:
 
 - Set the value of %URL% to the result of `/short` ([#112](https://github.com/oysttyer/oysttyer/issues112))
 - Add support for Perl 5.30+ by replacing `sysread()` with `read()` ([#115](https://github.com/oysttyer/oysttyer/issues/115))
