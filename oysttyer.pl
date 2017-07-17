@@ -128,7 +128,7 @@ BEGIN {
 			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyerrc${rc}";
 		if (open(W, $rcf)) {
 			# 5.14 sets this lazily, so this gives us a way out
-			eval 'binmode(W, ":utf8")' unless ($seven);
+			#DEBUG eval 'binmode(W, ":utf8")' unless ($seven);
 			while(<W>) {
 				chomp;
 				next if (/^\s*$/ || /^#/);
@@ -645,8 +645,8 @@ if ($silent) {
 # initialize our route back out so background can talk to foreground
 pipe(W, P) || die("pipe() error [or your Perl doesn't support it]: $!\n");
 select(P); $|++;
-binmode(P, ":utf8") unless ($seven);
-binmode(W, ":utf8") unless ($seven);
+#DEBUG binmode(P, ":utf8") unless ($seven);
+#DEBUG binmode(W, ":utf8") unless ($seven);
 
 # default command line options
 
@@ -1754,7 +1754,7 @@ sub send_removereadline {
 # this has to be last or the background process can't see the full API
 if ($child = open(C, "|-")) {
 	close(P);
-	binmode(C, ":utf8") unless ($seven);
+	#DEBUG binmode(C, ":utf8") unless ($seven);
 } else {
 	close(W);
 	goto MONITOR;
@@ -4071,7 +4071,7 @@ sub sync_semaphore {
 		my $k = '';
 
 		while(!length($k)) {
-			read(W, $k, 1);
+			sysread(W, $k, 1);
 		} # wait for semaphore
 	}
 }
@@ -4108,7 +4108,8 @@ vec($rin,fileno(STDIN),1) = 1;
 # paranoia
 binmode($stdout, ":crlf") if ($termrl);
 unless ($seven) {
-	binmode(STDIN, ":utf8");
+	#DEBUG binmode(STDIN, ":utf8");
+	binmode(STDIN);
 	binmode($stdout, ":utf8");
 }
 
@@ -4325,7 +4326,7 @@ EOF
 		goto RESTART_SELECT if(vec($rout, fileno(STDIN), 1) != 1);
 		print $stdout "-- waiting for data ", scalar localtime, "\n"
 			if ($superverbose);
-		if(read(STDIN, $rout, 20) != 20) {
+		if(sysread(STDIN, $rout, 20) != 20) {
 			# if we get repeated "ready" but no data on STDIN,
 			# like the streaming buffer, we probably lost our
 			# IPC and we should die here.
@@ -6531,7 +6532,7 @@ sub get_tweet {
 	kill $SIGUSR2, $child if ($child);
 	print C "pipet $code ----------\n";
 	while(length($k) < $packet_length) {
-		read(W, $l, $packet_length);
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 	return undef if ($k !~ /[^\s]/);
@@ -6595,7 +6596,7 @@ sub get_dm {
 	kill $SIGUSR2, $child if ($child); # prime pipe
 	print C "piped $code ----------\n"; # internally two alphanum, recall
 	while(length($k) < $packet_length) {
-		read(W, $l, $packet_length);
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 
@@ -6631,7 +6632,7 @@ sub getbackgroundkey {
 		"DEFAULT";
 	print C substr(unpack("${pack_magic}H*", $ref).$space_pad, 0, $packet_length);
 	while(length($k) < $packet_length) {
-		read(W, $l, $packet_length);
+		sysread(W, $l, $packet_length);
 		$k .= $l;
 	}
 	$k =~ s/[^0-9a-fA-F]//g;
@@ -6825,7 +6826,7 @@ sub getvariable {
 		my $value;
 		kill $SIGUSR2, $child if ($child);
 		print C (substr("?$key                    ", 0, 19) . "\n");
-		read(W, $value, $packet_length);
+		sysread(W, $value, $packet_length);
 		$value =~ s/\s+$//;
 		return $value;
 	}

@@ -11,6 +11,10 @@
 - Creates a lock file when running in daemon mode ([#106](https://github.com/oysttyer/oysttyer/pull/106))
 - Open a tweet in a web browser with the `/web` command ([#101](https://github.com/oysttyer/oysttyer/issues/101)) 
 
+### Known issues
+
+- `synch` causes the program to hang ([#123](https://github.com/oysttyer/oysttyer/issues/123))
+
 ##Changes in Version 2.8.1:
 
 - Fixes a bug introduced in 2.8.0 that caused multi-image tweets to only display the first image. ([#95](https://github.com/oysttyer/oysttyer/issues/95))
