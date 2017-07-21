@@ -1,5 +1,11 @@
 #CHANGELOG
 
+## Version 2.9.1 (unreleased):
+
+### Issues resolved
+
+- `synch` caused the program to hang ([#123](https://github.com/oysttyer/oysttyer/issues/123))
+
 ##Changes in Version 2.9:
 
 - Set the value of %URL% to the result of `/short` ([#112](https://github.com/oysttyer/oysttyer/issues112))
