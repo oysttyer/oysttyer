@@ -3040,7 +3040,7 @@ EOF
 		# Just open the link to the tweet itself
 		if (m#^/web#) {
 			# DMs don't have links
-			if ($code =~ /^d/) {
+			if ($code =~ /^d[${alphabet}]/) {
 				print "*** DMs don\'t have links\n";
 			} else {
 				&openurl("${http_proto}://twitter.com/$tweet->{'user'}->{'screen_name'}/statuses/$tweet->{'id_str'}");

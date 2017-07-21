@@ -5,6 +5,7 @@
 ### Issues resolved
 
 - `synch` caused the program to hang ([#123](https://github.com/oysttyer/oysttyer/issues/123))
+- The `/web` command did not work for tweets with a code beginning with "d". ([#122](https://github.com/oysttyer/oysttyer/issues/122))
 
 ##Changes in Version 2.9:
 
