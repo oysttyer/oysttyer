@@ -2,7 +2,7 @@
 # TODO: Eventually we should use Getopt::Long and go back to #!/usr/bin/env perl
 #########################################################################
 #
-# oysttyer v2.8 (c)2016-     oysttyer orginisation
+# oysttyer v2.8 (c)2016-     oysttyer organisation
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
