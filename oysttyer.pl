@@ -127,8 +127,6 @@ BEGIN {
 		my $rcf =
 			($rc =~ m#^/#) ? $rc : "$ENV{'HOME'}/.oysttyerrc${rc}";
 		if (open(W, $rcf)) {
-			# 5.14 sets this lazily, so this gives us a way out
-			#DEBUG eval 'binmode(W, ":utf8")' unless ($seven);
 			while(<W>) {
 				chomp;
 				next if (/^\s*$/ || /^#/);
@@ -645,8 +643,6 @@ if ($silent) {
 # initialize our route back out so background can talk to foreground
 pipe(W, P) || die("pipe() error [or your Perl doesn't support it]: $!\n");
 select(P); $|++;
-#DEBUG binmode(P, ":utf8") unless ($seven);
-#DEBUG binmode(W, ":utf8") unless ($seven);
 
 # default command line options
 
@@ -1754,7 +1750,6 @@ sub send_removereadline {
 # this has to be last or the background process can't see the full API
 if ($child = open(C, "|-")) {
 	close(P);
-	#DEBUG binmode(C, ":utf8") unless ($seven);
 } else {
 	close(W);
 	goto MONITOR;
@@ -4108,7 +4103,6 @@ vec($rin,fileno(STDIN),1) = 1;
 # paranoia
 binmode($stdout, ":crlf") if ($termrl);
 unless ($seven) {
-	#DEBUG binmode(STDIN, ":utf8");
 	binmode(STDIN);
 	binmode($stdout, ":utf8");
 }
