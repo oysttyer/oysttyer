@@ -2,7 +2,7 @@
 # TODO: Eventually we should use Getopt::Long and go back to #!/usr/bin/env perl
 #########################################################################
 #
-# oysttyer v2.8 (c)2016-     oysttyer orginistion
+# oysttyer v2.8 (c)2016-     oysttyer orginisation
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
@@ -34,8 +34,8 @@ BEGIN {
 
 	$command_line = $0; $0 = "oysttyer";
 	$oysttyer_VERSION = "2.9";
-	$oysttyer_PATCH_VERSION = 0;
-	$oysttyer_RC_NUMBER = 0; # non-zero for release candidate
+	$oysttyer_PATCH_VERSION = 1;
+	$oysttyer_RC_NUMBER = 1; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
 			$ENV{'ALL'};
@@ -1570,7 +1570,7 @@ unless ($simplestart) {
 	print <<"EOF";
 
 ######################################################               +oo=========oo+
-    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
+    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2017 oysttyer organisation
                     (c)2007-2012 cameron kaiser${OFF}
 EOF
 	$e = <<'EOF';
@@ -1594,7 +1594,7 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2016 oysttyer organisation
+oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2017 oysttyer organisation
                (c)2007-2012 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
@@ -2556,7 +2556,7 @@ For more, like readline support, UTF-8, SSL, proxies, etc., see the docs.
 
 ** READ THE COMPLETE DOCUMENTATION: https://oysttyer.github.io/
 
- oysttyer $oysttyer_VERSION is (c)2016 oysttyer organisation
+ oysttyer $oysttyer_VERSION is (c)2017 oysttyer organisation
                (c)2007-2012 cameron kaiser + contributors.
  all rights reserved. this software is offered AS IS, with no guarantees. it
  is not endorsed by Obvious or the executives and developers of Twitter.
