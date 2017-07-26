@@ -1,6 +1,6 @@
 #CHANGELOG
 
-## Version 2.9.1 (unreleased):
+## Version 2.9.1
 
 ### Issues resolved
 

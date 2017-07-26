@@ -2,7 +2,7 @@
 # TODO: Eventually we should use Getopt::Long and go back to #!/usr/bin/env perl
 #########################################################################
 #
-# oysttyer v2.8 (c)2016-     oysttyer organisation
+# oysttyer v2.9 (c)2016-     oysttyer organisation
 #               (c)2007-2012 cameron kaiser (and contributors).
 # all rights reserved.
 #
@@ -35,7 +35,7 @@ BEGIN {
 	$command_line = $0; $0 = "oysttyer";
 	$oysttyer_VERSION = "2.9";
 	$oysttyer_PATCH_VERSION = 1;
-	$oysttyer_RC_NUMBER = 1; # non-zero for release candidate
+	$oysttyer_RC_NUMBER = 0; # non-zero for release candidate
 	# this is kludgy, yes.
 	$LANG = $ENV{'LANG'} || $ENV{'GDM_LANG'} || $ENV{'LC_CTYPE'} ||
 			$ENV{'ALL'};
