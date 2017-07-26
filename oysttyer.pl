@@ -1565,14 +1565,13 @@ print $stdout "*** unrecoverable failure of buffer process, aborting\n";
 }
 
 #### INTERACTIVE MODE and CONSOLE STARTUP ####
+my $VERSION_DISPLAY = "oysttyer ${oysttyer_VERSION}.${padded_patch_version}";
+my $COPYRIGHT = "\t(c) 2015-2017 oysttyer organisation\n\t(c) 2007-2012 Cameron Kaiser";
+
+print "######################################################               +oo=========oo+\n" unless $simplestart;
+print "    ${EM}${VERSION_DISPLAY} copyright:\n    ${COPYRIGHT}${OFF}\n";
 
 unless ($simplestart) {
-	print <<"EOF";
-
-######################################################               +oo=========oo+
-    ${EM}oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2017 oysttyer organisation
-                    (c)2007-2012 cameron kaiser${OFF}
-EOF
 	$e = <<'EOF';
                  all rights reserved.                                .#*^#=.
        https://oysttyer.github.io/                                   %'.,`.#`
@@ -1594,8 +1593,6 @@ EOF
 	$e =~ s/\$\{([A-Z]+)\}/${$1}/eg; print $stdout $e;
 } else {
 	print <<"EOF";
-oysttyer ${oysttyer_VERSION}.${padded_patch_version} (c)2017 oysttyer organisation
-               (c)2007-2012 cameron kaiser
 all rights reserved. freeware under the floodgap free software license.
 http://www.floodgap.com/software/ffsl/
 
