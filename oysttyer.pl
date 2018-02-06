@@ -590,7 +590,7 @@ if (length($notifytype) && $notifytype ne '0' &&
 if (length($tquery) && $tquery ne '0') {
 	my $xtquery = &tracktags_tqueryurlify($tquery);
 	die("** custom tquery is over $linelength length: $xtquery\n")
-		if (length($xtquery) > ($linelength - 1));
+		if (length($xtquery) >= $linelength);
 	@trackstrings = ($xtquery);
 } else {
 	&tracktags_makearray;
@@ -6773,7 +6773,7 @@ sub setvariable {
 	# virtual keys
 	} elsif ($key eq 'tquery') {
 		my $ivalue = &tracktags_tqueryurlify($value);
-		if (length($ivalue) > ($linelength - 1)) {
+		if (length($ivalue) >= $linelength) {
 			print $stdout
 		"*** custom query is too long (encoded: $ivalue)\n";
 			return 1;
