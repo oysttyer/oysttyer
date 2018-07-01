@@ -589,8 +589,8 @@ if (length($notifytype) && $notifytype ne '0' &&
 # set up track tags
 if (length($tquery) && $tquery ne '0') {
 	my $xtquery = &tracktags_tqueryurlify($tquery);
-	die("** custom tquery is over 140 length: $xtquery\n")
-		if (length($xtquery) > 139);
+	die("** custom tquery is over $linelength length: $xtquery\n")
+		if (length($xtquery) >= $linelength);
 	@trackstrings = ($xtquery);
 } else {
 	&tracktags_makearray;
@@ -657,8 +657,8 @@ $http_proto = ($ssl) ? 'https' : 'http';
 $lat ||= undef;
 $long ||= undef;
 $location ||= 0;
-$linelength ||= 140;
-$quotelinelength ||= 116;
+$linelength ||= 280;
+$quotelinelength ||= 256;
 $tco_length ||= 23;  # The number of characters that t.co links require
 $dm_text_character_limit ||= 10000;
 $oauthbase ||= $apibase || "${http_proto}://api.twitter.com";
@@ -6773,7 +6773,7 @@ sub setvariable {
 	# virtual keys
 	} elsif ($key eq 'tquery') {
 		my $ivalue = &tracktags_tqueryurlify($value);
-		if (length($ivalue) > 139) {
+		if (length($ivalue) >= $linelength) {
 			print $stdout
 		"*** custom query is too long (encoded: $ivalue)\n";
 			return 1;
