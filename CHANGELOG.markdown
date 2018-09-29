@@ -1,5 +1,9 @@
 #CHANGELOG
 
+##Changes in  Version 2.10 — Not yet released
+
+- Default to using extended tweet display ([#143](https://github.com/oysttyer/oysttyer/issues/143))
+
 ## Version 2.9.1
 
 ### Issues resolved

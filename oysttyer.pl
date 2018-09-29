@@ -771,7 +771,7 @@ $showusername ||= 0;
 $largeimages ||= 0;
 $origimages ||= 0;
 $doublespace ||= 0;
-$extended ||= 0;
+$extended ||= 1;
 $video_bitrate ||= 'highest';
 if ($extended) {
 	$tweet_mode = "extended";
