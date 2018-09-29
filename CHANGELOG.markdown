@@ -4,6 +4,7 @@
 
 - Default to using extended tweet display ([#143](https://github.com/oysttyer/oysttyer/issues/143))
 - Support new tweet size ([#131](https://github.com/oysttyer/oysttyer/issues/131))
+- Print a separator between refreshes with the `separator` option ([#141](https://github.com/oysttyer/oysttyer/issues/141))
 
 ## Version 2.9.1
 

@@ -109,7 +109,7 @@ BEGIN {
 		statusliurl followliurl leaveliurl dmidurl nostreamreplies
 		frupdurl filterusers filterats filterrts filterflags
 		filteratonly nofilter rtsofmeurl largeimages origimages extended
-		video_bitrate
+		video_bitrate separator
 	); %opts_others = map { $_ => 1 } qw(
 		lynx curl seven silent maxhist noansi hold status
 		daemon timestamp twarg user anonymous script readline
@@ -780,6 +780,7 @@ if ($extended) {
 	$tweet_mode = "compatibility";
 	$display_mode = "text";
 }
+$separator ||= 0;
 
 # synch overrides these options.
 if ($synch) {
@@ -6292,6 +6293,7 @@ sub defaultconclude {
 		print $stdout "-- (filtered $filtered tweets)\n";
 		$filtered = 0;
 	}
+    print $separator . "\n" if ( $separator );
 }
 
 sub defaultdmhandle {
