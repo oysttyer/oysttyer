@@ -1,6 +1,6 @@
-#CHANGELOG
+# CHANGELOG
 
-##Changes in  Version 2.10
+## Changes in  Version 2.10
 
 - Default to using extended tweet display ([#143](https://github.com/oysttyer/oysttyer/issues/143))
 - Support new tweet size ([#131](https://github.com/oysttyer/oysttyer/issues/131))
@@ -13,7 +13,7 @@
 - `synch` caused the program to hang ([#123](https://github.com/oysttyer/oysttyer/issues/123))
 - The `/web` command did not work for tweets with a code beginning with "d". ([#122](https://github.com/oysttyer/oysttyer/issues/122))
 
-##Changes in Version 2.9:
+## Changes in Version 2.9:
 
 - Set the value of %URL% to the result of `/short` ([#112](https://github.com/oysttyer/oysttyer/issues112))
 - Add support for Perl 5.30+ by replacing `sysread()` with `read()` ([#115](https://github.com/oysttyer/oysttyer/issues/115))
@@ -28,26 +28,26 @@
 
 - `synch` causes the program to hang ([#123](https://github.com/oysttyer/oysttyer/issues/123))
 
-##Changes in Version 2.8.1:
+## Changes in Version 2.8.1:
 
 - Fixes a bug introduced in 2.8.0 that caused multi-image tweets to only display the first image. ([#95](https://github.com/oysttyer/oysttyer/issues/95))
 - Fixes a bug introduced in 2.8.0 that caused videos to display with an inconsistent type. Videos will now be displayed in mp4 if that format is available and fall back to m3u8. ([# 93](https://github.com/oysttyer/oysttyer/issues/93))
 
-##Changes in Version 2.8.0:
+## Changes in Version 2.8.0:
 
 - Add -extended option to support extended tweets (thanks, myshkin!)
 - Add -origimages option to request original-sized images (thanks, Wyatts)
 - Re-add mp4 URL replacement since that is still used for GIFs.
 
-##Changes in Version 2.7.2:
+## Changes in Version 2.7.2:
 
 - Nothing, just constant goddamn interruptions mean I make silly mistakes with versioning.
 
-##Changes in version 2.7.1:
+## Changes in version 2.7.1:
 
 - Fixes /short. Needed updating to reflect latest is.gd API.
 
-##Changes in version 2.7.0:
+## Changes in version 2.7.0:
 
 - Adds /edm and /edmreply commands to use $EDITOR for replying to DMs
 - Summary of other DM enhancements already added in point releases:
@@ -56,15 +56,15 @@
 	- Nicely truncate long DMs when using /dump
 	- Fix a bug where whoami comparison was not lowercased for sent dms
 
-##Changes in Version 2.6.4:
+## Changes in Version 2.6.4:
 
 - Add --http1.1 flag to curl to suit versions after  7.47.0. Earliest supported curl is now 7.33.0
 
-##Changes in version 2.6.3:
+## Changes in version 2.6.3:
 
 - Nothing over 2.6.2. I just can't tag things properly
 
-##Changes in version 2.6.2:
+## Changes in version 2.6.2:
 
 - Correct year on startup screen
 - Adds very rudimentary CI syntax checks
@@ -74,7 +74,7 @@
 - Fix a bug where whoami comparison was not lowercased for sent dms
 - Update userstream endpoint
 
-##Changes in version 2.6.1:
+## Changes in version 2.6.1:
 
 - Add the ability to share tweets via direct message with the `/qdm` command (Work towards of 2.7 milestone)
 - Use the Twitter account in the prompt instead of `oysttyer` when `showusername` is true.
@@ -87,7 +87,7 @@
 - Bring `/entities` back into Twitter TOS compliance and make it only open tco links (I.e. make it behave worse. Sorry)
 - Add tab expansion for like and retweet (missed from 2.5.1)
 
-##Changes in version 2.6.0:
+## Changes in version 2.6.0:
 
 - Finishes up newline support
 - Correctly counts characters for strings with newlines that are being sent. I.e. `\n` counts as one character.
@@ -98,67 +98,67 @@
 	- If newline is set to replace then you can specify what oysttyer uses for display of newlines using `-replacement_newline` and `-replacement_carriagereturn` or use the default replacement characters
 	- Note: If using `-newline=replace` there is currently no way for oysttyer to differentiate between actual newlines and literal `\`s followed by literal `n`s and both will get replaced.
 
-##Changes in version 2.5.2:
+## Changes in version 2.5.2:
 
 - Add /mute /unmute functionality
 
-##Changes in version 2.5.1:
+## Changes in version 2.5.1:
 
 - favorites changed to likes (Twitter made everyone do it!)
 - Quick, perhaps temporary, fix to allow users to specify their own oauthkey and oauthsecret in their .oysttyerrc to work around the current muzzling issues
 - fix /vre to not break threading
 - Allow custom newline replacement characters
 
-##Changes in version 2.5.0:
+## Changes in version 2.5.0:
 
 - Rename to oysttyer
 - Change API key, etc
 - No new features or function changes since 2.4.2, just renaming
 
-##Changes in version 2.4.2:
+## Changes in version 2.4.2:
 
 - Start implementing improved newline behaviour, towards 2.6.0 milestone.
 - Can now send newlines with literal "\"  followed by literal "n".
 - Allow sending longer DMs (2.7.0 milestone)
 - Remove own username when replying to self.
 
-##Changes in version 2.4.1:
+## Changes in version 2.4.1:
 
 - Fix "display" of multiple images in tweets so extensions can pick them up. Specifically so deshortify can underline them.
 
-##Changes in version 2.4.0:
+## Changes in version 2.4.0:
 
 - Version checking url changed to this repo on Github so I don't have to spam Twitter everytime I've updated
 
-##Changes in version 2.3.1:
+## Changes in version 2.3.1:
 
 - Update built-in help to reflect that /rt can be used to create quote tweets
 
-##Changes in version 2.3.0:
+## Changes in version 2.3.0:
 
 - "Displays" multiple images if a tweet includes them; the urls of the additional images are appended to the tweet text
 - /entities command now lists out both entities and extended\_entities.
 - /url and /open open links from extended\_entities as well as entities. Duplicated links aren't opened.
 	- Note: Due to perceived compliance with Twitter's Terms of Service the t.co links are opened for multiple images which unfortunately means that just one link gets opened no matter how many images are attached. Whether or not this is strictly required will be investigated and if we can open the links directly to the image files TTYtter will be updated to suit.
 
-##Changes in version 2.2.4:
+## Changes in version 2.2.4:
 
 - No changes, I just forget to change version in ttytter.pl. Constantly distracted.
 
-##Changes in version 2.2.3:
+## Changes in version 2.2.3:
 
 - Fix empty geo coordinates for quoted tweets
 - Badge quoted tweets themselves as well as the parent
 
-##Changes in version 2.2.2:
+## Changes in version 2.2.2:
 
 - Destroy tco in quoted tweets that are nested in new RTs. Missed this under 2.2.1
 
-##Changes in version 2.2.1:
+## Changes in version 2.2.1:
 
 - Destroy tco in quoted tweets. Missed this under 2.2.0
 
-##Changes in version 2.2.0:
+## Changes in version 2.2.0:
 
 This unofficial version is my first attempt at maintaining TTYtter and introduces quoted tweet support.
 
@@ -168,7 +168,7 @@ This unofficial version is my first attempt at maintaining TTYtter and introduce
 - /thread command extended to support quoted tweets and recurse through for the same amount as it does for replies, etc.
 - version checking of TTYtter disabled since this is all unofficial.
 
-##Changes in version 2.1.0:
+## Changes in version 2.1.0:
 
 This version of TTYtter requires Twitter API 1.1. Twitter-alike services not compliant with API 1.1 will not work with this or any future version of TTYtter. If you need API 1.0 support, you must use 2.0.4 for as long as that support is available.
 
@@ -186,7 +186,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -anonymous now requires -apibase, as a Twitter API 1.1 requirement.
 - All bug fixes from 2.0.4.
 
-##Changes in version 2.0.4 (bug fixes and critical improvements only; these fixes are also in 2.1.0):
+## Changes in version 2.0.4 (bug fixes and critical improvements only; these fixes are also in 2.1.0):
 
 2.0.x will be the last branch of TTYtter to support Twitter API 1.0. When the 1.0 API is shut down, all previous versions of TTYtter will fail to work and you must upgrade to 2.1.x.
 
@@ -198,13 +198,13 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - The list\_created event is now properly recognized in streaming mode.
 - /entities on a retweet now properly refers back to the retweet.
 
-##Changes in version 2.0.3:
+## Changes in version 2.0.3:
 
 - Various and sundry Unicode whitespace characters are now canonicalized into regular whitespace, which improves URL recognition and editing. This occurs whether -seven is on or not. (thanks @Ryuutei for the report)
 - You can now turn the ability of a user to send NewRTs on and off with /rtson and /rtsoff, respectively, as a down payment on full filtering in 2.1. Note that this does not currently filter NewRTs out of the stream; this is a Twitter bug.
 - The user\_update event is now properly recognized in streaming mode.
 
-##Changes in version 2.0.2:
+## Changes in version 2.0.2:
 
 - /trends now accepts WOEID (either set with /set woeid or as an argument). If none is given, global trends are used instead (WOEID 1). The old $trendurl will be removed in 2.1, since this makes it superfluous. Speak now if this affects you.
 - If you have a location set with /set lat and /set long, the new /woeids command will give you the top 10 locations Twitter supports that match it. You can then feed this to /trends, or set it yourself.
@@ -215,13 +215,13 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Prompts were supposed to be case-insensitive, and now they are (thanks @FunnelFiasco for the patch).
 - /whois (and /wagain) and /trends now correctly emit to $streamout so that -runcommand works. 
 
-##Changes in version 2.0.1:
+## Changes in version 2.0.1:
 
 - Expands UTF-8 support to understand UTF-16 surrogate pairs from supra-BMP code points, fixing the Malformed UTF-8 errors generated by Perl for certain characters.
 - A race condition where TTYtter could accidentally kill the foreground in streaming mode is fixed (thanks @WofFS for the report).
 - -backload=0 now properly populates $last\_id, even if no tweets are received after the initial "fetch," eliminating an issue with spuriously grabbing old tweets (thanks @Duncan_Rowland for the report).
 
-##Changes in version 2.0.0:
+## Changes in version 2.0.0:
 
 - Introduces Streaming API support (opt-in) on systems satisfying prerequisites, using Twitter User Streams.
 - Reworked event and select() handling for better reliability on a wider array of operating systems.
@@ -238,36 +238,36 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -oldstatus, which was deprecated in 1.1.x, is now removed. If you are relying on the old behaviour, you must use 1.2.5.
 - xAuth (not XAuth), which was deprecated in 1.2.x, is now removed. If you are relying on the old little-xAuth authentication system, you must use 1.2.5.
 
-##Changes in version 1.2.5:
+## Changes in version 1.2.5:
 
 - Fixes for signals on Linux 3.x kernels, which includes newer releases of Debian and Ubuntu. If you are using readline mode, this requires Term::ReadLine::TTYtter 1.3, which is released simultaneously and has the following fixes:
 	- Matching fixes for signals on Linux 3.x kernels.
 	- CTRL-D as the first character on a line is now correctly seen as EOF, matching the non-readline version.
 - URL-sniffing logic now uses the earlier, more conservative algorithm to eliminate spurious characters (thanks @fukr for the report).
 
-##Changes in version 1.2.4:
+## Changes in version 1.2.4:
 
 - The -status=- patch in 1.2.3 broke passing statuses on the command line (that'll teach me to proof patches better). Fixed; thanks @dogsbodyorg for the spot.
 
-##Changes in version 1.2.3:
+## Changes in version 1.2.3:
 
 - Signals restructured to allow $SIG or POSIX.pm-based signalling. The latter is preferred for Perl 5.14+; the former is preferred for for 5.8.6+, 5.10 or 5.12, and is the only supported method for unsupported Perls (viz., 5.8.5 and earlier). This should eliminate the need to manually set PERL\_SIGNALS to unsafe for Perl 5.14+, assuming that you have POSIX.pm. You can force TTYtter to use POSIX.pm signals with -signals\_use\_posix, but it's better to let it choose which method it prefers.
 - Repairs to -retoke, which should once again work with dev.twitter.com.
 - Tweak for multi-line -status=- (thanks @paulgrav for the patch).
 - The old, undocumented debugging option -freezebug was obsolete as of 1.2, and now is completely removed.
 
-##Changes in version 1.2.2:
+## Changes in version 1.2.2:
 
 - New /entities command extracts t.co links from tweets and DMs so you can see where they point.
 - Fixed /trends to use new URL (thanks @Donearm for the report).
 - Fixed /trends not to double-double-quote strings when they are already double-quoted. Because that would double-quote them double, you dig?
 
-##Changes in version 1.2.1:
+## Changes in version 1.2.1:
 
 - Changes to Search API optimizer to accommodate other entities. (A more complete solution eliminating the optimizer entirely is planned for 2.0.)
 - RAS syndrome corrected in keyfile generator (with thanks to the supremely pedantic @FunnelFiasco ;).
 
-##Changes in version 1.2.0:
+## Changes in version 1.2.0:
 
 - Perl 5.8.6 is now the minimum tested version (but see this note on 5.005 and 5.6).
 - xAuth support is now deprecated and will be removed in 2.0. Speak now if this will affect you.
@@ -288,7 +288,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - API changes: $userhandle for displaying user objects, and new library functions &postjson &getbackgroundkey &sendbackgroundkey.
 - All bug fixes from 1.1.11 and 1.1.12.
 
-##Changes in version 1.1.12 (bug fixes and critical improvements only; these fixes are also in 1.2.0):
+## Changes in version 1.1.12 (bug fixes and critical improvements only; these fixes are also in 1.2.0):
 
 - Patches for Perl 5.14 (thanks @rkfb for the report).
 - Keyfiles can now be regenerated if they are corrupted or need to be updated with -retoke.
@@ -296,14 +296,14 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Properly understands a new Twitter ad-hoc error format, which repairs some operations that would unexpectedly appear to succeed but didn't actually (thanks @augmentedfourth for the report).
 - -readline autocomplete command list now up-to-date.
 
-##Changes in version 1.1.11 (bug fixes and critical improvements only; these fixes are also in 1.2.0):
+## Changes in version 1.1.11 (bug fixes and critical improvements only; these fixes are also in 1.2.0):
 
 - Fixed a bug where TTYtter crashes ungracefully if OAuth credentials fail.
 - Fixed regex in command processor that interpreted all commands starting with /p as /print.
 - -notimeline is now properly recognized by /set as a boolean.
 - One last issue related to URL shortening.
 
-##Changes in version 1.1.10:
+## Changes in version 1.1.10:
 
 - Code adjustments to avoid double-decoding UTF-8 sequences internally (thanks @cristiangauma for the fix).
 - Fixed crash in readline autocompletion when metacharacters were present (thanks @stormdragon2976 for the report).
@@ -313,7 +313,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - /short more securely encodes its input so that certain URLs will not be shortened incorrectly (thanks @alexfalkenberg for the report).
 - Custodial code cleanup pre-1.2.
 
-##Changes in version 1.1.9:
+## Changes in version 1.1.9:
 
 - Signals now should operate correctly on Solaris and other systems using SIGXCPU/XFSZ (thanks @jgeorgi for the report).
 - StatusNet and Identi.ca support is restored, using a shim that dynamically works up the missing stringified-int fields 1.1.8+ requires.
@@ -321,17 +321,17 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -notifyquiet turns off the test notify sent by your chosen notification driver.
 - -daemon mode is no longer limited by the need to assign menu codes, allowing it to accept ridiculously large data slurps.
 
-##Changes related to Term::ReadLine::TTYtter version 1.2:
+## Changes related to Term::ReadLine::TTYtter version 1.2:
 
 - T::RL::T now keeps up with changing terminal sizes, which should reduce overpaint (thanks @WofFS for the fully functioning patch).
 - Pressing DEL at position 0 no longer causes the app to exit. This was, unbelievably, an intentional feature of T::RL::Perl.
 
-##Changes in version 1.1.8:
+## Changes in version 1.1.8:
 
 - Emergency fix for signature errors (due to status IDs now overflowing the base ID fields). This may cause TTYtter to be incompatible with some Twitter-alike APIs; I can't do anything about that until they start supporting the \*\_str versions.
 - Smoother fetching from the Search API.
 
-##Changes in version 1.1.7:
+## Changes in version 1.1.7:
 
 - -daemon mode works again.
 - New-format Twitter error messages are automatically unwrapped.
@@ -345,7 +345,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - I swear, /troff no longer strips quotes off quoted terms. If it does, give me your exact track list and the keyword you used. I swear by all that is holy I fixed it this time!
 - API tweak: &wraptime, which was "optimized" out in 1.1.6, has been restored as a stub in 1.1.7 for compatibility.
 
-##Changes in version 1.1.6:
+## Changes in version 1.1.6:
 
 - 1.1.6 is a very large systems update, touching quite a bit of low-level code. In particular, this version requires full POSIX signals to function at all, whereas previous versions only needed them in certain circumstances: your system must support either or both of SIGUSR1/2 or SIGPWR/SYS (i.e., signals 30 and 31), which are used as software interrupt signals between the foreground and background processes, or TTYtter will crash or hang. This has been verified to work on all the supported systems above.
 - If your TTYtter abruptly quits when you type commands, your system does not support these signals correctly. Send me a report so that I can investigate a workaround.
@@ -369,12 +369,12 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - The -readline TAB completion routine now includes all the supported commands (thanks again @jdvalentine).
 - API changes: new library functions &sendnotifies and &senddmnotifies, which decouple notification from &defaulthandle and &defaultdmhandle respectively. This allows extensions to send their own notifications without relying on the default handlers (thanks @stormdragon2976 for the use case). In TTYtter 2.0, with the next major revision of the internal API, this idea will be explored much further.
 
-##Changes in version 1.1.5:
+## Changes in version 1.1.5:
 
 - Backed out select() debugging code due to way too many false positives. It can be re-enabled with -freezebug for testers.
 - Small custodial changes in progress.
 
-##Changes in version 1.1.4:
+## Changes in version 1.1.4:
 
 - You can now ask for additional tweets to backfill your timeline with -backload=[number]. Careful with this option: Twitter can ignore it, and often does, and loading large amounts of data can dramatically slow TTYtter down. This is a down payment on pagination, to come in the very near future.
 - You can now specify multiple arguments to -notifytype, such as =growl,libnotify. You will probably need an extension for your particular notification scheme. (suggested by @stormdragon2976)
@@ -385,7 +385,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - A platform-inless dependent change of the default keyfile umask for better security (thanks @herrold).
 - Gopher URLs are now forwarded to the Floodgap Gopher proxy, since Firefox 4 is dropping Gopher support, unless -urlopen uses lynx as its user agent, and /short on gopher URLs adds the proxy on to get an HTTP URL. (Hey, this is a text client. I have to support gopherspace.)
 
-##Changes in version 1.1.3:
+## Changes in version 1.1.3:
 
 - The JSON parser incorrectly rejects some null strings, which can interfere with logging into OAuth. Fixed. (thanks @alfredhallmert)
 - Metacharacters in URLs are now (should be) correctly rejected when fed to the TAB-shortener in -readline. (thanks @johndalton)
@@ -395,19 +395,19 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Spurious failure with perl -c in 5.005 worked around.
 - Corrections to messages and the introductory blurb.
 
-##Changes in version 1.1.2:
+## Changes in version 1.1.2:
 
 - -status with UTF-8 characters now works correctly again from the command line (as long as your locale is set correctly, of course). (thanks @jlm314)
 - $shutdown now correctly fires even if a child process was not launched.
 
-##Changes in version 1.1.1:
+## Changes in version 1.1.1:
 
 - Corrected (fingers crossed) OAuth signature bugs and UTF-8 problems. Tested on Ubuntu 10.04, Mac OS X 10.6/10.5/10.4 (PPC and x86), AIX and NetBSD 5 with 5.005 through 5.10.1, so if it doesn't work for you, I'll just find a quiet corner and shoot myself. Yes, it's actually shorter than 1.1.0 due to some efficiencies that were possible. (thanks @j4mie, @dariuus, @seppo0010 and many others for data points)
 - When looking for tools, TTYtter will now check your path first before its built-in locations. (thanks @seppo0010)
 - Better handling for impoverished environments where $HOME may not be defined.
 - New mention in Guinness Book of World Records for quickest replacement of a version of TTYtter. It's in the back somewhere, near record number of hours watching Monty Python while singing from the Hungarian Bongosok.
 
-##Changes in version 1.1.0 (this version is an updated form of the public beta, released as is due to the switchover; expect minor bugs, which will be rectified in 1.1.1):
+## Changes in version 1.1.0 (this version is an updated form of the public beta, released as is due to the switchover; expect minor bugs, which will be rectified in 1.1.1):
 
 - Official support for OAuth, which is now the default method of authentication. OAuth requires cURL -- Lynx will not work. Basic Auth is still supported for users of StatusNet and Identi.ca, and still works with Lynx, but you must ask for it with -authtype=basic. After 16 August 2010, only TTYtter 1.1.0 and later will be able to access Twitter due to the Basic Auth shutdown. No earlier version of TTYtter will work! Read the main page for how to get your credentials converted to OAuth. You only have to do this once per account.
 - Foreground menu codes now roll continuously and wrap around instead of resetting with every foreground command (except for /thread, which still uses zz0 to zz9). This is the completion of the menu code change first introduced in 1.0.0.
@@ -418,26 +418,26 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Various API changes: -lib and -olib are now removed; new library functions; $getpassword and $shutdown (suggested by @colindean).
 - All bug fixes from 1.0.3 and 1.0.4. 
 
-##Changes in version 1.0.4 (these fixes are also in 1.1.0):
+## Changes in version 1.0.4 (these fixes are also in 1.1.0):
 
 - Search API URLs corrected to Twitter-specified URLs.
 - NewRTs now appear in user timelines and mentions, thanks to new improvements in the Twitter API.
 - Ported /doesfollow and the improved UTF-8 entity translation for -seven from the forthcoming revised 1.1 beta.
 
-##Changes in version 1.0.3 (bug fixes and critical improvements only; these fixes are also in 1.1.0):
+## Changes in version 1.0.3 (bug fixes and critical improvements only; these fixes are also in 1.1.0):
 
 - Search API URLs now transitioned to the api.twitter.com endpoint, as the old ones will be eventually shut down.
 - When terminating TTYtter correctly exits with the right error status now (thanks @jlm314).
 - Reply username matching is now a bit less greedy.
 - Spaces are trimmed off URLs in /whois.
 
-##Changes in version 1.0.2:
+## Changes in version 1.0.2:
 
 - Missed one of the bleeding colour bugs into the -readline prompt that was supposed to be fixed in 1.0.1. Fixed for sure this time. (thanks @tjh)
 - Updated API URLs.
 - Search API support streams more reliably and is compatible with future changes to the Search API search method.
 
-##Changes in version 1.0.1:
+## Changes in version 1.0.1:
 
 - Fixed JSON parser to avoid bailout with certain large GeoAPI coordinates. (thanks @pssdbt)
 - TTYtter now counts in UTF-8 characters, not bytes, now that I have confirmation of full support in the Twitter API. 140 character tweets and DMs are now fully supported, and also work with -autosplit.
@@ -445,7 +445,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Error messages won't foul prompt colour in -readline mode anymore (thanks @wireghoul).
 - -synch mode updates are only triggered now for successful posting, not on overlength tweets, etc.
 
-##Changes in version 1.0.0:
+## Changes in version 1.0.0:
 
 - Source code reorganized and in some cases completely rewritten.
 - Multi-module system for the TTYtter API allows you to install and run multiple extensions simultaneously (if compatible), adding the new -exts option.
@@ -465,19 +465,19 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - If -rc gives an absolute path, use that. (thanks @FunnelFiasco)
 - All bug fixes from 0.9.10, 0.9.11 and 0.9.12.
 
-##Changes in version 0.9.12 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
+## Changes in version 0.9.12 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
 
 - If you /troff on a keyword set that has quoted phrases, the quotes get lost off all of them. Fixed.
 - Restoring from /set tquery 0 also fouls up quoted search terms. Fixed.
 - Setting $tquery in an extension's initialization does not override $track. Fixed. (thanks @colindean)
 
-##Changes in version 0.9.11 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
+## Changes in version 0.9.11 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
 
 - Warn the user if a notification framework was selected but no notifies were requested. This might be useful for an extension to dynamically control, so it is not a fatal error.
 - Another try at properly handling GeoAPI information (thanks @chfrank\_cgn).
 - Author breaks 50,000 tweets. A loud sobbing noise can be heard from Twitter corporate headquarters throughout most of the Bay Area.
 
-##Changes in version 0.9.10 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
+## Changes in version 0.9.10 (bug fixes and critical improvements only; these fixes are also in 1.0.0):
 
 - If the foreground process exits abnormally, it should still clean up the background process.
 - -script and -verbose should work together better (a more effective fix is in the 1.0.0 beta).
@@ -486,14 +486,14 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -script and -status now correctly ignore -slowpost and -verify.
 - /vreply format tweaked slightly.
 
-##Changes in version 0.9.9 (bug fixes and critical improvements only):
+## Changes in version 0.9.9 (bug fixes and critical improvements only):
 
 - Tweets with geolocation information no longer cause the JSON parser to panic.
 - If -autosplit=word fails, fall back on =char instead of completely destroying the tweet.
 - /vre no longer threads the reply, as API changes have caused threaded tweets to be only visible to the one replied to.
 - The planned conversion of 140 bytes to 140 characters as the tweet length could not be implemented in this version as the Twitter API does not correctly accept them yet.
 
-##Changes in version 0.9.8 (bug fixes and critical improvements only):
+## Changes in version 0.9.8 (bug fixes and critical improvements only):
 
 - Identica fixes: base URL returned to friends\_timeline; fixed the "null list" warnings Identica users were getting; updated JSON parser to understand the new Identica fields.
 - You can now say -notifytype=0 on the command line to disable a notifytype in your .ttytterrc.
@@ -504,7 +504,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -curl now works correctly again (stupid typo regression).
 - Error codes fixed for command line tools.
 
-##Changes in version 0.9.7:
+## Changes in version 0.9.7:
 
 - 0.9 is now the stable branch and bug fixes only will occur on this branch until a stable 1.0.x becomes available, after which it will be deprecated. New development will now occur on unstable 1.0 and there will be compatibility changes. More on that when 1.0.0 is released.
 - New notification framework with built-in support for Growl (via growlnotify) and experimental built-in support for libnotify (via modifications to notify-send; see Galago Project trac ticket #147) using -notifytype and -notifies. Expandable via the API.
@@ -529,7 +529,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Internal code consolidation.
 - Better error messages for deletions, failed substitutions, etc.
 
-##Changes in version 0.9.6:
+## Changes in version 0.9.6:
 
 - Direct message selection, analogous to tweet selection, which also supports /delete, /url and /reply for a nice almost-orthogonal interface.
 - /retweet and /eretweet, previously undocumented in 0.9.5 due to inadequate testing, are now officially supported and properly thread in-reply-to fields.
@@ -547,7 +547,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - /search did not call $conclude, so -filter counts got out of sync. Fixed.
 - Author breaks 40,000 tweets. Twitter calls him on the phone to please stop and use Plurk or something.
 
-##Changes in version 0.9.5:
+## Changes in version 0.9.5:
 
 - Selection of individual tweets and threading with /thread, /reply, /delete and /url, along with @ markers on tweets that are part of a thread.
 - -noratelimit and -notrack to disable rate limit checks and tracking keywords, respectively, on systems that don't support them (most notably Laconi.ca/Identi.ca).
@@ -557,7 +557,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Expanded /help text.
 - Bogus colour warnings when using -noansi are fixed.
 
-##Changes in version 0.9.4:
+## Changes in version 0.9.4:
 
 - Twitter Search API integration, based on initial work by @kellyterryjones, @vielmetti and @br3nda (/search, -queryurl), with hashtag integration and keyword management (/tron, /troff, /track, /#, -notimeline, -track) and trends (/trends, -trendurl), suggested by a whole bunch of people including the most esteemed @adamcurry.
 - Customizable colours (-colour{prompt,dm,me,reply,warn}), another common request.
@@ -568,7 +568,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -status probably shouldn't print version check warnings. Fixed.
 - Not every overlong prompt was getting wordwrapped. Fixed.
 
-##Changes in version 0.9.3:
+## Changes in version 0.9.3:
 
 - Automatically check that you're using the most current version, either with -vcheck at startup, or /vcheck within the client.
 - New $authenticate API method makes it possible to store your credentials anywhere you darn well please, including nowhere. Now prompts for password when you don't specify. Based on code by @jcscoobyrs.
@@ -579,7 +579,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Posting tweets did not show verbose information in -superverbose mode. Fixed.
 - /setting superverbose should also set verbose. Fixed.
 
-##Changes in version 0.9.2:
+## Changes in version 0.9.2:
 
 - Status changed to 'stable' fork; previously embryonic features now either fully enabled or made default.
 - -rc=... option allows selection from multiple .ttytterrc files, based on a suggestion by @br3nda. Corresponding -norc option allowed to, conversely, completely disable any rc file present.
@@ -590,21 +590,21 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Expanded control character filter from 0.8.6.
 - All bug fixes and backouts from 0.8.6.
 
-##Changes in version 0.8.6:
+## Changes in version 0.8.6:
 
 - Status changed to 'deprecated' fork.
 - Control character filter added (backported from 0.9.x) and expanded to pre-interpret most common mistaken entries.
 - Bug fixed with @ names framed with certain punctuation not getting highlighted.
 - Backed out kludges for bowdlerized /whois and less efficient workaround JSON fetch.
 
-##Changes in version 0.9.1:
+## Changes in version 0.9.1:
 
 - Large rewrite of the UTF-8 handling code, with hopefully better support on as wide a range of Perls as possible.
 - /print tabcomp to display your optimized completer string in advance, based on a suggestion by @augmentedfourth.
 - -newline to parse \n and \r, also suggested by @augmentedfourth.
 - CTRL-C now correctly triggers the END subroutine, reported by @augmentedfourth. Yeah, he's been busy. ;-)
 
-##Changes in version 0.9.0:
+## Changes in version 0.9.0:
 
 - Split into 'unstable' fork.
 - Major retooling of program logic to eliminate redundant portions and streamline complex sections.
@@ -619,21 +619,21 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - All bug fixes from 0.8.5.
 - Author breaks 25,000 tweets. He is, truly, a nerd.
 
-##Changes in version 0.8.5:
+## Changes in version 0.8.5:
 
 - Split into 'stable' fork.
 - Bug fixed with UTF-8 handling, even on systems and Perls that don't understand UTF-8.
 - Bug fixed with users with no DMs.
 
-##Changes in version 0.8.4:
+## Changes in version 0.8.4:
 
 - Several temporary workarounds for glitches in the Twitter API, namely a kludge for eating invalid JSON generated by tweet deletes, disabling some fields in /whois that were pulled, and turning off friendship checks as they currently generate 500 errors. The tweaked JSON fetch is also marked as kludge. These temporary fixes will be backed out when they are fixed on Twitter's end.
 
-##Changes in version 0.8.3:
+## Changes in version 0.8.3:
 
 - Tweaked fetch routine pending eventual format of null responses (i.e., much less spurious timeout or no data messages).
 
-##Changes in version 0.8.2:
+## Changes in version 0.8.2:
 
 - Twitterer names, and @ names, are now boldface and underline respectively based on patches submitted by @smb.
 - Expanded /whois with code for looking up friendships, and processing avatar images (-avatar, -frurl).
@@ -641,7 +641,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Certain HTTP status codes could cause the JSON parser to freak out. Fixed.
 - -noansi didn't take precedence over -ansi like it was supposed to. Fixed.
 
-##Changes in version 0.8.1:
+## Changes in version 0.8.1:
 
 - $lasttwit, and origination classes for $handle, both API enhancements suggested by @emilsit.
 - -lynx and -curl can be told to run a specific binary, useful for PATH-deficient environments or version testing.
@@ -649,7 +649,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Speaking of which, normal tweet activity also has better warning text for oversize tweets too.
 - Additional debugging information for failed test logins available.
 
-##Changes in version 0.8.0:
+## Changes in version 0.8.0:
 
 - Robust scripting support for simple command-line queries (/end and -script).
 - -pause=0 is now valid.
@@ -658,12 +658,12 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Null array references could escape from certain asynchronous commands and cause uncaught exceptions. Fixed.
 - &prinput allegedly took arguments, but ignored them and just used $\_ like it used to. Kludged around.
 
-##Changes in version 0.7.1:
+## Changes in version 0.7.1:
 
 - Null array references could leak from the JSON parser, which would throw an uncaught Perl error. Fixed.
 - /ruler (suggested by @jspath55).
 
-##Changes in version 0.7.0:
+## Changes in version 0.7.0:
 
 - Changes suggested and coded/adapted from code by @br3nda:
 	- ANSI colour and highlighting (and -ansi/-noansi).
@@ -680,11 +680,11 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Several side effects have now been incorporated as virtues.
 - Author breaks 10,000 tweets. What a dweeb he must be.
 
-##Changes in version 0.6.1:
+## Changes in version 0.6.1:
 
 - Improved stability in JSON validator when using Lynx as the user-agent.
 
-##Changes in version 0.6.0:
+## Changes in version 0.6.0:
 
 - Direct message support added to both interactive client and API, with -dmurl and -dmpause.
 - -silent mode and exit statuses.
@@ -695,18 +695,18 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Reworked error messages.
 - Various custodial fixes and upgrades to JSON interpreter.
 
-##Changes in version 0.5.1:
+## Changes in version 0.5.1:
 
 - Patched for various entities in the new Twitter JSON release. This version will correctly handle both ampersand-escaped and standard entities and quotes.
 
-##Changes in version 0.5:
+## Changes in version 0.5:
 
 - Support for rate-limited API, in two ways: first, increasing default timeout to 120 seconds, and two, properly recognizing when rate-limiting has kicked in.
 - Stability improvement in JSON validator.
 - Additional API exception codes for the above features.
 - select() loop tightened up to make timeline hits as minimal as possible.
 
-##Changes in version 0.4:
+## Changes in version 0.4:
 
 - UTF-8 now works right (most of the time). Added -seven option for backwards compatibility.
 - First support for the TTYtter API and the -lib option.
@@ -714,7 +714,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - Tweaks to defaults.
 - Work-around for out-of-order tweets "stuttering" or getting stuck. This is technically a Twitter bug, but this version can now ignore the anomaly.
 
-##Changes in version 0.3:
+## Changes in version 0.3:
 
 - Even bigger morer robuster JSON validator.
 - Posting from the command line using -status.
@@ -722,7 +722,7 @@ This version of TTYtter requires Twitter API 1.1. Twitter-alike services not com
 - -hold timeout tweaked.
 - Messages tweaked for accuracy and semi-user-friendliness.
 
-##Changes in version 0.2:
+## Changes in version 0.2:
 
 - Improved detection of Twitter HTML status messages and better tolerance of partially-transmitted data (which could sometimes cause ttytter's JSON validator to freak out).
 - Added "re-tweet" facility for ... retweeting.
