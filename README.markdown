@@ -1,3 +1,5 @@
+**Since [Twitter is disabling free API access](https://twitter.com/TwitterDev/status/1621026986784337922), I am admitting what has been the case for years: oysttyer is no longer maintained.**
+
 # oysttyer
 
 The official fork and replacement for what was once [Floodgap's TTYtter](http://www.floodgap.com/software/ttytter/).
